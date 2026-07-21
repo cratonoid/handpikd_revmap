@@ -1,5 +1,7 @@
 from fastapi import APIRouter
 
+from app.core.db import get_db
+
 router = APIRouter(prefix="/test", tags=["test"])
 
 
@@ -11,3 +13,10 @@ def read_test():
 @router.get("/ping")
 def ping():
     return {"ping": "pong"}
+
+
+@router.get("/db-ping")
+async def db_ping():
+    db = get_db()
+    result = await db.command("ping")
+    return {"mongodb": result}
