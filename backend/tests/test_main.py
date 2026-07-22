@@ -1,3 +1,4 @@
+# Integration tests covering the root and test/health-check endpoints.
 from fastapi.testclient import TestClient
 
 from app.main import app

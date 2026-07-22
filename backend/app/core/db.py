@@ -1,3 +1,4 @@
+# Manages the MongoDB client lifecycle and exposes the active database instance.
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
 from app.core.config import settings

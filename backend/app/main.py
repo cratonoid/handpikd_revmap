@@ -1,3 +1,4 @@
+# FastAPI application entrypoint: wires up middleware, routers, and the MongoDB lifespan hook.
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI

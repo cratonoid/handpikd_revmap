@@ -1,3 +1,4 @@
+# Health-check endpoints used to verify the API and MongoDB connection are reachable.
 from fastapi import APIRouter
 
 from app.core.db import get_db

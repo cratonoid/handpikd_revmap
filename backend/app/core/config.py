@@ -1,3 +1,4 @@
+# Centralized app configuration, loaded from environment variables / .env.
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
