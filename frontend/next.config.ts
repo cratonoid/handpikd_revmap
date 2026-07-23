@@ -1,9 +1,23 @@
+// Next.js build/runtime configuration for the frontend app.
 import path from "path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
+  },
+  images: {
+    // Placeholder CDN source for section imagery until real asset hosting is chosen.
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+      },
+      {
+        protocol: "https",
+        hostname: "picsum.photos",
+      },
+    ],
   },
 };
 

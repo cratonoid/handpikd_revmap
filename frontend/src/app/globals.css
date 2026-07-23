@@ -1,26 +1,156 @@
 @import "tailwindcss";
 
+/* Keep in sync with src/lib/brand.ts */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --color-cream: #fafaf8; /* off-white — main background */
+  --color-cream-deep: #f1e4ce; /* beige — alternate section fill */
+  --color-charcoal: #0b0a08; /* near-black — headers, icons, accents */
+  --color-ink: #38332c; /* dark warm gray — body copy */
+  --color-white: #e6e4dc; /* "white" surfaces — warm off-white, not stark */
+  --color-red: #9c2b2b; /* sparing accent only — small dots, badges, underlines */
+
+  --color-button-primary: #0b0a08;
+  --color-button-primary-hover: #211d16;
+  --color-button-secondary: #c9b475;
+  --color-button-secondary-hover: #b5a066;
+  --color-button-tertiary: #f1e9d2;
+  --color-button-tertiary-hover: #e6dab8;
+
+  --color-border: #c7b37e;
+
+  --background: var(--color-cream);
+  --foreground: var(--color-charcoal);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-cream: var(--color-cream);
+  --color-cream-deep: var(--color-cream-deep);
+  --color-charcoal: var(--color-charcoal);
+  --color-ink: var(--color-ink);
+  --color-white: var(--color-white);
+  --color-red: var(--color-red);
+  --color-button-primary: var(--color-button-primary);
+  --color-button-primary-hover: var(--color-button-primary-hover);
+  --color-button-secondary: var(--color-button-secondary);
+  --color-button-secondary-hover: var(--color-button-secondary-hover);
+  --color-button-tertiary: var(--color-button-tertiary);
+  --color-button-tertiary-hover: var(--color-button-tertiary-hover);
+  --color-border: var(--color-border);
+
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-manrope);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Scroll-reveal utility. The hidden state only exists for users who don't
+   prefer reduced motion, so content is fully visible by default otherwise. */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal {
+    opacity: 0;
+    transform: translateY(1.5rem);
+    transition:
+      opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Horizontal logo marquee. */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.marquee-track {
+  animation: marquee 32s linear infinite;
+}
+
+.marquee-group:hover .marquee-track,
+.marquee-group:focus-within .marquee-track {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
+  .marquee-group {
+    overflow-x: auto;
+  }
+}
+
+/* What We Offer: pinned scroll-story vs. simple grid. Kept in sync with the
+   matchMedia condition in what-we-offer.tsx so the JS and CSS never disagree
+   about which version is showing. */
+.offer-pinned {
+  display: none;
+}
+.offer-grid {
+  display: grid;
+}
+
+@media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+  .offer-pinned {
+    display: block;
+  }
+  .offer-grid {
+    display: none;
+  }
+}
+
+/* Dual-handle price slider: two transparent range inputs stacked on top of a
+   styled track div, each with pointer-events limited to their own thumb. */
+.price-range-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  pointer-events: none;
+}
+
+.price-range-input::-webkit-slider-runnable-track {
+  background: transparent;
+}
+.price-range-input::-moz-range-track {
+  background: transparent;
+}
+
+.price-range-input::-webkit-slider-thumb {
+  appearance: none;
+  pointer-events: auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: var(--color-charcoal);
+  border: 3px solid var(--color-cream);
+  box-shadow: 0 0 0 1px var(--color-border);
+  cursor: pointer;
+  margin-top: 0;
+}
+.price-range-input::-moz-range-thumb {
+  pointer-events: auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: var(--color-charcoal);
+  border: 3px solid var(--color-cream);
+  box-shadow: 0 0 0 1px var(--color-border);
+  cursor: pointer;
 }
