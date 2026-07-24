@@ -1,3 +1,11 @@
+// ---------------------------------------------------------------------------
+// <Connect> — closing CTA section (id="connect"), the last thing before the
+// footer
+// ---------------------------------------------------------------------------
+// A plain Server Component: contact info + a short blurb on the left, the
+// actual interactive contact FORM (a separate Client Component) on the
+// right. Splitting it this way keeps this file simple/static while
+// isolating all the form's state/validation logic in its own file.
 import { Reveal } from "@/components/reveal";
 import { SplitReveal } from "@/components/split-reveal";
 import { Eyebrow } from "@/components/eyebrow";
@@ -7,7 +15,9 @@ import { siteConfig } from "@/lib/brand";
 
 export function Connect() {
   return (
-    <section id="connect" className="bg-cream-deep">
+    // `id="connect"` is the anchor target for every "Get Started" /
+    // "Contact" button and nav link across the site ("/#connect").
+    <section id="connect" className="flex flex-col bg-cream-deep lg:min-h-screen lg:justify-center">
       <div className="mx-auto grid max-w-6xl gap-14 px-5 py-20 sm:px-8 sm:py-24 lg:grid-cols-[0.9fr_1.1fr]">
         <Reveal>
           <Eyebrow>Connect With Us</Eyebrow>
@@ -45,6 +55,8 @@ export function Connect() {
           </ul>
         </Reveal>
 
+        {/* `delayMs={120}` makes the form fade in slightly after the text
+            column on the left, instead of both appearing simultaneously. */}
         <Reveal delayMs={120}>
           <ContactForm />
         </Reveal>

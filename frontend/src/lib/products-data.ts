@@ -1,25 +1,55 @@
-// Product catalogue taxonomy + placeholder product data.
+// ---------------------------------------------------------------------------
+// Product catalogue: category tree + placeholder product data
+// ---------------------------------------------------------------------------
+// This file is the "database" for the /products page. Since there's no real
+// backend/database yet, everything is generated once, at build/import time,
+// from a single hand-written tree (`spec` below) and kept in memory as plain
+// arrays that the rest of the app imports and reads.
+//
+// The big idea in this file: instead of maintaining the CATEGORY TREE (for
+// the sidebar filters) and the PRODUCT LIST (for the grid) as two separate,
+// easy-to-let-drift-out-of-sync data structures, we maintain ONE tree
+// (`spec`) and derive both from it with a recursive function (`walk`, near
+// the bottom). That guarantees every product's category path is always
+// valid, because it's built from the same tree the filters use.
+//
 // Source: internal product-category worksheets (Drinkware / Electronics &
 // Accessories / Stationery / Bags). Swap prices, names, and images for real
 // SKUs once the catalogue is sourced.
 
+// A node in the CATEGORY TREE shown in the sidebar filter
+// (see src/components/products/category-filter.tsx). Every node has an id
+// and a label; branch nodes additionally have `children`. TypeScript's `?`
+// after a property name means it's optional — a leaf category (like
+// "Juicer") simply won't have a `children` array at all.
 export type CategoryNode = {
   id: string;
   label: string;
   children?: CategoryNode[];
 };
 
+// A single purchasable item shown in the product grid
+// (see src/components/products/product-card.tsx).
 export type Product = {
   id: string;
   name: string;
-  price: number;
-  originalPrice: number;
+  price: number; // current/selling price, in INR (whole rupees, no decimals)
+  originalPrice: number; // higher "before discount" price, for the strikethrough
   image: string;
   alt: string;
-  /** Category ids from the root down to (and including) the leaf. */
+  /** Category ids from the root down to (and including) the leaf, e.g.
+   *  ["drinkware", "mugs", "mugs-steel"]. Used by the filter logic in
+   *  products-page-client.tsx to test "does this product belong to any of
+   *  the currently-checked categories?" */
   categoryPath: string[];
 };
 
+// The shape of ONE entry in the hand-written `spec` tree below. It's
+// intentionally more flexible than `CategoryNode` or `Product` — a `Spec`
+// node can be a pure category (has `children`, no `product`), a pure
+// product (`product` is set, no `children`), but never both at once in this
+// data set. `base` is a rough USD reference price that gets converted to a
+// realistic INR price further down (see `toInrPrice`).
 type Spec = {
   id: string;
   label: string;
@@ -27,6 +57,22 @@ type Spec = {
   product?: { name: string; base: number };
 };
 
+// -----------------------------------------------------------------------
+// THE SOURCE TREE
+// -----------------------------------------------------------------------
+// This nested array is the one place that encodes the whole catalogue
+// structure: 4 top-level categories (Drinkware, Electronics and
+// Accessories, Stationery, Bags), each branching down into
+// sub-categories, sometimes several levels deep (e.g. Stationery > Pen >
+// Metal > "Metal With Cork"). Every id must be unique across the ENTIRE
+// tree (not just among siblings) because the filter UI uses ids in a flat
+// `Set<string>` to track which categories are checked.
+//
+// Every node is either:
+//   - a BRANCH: has `children`, no `product` — just a folder in the tree.
+//   - a LEAF: no `children`, has `product` — an actual thing you can buy.
+// The `walk()` function below relies on that split to decide what to do
+// with each node.
 const spec: Spec[] = [
   {
     id: "drinkware",
@@ -52,6 +98,8 @@ const spec: Spec[] = [
           { id: "bottles-bamboo", label: "Bamboo", product: { name: "Bamboo Water Bottle", base: 22 } },
         ],
       },
+      // A leaf directly under "Drinkware" (no in-between sub-category) —
+      // notice it has `product` but no `children`.
       { id: "juicer", label: "Juicer", product: { name: "Portable Juicer", base: 34 } },
     ],
   },
@@ -137,6 +185,7 @@ const spec: Spec[] = [
         label: "Pen",
         children: [
           { id: "pen-plastic", label: "Plastic", product: { name: "Plastic Pen", base: 4 } },
+          // Four levels deep: Stationery > Pen > Metal > "Metal With Cork".
           {
             id: "pen-metal",
             label: "Metal",
@@ -251,38 +300,101 @@ const spec: Spec[] = [
   },
 ];
 
-/** Rounds to a ".99"-ending price near n (e.g. 17 -> 16.99). */
-function endsIn99(n: number): number {
-  return Number((Math.max(1, Math.round(n) - 1) + 0.99).toFixed(2));
+// -----------------------------------------------------------------------
+// Pricing helpers
+// -----------------------------------------------------------------------
+// `base` values above are approximate USD reference points, converted to a
+// realistic INR retail price ending in "9" (e.g. ₹1,409), the local
+// equivalent of a ".99" price.
+const USD_TO_INR = 83;
+
+function toInrPrice(usdBase: number): number {
+  const inr = usdBase * USD_TO_INR;
+  // Round to the nearest multiple of 10 first (e.g. 1411 -> 1410), THEN
+  // subtract 1 to land on a "...9" ending (1410 -> 1409). Doing it in this
+  // order (round first, then -1) is what guarantees the result always ends
+  // in 9 instead of some other digit.
+  const roundedToTen = Math.round(inr / 10) * 10;
+  // `Math.max(9, ...)` is a safety floor so a very cheap item can never
+  // round down to a price of ₹-1 or ₹0.
+  return Math.max(9, roundedToTen - 1);
 }
 
+// Formats a number as an Indian Rupee string, e.g. formatInr(12345) ->
+// "₹12,345". `toLocaleString("en-IN")` is a built-in JavaScript method that
+// knows India's digit-grouping convention (which groups differently from
+// the US/UK past the first thousand — e.g. 1,23,456 instead of 123,456),
+// so we don't have to hand-write comma-insertion logic ourselves.
+export function formatInr(amount: number): string {
+  return `₹${amount.toLocaleString("en-IN")}`;
+}
+
+// Builds one `Product` object for a single leaf in the spec tree.
 function makeProduct(id: string, name: string, base: number, categoryPath: string[]): Product {
-  const price = endsIn99(base);
-  const originalPrice = endsIn99(base * 1.28);
+  const price = toInrPrice(base);
+  const originalPrice = toInrPrice(base * 1.28); // ~28% "discount" for the strikethrough price
   return {
     id,
     name,
     price,
     originalPrice,
+    // picsum.photos is a free placeholder-image service. Using the same
+    // "seed" string every time (here, `handpikd-${id}`) makes it return the
+    // SAME image on every visit instead of a random one, so product photos
+    // don't change every time the page reloads.
     image: `https://picsum.photos/seed/handpikd-${id}/600/600`,
     alt: `${name} product photo`,
     categoryPath,
   };
 }
 
+// -----------------------------------------------------------------------
+// The recursive tree walk
+// -----------------------------------------------------------------------
+// This is the function that turns the single `spec` tree above into the TWO
+// things the rest of the app actually needs: a `CategoryNode[]` tree (for
+// rendering the filter sidebar) and a flat `Product[]` array (for the grid).
+//
+// "Recursive" means the function calls ITSELF to handle each nested level.
+// If that's a new idea: think of it like Russian nesting dolls — `walk`
+// knows how to process one node, and whenever that node has children, it
+// asks a fresh call to `walk` to process THOSE children the exact same way,
+// no matter how deeply nested they are. The function doesn't need to know
+// in advance whether the tree is 2 levels deep or 6 — it keeps calling
+// itself until it runs out of children.
+//
+// `ancestors` is the list of category ids "above" the nodes currently being
+// processed (e.g. ["drinkware", "bottles"] when walking Bottles' children).
+// Each recursive call adds one more id to that list, which is how every
+// product ends up with a full `categoryPath` from root to leaf.
 function walk(nodes: Spec[], ancestors: string[]): { tree: CategoryNode[]; products: Product[] } {
   const tree: CategoryNode[] = [];
   const products: Product[] = [];
 
   for (const node of nodes) {
+    // The full path to THIS node = everything above it, plus its own id.
+    // `[...ancestors, node.id]` copies the `ancestors` array and appends
+    // `node.id` to the end, without mutating the original array (so
+    // sibling nodes in this same loop don't accidentally share/corrupt
+    // each other's path).
     const path = [...ancestors, node.id];
 
     if (node.children) {
+      // Branch node: recurse into its children first...
       const sub = walk(node.children, path);
+      // ...then add this node to the tree, with the CHILDREN'S tree
+      // nested inside it...
       tree.push({ id: node.id, label: node.label, children: sub.tree });
+      // ...and bubble every product found anywhere below this branch up
+      // to the current level's product list. `...sub.products` "spreads"
+      // (unpacks) each item out of that array individually, rather than
+      // pushing the whole array as one single element.
       products.push(...sub.products);
     } else {
+      // Leaf node: just add it to the tree as-is (no children)...
       tree.push({ id: node.id, label: node.label });
+      // ...and, if it has product info attached, build a real Product and
+      // add it to the flat list.
       if (node.product) {
         products.push(makeProduct(node.id, node.product.name, node.product.base, path));
       }
@@ -292,17 +404,37 @@ function walk(nodes: Spec[], ancestors: string[]): { tree: CategoryNode[]; produ
   return { tree, products };
 }
 
+// Run the walk ONCE, starting with an empty ancestor path (`[]`, since the
+// top-level categories have no parent). The results are computed once when
+// this module first loads and then reused everywhere — nothing below this
+// line re-runs `walk` again.
 const built = walk(spec, []);
 
 export const categoryTree: CategoryNode[] = built.tree;
 export const products: Product[] = built.products;
 
+// Given a category node, returns its own id PLUS every descendant id
+// underneath it, flattened into one array. Used by the "uncheck a parent
+// category" logic in products-page-client.tsx: when you uncheck
+// "Drinkware", this is how the app knows to also un-check "Mugs",
+// "Bottles", "Stainless Steel", etc. — everything nested inside it.
+// This is also a recursive function, just like `walk` above, but simpler:
+// it doesn't need to build two different outputs, just one flat list.
 export function collectIds(node: CategoryNode): string[] {
   const ids = [node.id];
+  // `?.` (optional chaining) means "only call .forEach if node.children
+  // isn't undefined" — skips safely for leaf nodes that have no children.
   node.children?.forEach((child) => ids.push(...collectIds(child)));
   return ids;
 }
 
+// The lowest and highest price across ALL products, used to set the
+// min/max bounds of the price slider. `.reduce()` walks the whole
+// `products` array once, keeping a running "accumulator" (`acc`) that
+// starts as `{ min: Infinity, max: 0 }` and updates on every product: the
+// running min can only go down (starting from "infinitely high" so the
+// very first real price is guaranteed to be lower), and the running max
+// can only go up.
 export const priceBounds = products.reduce(
   (acc, p) => ({ min: Math.min(acc.min, p.price), max: Math.max(acc.max, p.price) }),
   { min: Infinity, max: 0 },

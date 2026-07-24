@@ -1,27 +1,69 @@
+/* ===========================================================================
+   Global stylesheet
+   ===========================================================================
+   This file is imported once, in src/app/layout.tsx, so every rule here
+   applies to the whole site. It has four jobs:
+     1. Pull in Tailwind CSS itself.
+     2. Define the color palette as CSS variables and register them with
+        Tailwind (so classes like `bg-cream` or `text-charcoal` exist).
+     3. A few small global rules (e.g. what <body> looks like by default).
+     4. Hand-written CSS for things Tailwind's utility classes can't express
+        on their own — scroll-reveal animations, the logo marquee, and the
+        custom dual-handle price slider.
+   =========================================================================== */
+
+/* Loads Tailwind's utility classes (bg-red-500, flex, p-4, etc.) into this
+   stylesheet. This one line is what makes every `className="..."` in the
+   React components actually produce CSS. */
 @import "tailwindcss";
 
-/* Keep in sync with src/lib/brand.ts */
+/* ---------------------------------------------------------------------------
+   1. Color variables
+   ---------------------------------------------------------------------------
+   `:root` is a CSS selector that matches the top-level <html> element. Custom
+   properties (the `--name: value` lines) declared here are "global CSS
+   variables" — any rule anywhere in the stylesheet can read them with
+   `var(--color-cream)`.
+
+   These hex values are hand-copied from src/lib/brand.ts. Tailwind CSS can't
+   read a .ts file, so the same palette has to be declared twice: once in
+   TypeScript (for use for constants and info in this file), and once here in
+   plain CSS (for Tailwind + browser rendering). If you change a color, you
+   must edit BOTH places.WHY!!! */
 :root {
   --color-cream: #fafaf8; /* off-white — main background */
-  --color-cream-deep: #f1e4ce; /* beige — alternate section fill */
+  --color-cream-deep: #e3ce9e; /* beige — alternate section fill */
   --color-charcoal: #0b0a08; /* near-black — headers, icons, accents */
   --color-ink: #38332c; /* dark warm gray — body copy */
   --color-white: #e6e4dc; /* "white" surfaces — warm off-white, not stark */
   --color-red: #9c2b2b; /* sparing accent only — small dots, badges, underlines */
 
-  --color-button-primary: #0b0a08;
-  --color-button-primary-hover: #211d16;
-  --color-button-secondary: #c9b475;
-  --color-button-secondary-hover: #b5a066;
+  --color-button-primary: #9c2b2b;
+  --color-button-primary-hover: #7f2222;
+  --color-button-secondary: #0b0a08;
+  --color-button-secondary-hover: #211d16;
   --color-button-tertiary: #f1e9d2;
   --color-button-tertiary-hover: #e6dab8;
 
-  --color-border: #c7b37e;
+  --color-border: #a68c57;
 
+  /* `--background` / `--foreground` are a level of indirection so the `body`
+     rule below (and dark-mode overrides, if this project ever adds them)
+     only have to change two variables instead of every color. */
   --background: var(--color-cream);
   --foreground: var(--color-charcoal);
 }
 
+/* `@theme inline { ... }` is a Tailwind CSS v4 feature (this is NOT plain
+   CSS — it's special syntax Tailwind's build step reads). It tells Tailwind
+   "treat each of these CSS variables as a design token," which automatically
+   generates utility classes for them. For example, registering
+   `--color-cream` here is what makes `bg-cream`, `text-cream`, and
+   `border-cream` exist as usable Tailwind classes in every component.
+   `inline` means Tailwind should reference the variable directly (via
+   `var(--color-cream)`) rather than copying its literal value into every
+   generated class — so changing the value in :root above updates the whole
+   site instantly, without a rebuild finding-and-replacing anything. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -40,33 +82,71 @@
   --color-button-tertiary-hover: var(--color-button-tertiary-hover);
   --color-border: var(--color-border);
 
+  /* Same idea, but for fonts instead of colors. `--font-fraunces` and
+     `--font-manrope` are created automatically by next/font in
+     src/app/layout.tsx (each font export has a `variable` option). Aliasing
+     them to `--font-display` / `--font-sans` here is what makes the
+     `font-display` and `font-sans` Tailwind classes available, so components
+     don't need to know the actual font names. */
   --font-display: var(--font-fraunces);
   --font-sans: var(--font-manrope);
 }
 
+/* ---------------------------------------------------------------------------
+   2. Base element styles
+   --------------------------------------------------------------------------- */
 body {
   background: var(--background);
   color: var(--foreground);
 }
 
-/* Scroll-reveal utility. The hidden state only exists for users who don't
-   prefer reduced motion, so content is fully visible by default otherwise. */
+/* ---------------------------------------------------------------------------
+   3. Scroll-reveal utility (used by src/components/reveal.tsx)
+   ---------------------------------------------------------------------------
+   The <Reveal> component adds the class "reveal" to an element, then adds
+   "is-visible" once that element scrolls into the viewport (tracked in
+   JavaScript with an IntersectionObserver — see reveal.tsx for that half).
+   This CSS defines what "hidden" and "visible" actually look like.
+
+   The whole block is wrapped in `@media (prefers-reduced-motion: no-preference)`
+   — a media query that only matches for users who have NOT turned on
+   "reduce motion" in their operating system's accessibility settings. That
+   means:
+     - Motion-sensitive users never see the opacity/transform hidden state at
+       all — the element is just always fully visible (no rule overrides the
+       browser default of opacity: 1), which is the accessible fallback.
+     - Everyone else gets the fade-and-rise entrance animation. */
 @media (prefers-reduced-motion: no-preference) {
   .reveal {
-    opacity: 0;
-    transform: translateY(1.5rem);
+    opacity: 0; /* start invisible */
+    transform: translateY(1.5rem); /* start shifted down 24px */
     transition:
       opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
       transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+    /* `cubic-bezier(0.16, 1, 0.3, 1)` is a custom easing curve (an
+       "ease-out" style curve: fast start, gentle settle) rather than one of
+       CSS's built-in keywords like `ease` or `ease-in-out`. */
   }
 
+  /* Once JavaScript adds "is-visible" alongside "reveal", these properties
+     change, and because both states have a `transition`, the browser
+     animates smoothly between them instead of jumping instantly. */
   .reveal.is-visible {
     opacity: 1;
     transform: translateY(0);
   }
 }
 
-/* Horizontal logo marquee. */
+/* ---------------------------------------------------------------------------
+   4. Horizontal logo marquee (used by src/components/sections/client-marquee.tsx)
+   ---------------------------------------------------------------------------
+   The marquee renders the row of client logos TWICE, back to back, inside a
+   flex container wider than the screen. Animating that container from
+   translateX(0) to translateX(-50%) slides it left by exactly half its own
+   width — i.e. exactly one full copy of the logo row — so the moment the
+   animation loops back to 0%, the second (identical) copy is sitting exactly
+   where the first one started. That's what makes the loop look seamless
+   instead of jumping. */
 @keyframes marquee {
   from {
     transform: translateX(0);
@@ -77,14 +157,26 @@ body {
 }
 
 .marquee-track {
+  /* `linear` (constant speed, no easing) is important here — an eased loop
+     would visibly speed up/slow down every cycle, which looks wrong for a
+     continuous scroll. `infinite` repeats forever. 32s is how long one full
+     loop takes. */
   animation: marquee 32s linear infinite;
 }
 
+/* Pause the scrolling while the user is hovering over it (mouse) or has
+   tabbed into it with the keyboard (focus-within) — both so people can
+   actually read a logo, and so keyboard users aren't fighting a moving
+   target. `.marquee-group` is the wrapper; `.marquee-track` is the strip of
+   logos inside it that actually animates. */
 .marquee-group:hover .marquee-track,
 .marquee-group:focus-within .marquee-track {
   animation-play-state: paused;
 }
 
+/* For users who prefer reduced motion, kill the animation entirely and fall
+   back to a manually-scrollable strip instead (overflow-x: auto lets you
+   swipe/scroll it sideways by hand). */
 @media (prefers-reduced-motion: reduce) {
   .marquee-track {
     animation: none;
@@ -94,37 +186,35 @@ body {
   }
 }
 
-/* What We Offer: pinned scroll-story vs. simple grid. Kept in sync with the
-   matchMedia condition in what-we-offer.tsx so the JS and CSS never disagree
-   about which version is showing. */
-.offer-pinned {
-  display: none;
-}
-.offer-grid {
-  display: grid;
-}
-
-@media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
-  .offer-pinned {
-    display: block;
-  }
-  .offer-grid {
-    display: none;
-  }
-}
-
-/* Dual-handle price slider: two transparent range inputs stacked on top of a
-   styled track div, each with pointer-events limited to their own thumb. */
+/* ---------------------------------------------------------------------------
+   5. Dual-handle price slider (used by src/components/products/price-filter.tsx)
+   ---------------------------------------------------------------------------
+   HTML only gives us a single-handle <input type="range">. To fake a
+   "min/max" range slider with two handles, this component renders TWO
+   range inputs stacked exactly on top of each other (via `position: absolute;
+   inset: 0`), both sharing the same visual track underneath. Each input's
+   own built-in track is made invisible (`background: transparent` on the
+   ::-webkit-slider-runnable-track / ::-moz-range-track pseudo-elements), and
+   the whole input has `pointer-events: none` so clicking the middle of the
+   slider doesn't accidentally grab the wrong input — EXCEPT the little
+   circular thumb itself, which gets `pointer-events: auto` again so it stays
+   draggable. The colored bar between the two handles is a separate plain
+   <div> drawn by React (see price-filter.tsx), not part of this CSS. */
 .price-range-input {
   position: absolute;
-  inset: 0;
+  inset: 0; /* shorthand for top/right/bottom/left: 0 — fills its parent */
   width: 100%;
   margin: 0;
   background: transparent;
-  appearance: none;
-  pointer-events: none;
+  appearance: none; /* removes the browser's default slider look */
+  pointer-events: none; /* let clicks "pass through" to whichever thumb is on top */
 }
 
+/* `::-webkit-slider-runnable-track` / `::-moz-range-track` are vendor-
+   specific "pseudo-elements" — every browser engine styles the groove that
+   the thumb slides along differently, so both have to be targeted
+   separately to work everywhere (WebKit/Blink for Chrome/Edge/Safari,
+   Gecko for Firefox). */
 .price-range-input::-webkit-slider-runnable-track {
   background: transparent;
 }
@@ -132,17 +222,19 @@ body {
   background: transparent;
 }
 
+/* The actual draggable circle. Also vendor-prefixed for the same reason. */
 .price-range-input::-webkit-slider-thumb {
   appearance: none;
-  pointer-events: auto;
+  pointer-events: auto; /* re-enable clicking/dragging just for the thumb */
   width: 18px;
   height: 18px;
-  border-radius: 9999px;
+  border-radius: 9999px; /* a very large radius = a perfect circle */
   background: var(--color-charcoal);
-  border: 3px solid var(--color-cream);
-  box-shadow: 0 0 0 1px var(--color-border);
+  border: 3px solid var(--color-cream); /* creates a light "ring" so it stands out against the dark track */
+  box-shadow: 0 0 0 1px var(--color-border); /* a thin outer outline, drawn as a shadow instead of a second border */
   cursor: pointer;
   margin-top: 0;
+  transition: background-color 0.2s ease-out; /* smooth color change when toggling the "pending" state below */
 }
 .price-range-input::-moz-range-thumb {
   pointer-events: auto;
@@ -153,4 +245,16 @@ body {
   border: 3px solid var(--color-cream);
   box-shadow: 0 0 0 1px var(--color-border);
   cursor: pointer;
+  transition: background-color 0.2s ease-out;
+}
+
+/* When the user has dragged the slider but not yet pressed "Apply Filter",
+   products-page-client.tsx adds the "price-range-input--pending" class to
+   each input, which swaps the thumb color to red as a visual cue that the
+   product grid below doesn't reflect this position yet. */
+.price-range-input--pending::-webkit-slider-thumb {
+  background: var(--color-red);
+}
+.price-range-input--pending::-moz-range-thumb {
+  background: var(--color-red);
 }

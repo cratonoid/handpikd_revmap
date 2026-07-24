@@ -1,18 +1,43 @@
-// Hand-rolled line-icon set (stroke-based, currentColor) so every icon in the
-// product shares the same weight and corner language. No icon-font/emoji use.
+// ---------------------------------------------------------------------------
+// Icon set
+// ---------------------------------------------------------------------------
+// Every icon used across the site is a small hand-written SVG component
+// defined in this one file, instead of pulling in an icon library (like
+// react-icons or lucide-react). Benefits of doing it this way:
+//   - Zero extra dependency / bundle size — just plain SVG markup.
+//   - Every icon automatically shares the exact same visual style (stroke
+//     width, rounded corners) because they all spread the same `base`
+//     object of shared SVG attributes.
+//   - `stroke="currentColor"` means each icon's color is controlled purely
+//     by CSS `color` (e.g. Tailwind's `text-charcoal`, `text-red`, etc.) —
+//     no need to pass a separate "color" prop.
 import type { SVGProps } from "react";
 
+// `SVGProps<SVGSVGElement>` is a TypeScript type (built into React's type
+// definitions) describing every valid prop an <svg> element can accept —
+// className, style, onClick, aria-*, and so on. Using it as the prop type
+// for every icon component below means callers can pass any normal SVG/HTML
+// attribute (most commonly just `className="h-4 w-4"` to size it).
 type IconProps = SVGProps<SVGSVGElement>;
 
+// Shared default attributes spread onto every icon's <svg> tag. Defining
+// them once here (rather than repeating them in all ~13 icon components)
+// is what guarantees every icon in the app looks visually consistent.
 const base = {
-  viewBox: "0 0 24 24",
-  fill: "none",
-  stroke: "currentColor",
+  viewBox: "0 0 24 24", // SVGs are drawn on a 24x24 unit grid; actual on-screen size is set via CSS (e.g. h-4 w-4)
+  fill: "none", // icons are outlines, not filled shapes
+  stroke: "currentColor", // use whatever the current CSS text color is
   strokeWidth: 1.75,
-  strokeLinecap: "round" as const,
-  strokeLinejoin: "round" as const,
-  "aria-hidden": true,
+  strokeLinecap: "round" as const, // rounds off the ends of open lines
+  strokeLinejoin: "round" as const, // rounds off the corners where lines meet
+  "aria-hidden": true, // hides purely decorative icons from screen readers (the visible text next to an icon usually already says what it means)
 };
+
+// Each function below follows the exact same pattern: accept whatever props
+// are passed in (typically just a `className` for sizing/color), spread the
+// shared `base` attributes first, then spread the caller's own `props`
+// AFTER — so a caller-provided prop (like a custom strokeWidth) can override
+// a default from `base` if needed, since later spreads win.
 
 export function ArrowRightIcon(props: IconProps) {
   return (
@@ -72,6 +97,7 @@ export function CheckIcon(props: IconProps) {
   );
 }
 
+// Used for the mobile nav "hamburger" open button (see header.tsx).
 export function MenuIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
@@ -80,6 +106,8 @@ export function MenuIcon(props: IconProps) {
   );
 }
 
+// Used for the mobile nav "close" button, and the mobile filter drawer's
+// close button (see header.tsx and products-page-client.tsx).
 export function XMarkIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
@@ -97,6 +125,8 @@ export function LinkedInIcon(props: IconProps) {
   );
 }
 
+// The filter/adjustments icon on the mobile "Filters" button
+// (products-page-client.tsx).
 export function SlidersIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
