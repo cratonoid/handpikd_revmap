@@ -7,10 +7,13 @@
 // and just pass a different `title`. If a real Blog page gets built later,
 // its page.tsx file would stop rendering <ComingSoon> and render real
 // content instead — this component would just become unused for that route.
+//
+// Styling lives in src/styles/shared.module.css.
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Button } from "@/components/button";
 import { Eyebrow } from "@/components/eyebrow";
+import styles from "@/styles/shared.module.css";
 
 export function ComingSoon({ title }: { title: string }) {
   return (
@@ -19,16 +22,14 @@ export function ComingSoon({ title }: { title: string }) {
           part of the root layout) — see src/app/page.tsx and
           src/app/products/page.tsx for the same pattern. */}
       <Header />
-      <main className="flex flex-1 flex-col items-center justify-center px-5 py-32 text-center">
+      <main className={styles.comingSoonMain}>
         <Eyebrow>Coming Soon</Eyebrow>
-        <h1 className="mt-4 font-display text-3xl font-semibold text-charcoal sm:text-4xl">
-          {title}
-        </h1>
-        <p className="mt-4 max-w-md text-ink">
+        <h1 className={styles.comingSoonHeading}>{title}</h1>
+        <p className={styles.comingSoonBlurb}>
           This page is on its way. In the meantime, head back home or reach
           out through our contact form.
         </p>
-        <div className="mt-8 flex gap-4">
+        <div className={styles.comingSoonActions}>
           <Button href="/" variant="primary">
             Back to Home
           </Button>

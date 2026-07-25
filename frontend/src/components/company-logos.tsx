@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Placeholder "client logo" marks
 // ---------------------------------------------------------------------------
-// Used by the scrolling client marquee (src/components/sections/client-
+// Used by the scrolling client marquee (src/components/home_page/client-
 // marquee.tsx) to represent the (fictional, placeholder) companies Handpikd
 // has "worked with". Since there are no real client logos yet, each company
 // gets a small abstract line-art icon instead — drawn the exact same way as
@@ -9,6 +9,7 @@
 // currentColor, no background. Swap these for real client logo files
 // whenever they're available.
 import type { SVGProps } from "react";
+import styles from "@/styles/shared.module.css";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
@@ -142,7 +143,7 @@ export function CompanyLogo({
     // reader user still learns which company each mark represents. The
     // <svg> itself stays `aria-hidden` (set in `base` above) so it isn't
     // announced a second time redundantly.
-    <span role="img" aria-label={name} className={`inline-flex text-charcoal/55 ${className}`}>
+    <span role="img" aria-label={name} className={`${styles.companyLogoMark} ${className}`}>
       <Mark className="h-full w-full" />
     </span>
   );

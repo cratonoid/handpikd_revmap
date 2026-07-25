@@ -38,8 +38,8 @@
   --color-white: #e6e4dc; /* "white" surfaces — warm off-white, not stark */
   --color-red: #9c2b2b; /* sparing accent only — small dots, badges, underlines */
 
-  --color-button-primary: #9c2b2b;
-  --color-button-primary-hover: #7f2222;
+  --color-button-primary: #0b0a08;
+  --color-button-primary-hover: #211d16;
   --color-button-secondary: #0b0a08;
   --color-button-secondary-hover: #211d16;
   --color-button-tertiary: #f1e9d2;
@@ -138,7 +138,7 @@ body {
 }
 
 /* ---------------------------------------------------------------------------
-   4. Horizontal logo marquee (used by src/components/sections/client-marquee.tsx)
+   4. Horizontal logo marquee (used by src/components/home_page/client-marquee.tsx)
    ---------------------------------------------------------------------------
    The marquee renders the row of client logos TWICE, back to back, inside a
    flex container wider than the screen. Animating that container from

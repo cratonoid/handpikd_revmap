@@ -1,9 +1,12 @@
 # Schema for the #invoice_details collection.
-from pydantic import BaseModel
+from beanie import Document
 
 
-class InvoiceDetails(BaseModel):
+class InvoiceDetails(Document):
     id: int
     invoice_no: int
     sales_id: int  # FK -> SalesOrders.id
     amount: float
+
+    class Settings:
+        name = "invoice_details"

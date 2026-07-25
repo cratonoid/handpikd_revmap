@@ -1,8 +1,8 @@
 # Schema for the #purchase_orders collection.
-from pydantic import BaseModel
+from beanie import Document
 
 
-class PurchaseOrders(BaseModel):
+class PurchaseOrders(Document):
     id: int
     purchase_order_no: int
     vendor_id: int  # FK -> VendorDetails.id
@@ -12,3 +12,6 @@ class PurchaseOrders(BaseModel):
     igst_amount: float | None = None
     total_amount_after_tax: float
     description: str
+
+    class Settings:
+        name = "purchase_orders"

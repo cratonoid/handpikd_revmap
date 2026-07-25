@@ -12,6 +12,10 @@
 // This is a plain Server Component — no "use client" needed, because it has
 // no state, no effects, and no browser-only APIs. It's just a reusable
 // snippet of JSX.
+//
+// Styling lives in src/styles/shared.module.css.
+import styles from "@/styles/shared.module.css";
+
 export function Eyebrow({
   children, // the label text, e.g. "Who We Are"
   className = "",
@@ -22,13 +26,11 @@ export function Eyebrow({
   as?: "span" | "p";
 }) {
   return (
-    <Tag
-      className={`inline-flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-charcoal uppercase ${className}`}
-    >
+    <Tag className={`${styles.eyebrowRoot} ${className}`}>
       {/* The little red dot. `aria-hidden="true"` hides it from screen
           readers since it's purely decorative — the actual label text
           (`children`) is what matters for accessibility. */}
-      <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-red" />
+      <span aria-hidden="true" className={styles.eyebrowDot} />
       {children}
     </Tag>
   );

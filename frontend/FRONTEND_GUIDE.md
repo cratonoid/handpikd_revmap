@@ -77,7 +77,7 @@ frontend/
       split-reveal.tsx            <SplitReveal> — word-by-word heading reveal
       counter.tsx                 <Counter> — animated "count up" number
 
-      sections/                  One file per homepage section, in page order
+      home_page/                 One file per homepage section, in page order
         hero.tsx
         who-we-are.tsx
         client-marquee.tsx
@@ -338,7 +338,7 @@ desktop and mobile nav in `header.tsx`, plus the footer's link column, read
 from this one array automatically.
 
 **Add a new homepage section**
-Create a new file in `src/components/sections/`, following the shape of an
+Create a new file in `src/components/home_page/`, following the shape of an
 existing one (e.g. `who-we-are.tsx`), then import and render it in
 `src/app/page.tsx`.
 

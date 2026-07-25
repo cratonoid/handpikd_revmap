@@ -12,5 +12,12 @@ class Settings(BaseSettings):
     mongodb_uri: str
     mongodb_db_name: str = "handpikd"
 
+    # When False, the get_current_user dependency bypasses all token checks.
+    # Meant for local development/testing only.
+    auth_enabled: bool = True
+    jwt_secret_key: str
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 60 * 24
+
 
 settings = Settings()

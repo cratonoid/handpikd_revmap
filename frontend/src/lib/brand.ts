@@ -25,13 +25,16 @@ export const colors = {
   charcoal: "#0B0A08", // near-black — headings, icons, and primary accents
   ink: "#38332C", // dark warm gray — regular paragraph/body text
   white: "#E6E4DC", // "white" surfaces (cards/chips) — a warm off-white, not stark #FFFFFF
-  red: "#9C2B2B", // sparing accent color — small dots, badges, underlines, the primary CTA button
+  red: "#9C2B2B", // sparing accent color — small dots, badges, underlines
 
-  // --- Three distinct button tiers, each with its own resting + hover color.
-  // See src/components/button.tsx for how these are applied per `variant`.
-  buttonPrimary: "#9C2B2B", // red — loudest, used for the main call-to-action button
-  buttonPrimaryHover: "#7F2222", // darker red shown on :hover
-  buttonSecondary: "#0B0A08", // black — used for secondary actions
+  // --- Button tiers. Primary and secondary are both black (same resting
+  // color, distinguished only by which action they represent); tertiary
+  // stays a lighter "ghost" style so there's still a visual difference
+  // between a loud action and a quiet one. See src/components/button.tsx
+  // for how these are applied per `variant`.
+  buttonPrimary: "#0B0A08", // black — main call-to-action button
+  buttonPrimaryHover: "#211D16", // lighter black shown on :hover
+  buttonSecondary: "#0B0A08", // black — secondary actions
   buttonSecondaryHover: "#211D16", // lighter black shown on :hover
   buttonTertiary: "#F1E9D2", // light beige — softest "ghost" button style
   buttonTertiaryHover: "#E6DAB8", // slightly deeper beige shown on :hover

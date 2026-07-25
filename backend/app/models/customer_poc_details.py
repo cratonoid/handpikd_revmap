@@ -1,9 +1,12 @@
 # Schema for the #customer_poc_details collection.
-from pydantic import BaseModel
+from beanie import Document
 
 
-class CustomerPocDetails(BaseModel):
+class CustomerPocDetails(Document):
     id: int
     customer_id: int  # FK -> CustomerDetails.id
     contact_name: str
     contact_phone: str
+
+    class Settings:
+        name = "customer_poc_details"

@@ -1,8 +1,8 @@
 # Schema for the #product_details collection.
-from pydantic import BaseModel
+from beanie import Document
 
 
-class ProductDetails(BaseModel):
+class ProductDetails(Document):
     id: int
     product_name: str
     hsn_code: str
@@ -15,3 +15,6 @@ class ProductDetails(BaseModel):
     moq: int
     description: str
     is_visible: bool
+
+    class Settings:
+        name = "product_details"

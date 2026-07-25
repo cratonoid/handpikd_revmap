@@ -3,14 +3,13 @@
 // ---------------------------------------------------------------------------
 // A plain Server Component: a heading, then a responsive grid of photo
 // cards. Each card's hover effects (image zoom, darkening overlay, "Learn
-// more" fade-in) are done with pure CSS (`group-hover:`), so no JavaScript
-// is needed here at all — see the note on Tailwind's "group" pattern in
-// button.tsx / header.tsx for how that works.
+// more" fade-in) are done with pure CSS (`.offerCard:hover .offerImage`
+// etc. in home-page.module.css), so no JavaScript is needed here at all.
 import Image from "next/image";
 import { Reveal } from "@/components/reveal";
-import { SplitReveal } from "@/components/split-reveal";
 import { Eyebrow } from "@/components/eyebrow";
 import { ArrowUpRightIcon } from "@/components/icons";
+import styles from "@/styles/home-page.module.css";
 
 // One entry per card in the grid below. Keeping this as a plain data array
 // (rather than 6 hand-written <article> blocks) means the `.map()` further
@@ -69,26 +68,22 @@ const offers = [
 
 export function WhatWeOffer() {
   return (
-    <section
-      id="what-we-offer"
-      className="flex flex-col justify-center bg-cream-deep py-20 sm:py-24 lg:min-h-screen"
-    >
-      <div className="mx-auto max-w-6xl px-5 sm:px-8">
-        <Reveal className="mx-auto max-w-2xl text-center">
+    <section id="what-we-offer" className={styles.offerSection}>
+      <div className={styles.offerInner}>
+        <Reveal className={styles.offerHeader}>
           <Eyebrow>What We Offer</Eyebrow>
-          <SplitReveal
-            as="h2"
-            text="Gifting programs for every part of the business"
-            className="mt-3 font-display text-3xl font-semibold text-charcoal sm:text-4xl"
-          />
-          <p className="mt-4 text-ink">
+          <h2 className={styles.offerHeading}>
+            Gifting programs for every part of the business
+          </h2>
+          <p className={styles.offerParagraph}>
             Pick one program or run them all — every offer below is managed by
             the same Handpikd account team.
           </p>
         </Reveal>
 
-        {/* 1 column on mobile, 2 on small tablets, 3 on large screens. */}
-        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {/* 1 column on mobile, 2 on small tablets, 3 on large screens (see
+            the `@media` rules on `.offerGrid`). */}
+        <div className={styles.offerGrid}>
           {offers.map((offer, i) => (
             // `(i % 3) * 60` staggers each card's entrance delay based on
             // its position within a row of 3 (0ms, 60ms, 120ms, then
@@ -96,10 +91,12 @@ export function WhatWeOffer() {
             // "remainder" (modulo) operator, so `i % 3` cycles through
             // 0, 1, 2, 0, 1, 2... as `i` increases.
             <Reveal key={offer.title} delayMs={(i % 3) * 60}>
-              {/* `group` (paired with `group-hover:` on children below) is
-                  what lets hovering ANYWHERE on the card trigger effects on
-                  its image, overlay, and "Learn more" text together. */}
-              <article className="group relative flex h-80 flex-col justify-end overflow-hidden rounded-2xl">
+              {/* `.offerCard` (paired with `.offerCard:hover ...` rules in
+                  the CSS) is what lets hovering ANYWHERE on the card
+                  trigger effects on its image, overlay, and "Learn more"
+                  text together — the CSS Module equivalent of Tailwind's
+                  "group" pattern used elsewhere in the app. */}
+              <article className={styles.offerCard}>
                 <Image
                   src={offer.image}
                   alt={offer.alt}
@@ -108,32 +105,25 @@ export function WhatWeOffer() {
                   // Slightly zooms the photo in on hover — a subtle "Ken
                   // Burns"-style effect that adds life to an otherwise
                   // static image.
-                  className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                  className={styles.offerImage}
                 />
                 {/* A dark gradient overlay (transparent at the very top,
                     solid charcoal at the bottom) so the white title/blurb
                     text stays readable against any photo. It darkens
-                    further on hover (`group-hover:from-charcoal/95
-                    group-hover:via-charcoal/60`) to help the "Learn more"
-                    text (which is invisible until hovered) stand out. */}
-                <div
-                  aria-hidden="true"
-                  className="absolute inset-0 bg-gradient-to-t from-charcoal/90 via-charcoal/45 to-charcoal/10 transition-colors duration-300 group-hover:from-charcoal/95 group-hover:via-charcoal/60"
-                />
-                <div className="relative flex flex-col gap-2 p-6">
-                  <span className="font-display text-xs font-semibold tracking-widest text-cream/50">
-                    {offer.index}
-                  </span>
-                  <h3 className="font-display text-xl font-semibold text-white">{offer.title}</h3>
-                  <p className="text-sm leading-relaxed text-white/85">{offer.blurb}</p>
-                  {/* Invisible (`opacity-0`) until the card is hovered
-                      (`group-hover:opacity-100`), at which point it fades
-                      in. `motion-reduce:opacity-100` keeps it always
-                      visible for users with reduced-motion preferences,
-                      since the hover fade itself is a small motion effect
-                      some people prefer to skip — for them it's simply
-                      always shown instead. */}
-                  <span className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-cream opacity-0 transition-opacity duration-300 group-hover:opacity-100 motion-reduce:opacity-100">
+                    further on hover to help the "Learn more" text (which
+                    is invisible until hovered) stand out. */}
+                <div aria-hidden="true" className={styles.offerOverlay} />
+                <div className={styles.offerContent}>
+                  <span className={styles.offerIndex}>{offer.index}</span>
+                  <h3 className={styles.offerTitle}>{offer.title}</h3>
+                  <p className={styles.offerBlurb}>{offer.blurb}</p>
+                  {/* Invisible until the card is hovered, at which point it
+                      fades in. The CSS also keeps it always visible for
+                      users with reduced-motion preferences (see the
+                      `@media (prefers-reduced-motion: reduce)` rule on
+                      `.offerLearnMore`), since the hover fade itself is a
+                      small motion effect some people prefer to skip. */}
+                  <span className={styles.offerLearnMore}>
                     Learn more
                     <ArrowUpRightIcon className="h-4 w-4" />
                   </span>

@@ -1,8 +1,8 @@
 # Schema for the #sales_orders collection.
-from pydantic import BaseModel
+from beanie import Document
 
 
-class SalesOrders(BaseModel):
+class SalesOrders(Document):
     id: int
     order_no: int
     order_status_id: int  # FK -> OrderStatusMaster.id
@@ -14,3 +14,6 @@ class SalesOrders(BaseModel):
     total_amount_after_tax: float
     description: str
     related_purchase_order_ids: list[int]  # FK -> PurchaseOrders.id (array)
+
+    class Settings:
+        name = "sales_orders"

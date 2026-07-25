@@ -1,7 +1,10 @@
 # Schema for the #order_no_counter_master collection.
-from pydantic import BaseModel
+from beanie import Document
 
 
-class OrderNoCounterMaster(BaseModel):
+class OrderNoCounterMaster(Document):
     id: int
     next_order_no: int
+
+    class Settings:
+        name = "order_no_counter_master"
