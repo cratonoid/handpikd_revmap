@@ -1,0 +1,527 @@
+/* =============================================================================
+   Shared/cross-page styles (Header, Footer, Logo, Button, Eyebrow, ComingSoon,
+   CompanyLogo, and the repeated <main class="flex-1"> pattern)
+   =============================================================================
+   Same CSS Module approach as home-page.module.css / products.module.css —
+   see the big comment at the top of home-page.module.css for how this works
+   and why colors reference `var(--color-*)` / `color-mix(...)` instead of
+   hex values. These components are used on every page, so their styles live
+   in one shared file rather than being duplicated per-page.
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------
+   Generic page shell (app/page.tsx, app/products/page.tsx)
+   ----------------------------------------------------------------------- */
+
+.pageMain {
+  flex: 1 1 0%;
+}
+
+/* -----------------------------------------------------------------------
+   Header (header.tsx)
+   ----------------------------------------------------------------------- */
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
+  background-color: color-mix(in srgb, var(--color-cream) 90%, transparent);
+  backdrop-filter: blur(4px);
+  transition: transform 0.3s ease-out;
+}
+
+.headerHidden {
+  transform: translateY(-100%);
+}
+
+.headerVisible {
+  transform: translateY(0);
+}
+
+.headerInner {
+  margin-inline: auto;
+  display: flex;
+  max-width: 72rem;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: 1.25rem;
+  transition: padding 0.3s ease-out;
+}
+
+@media (min-width: 640px) {
+  .headerInner {
+    padding-inline: 2rem;
+  }
+}
+
+.headerInnerCompact {
+  padding-block: 0.375rem;
+}
+
+.headerInnerNormal {
+  padding-block: 0.625rem;
+}
+
+.logoLink {
+  border-radius: 0.125rem;
+}
+
+.logoLink:focus-visible {
+  outline: 2px solid var(--color-button-primary);
+  outline-offset: 4px;
+}
+
+.desktopNav {
+  display: none;
+  align-items: center;
+  gap: 2rem;
+}
+
+@media (min-width: 1024px) {
+  .desktopNav {
+    display: flex;
+  }
+}
+
+.navLink {
+  position: relative;
+  padding-block: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-ink);
+  transition: color 0.2s;
+}
+
+.navLink:hover {
+  color: var(--color-charcoal);
+}
+
+.navLinkUnderline {
+  position: absolute;
+  inset-inline: 0;
+  bottom: -0.0625rem;
+  height: 1px;
+  background-color: var(--color-red);
+  transform: scaleX(0);
+  transition: transform 0.2s ease-out;
+}
+
+.navLink:hover .navLinkUnderline {
+  transform: scaleX(1);
+}
+
+.desktopCta {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .desktopCta {
+    display: block;
+  }
+}
+
+.mobileMenuButton {
+  display: flex;
+  height: 2.75rem;
+  width: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: var(--color-charcoal);
+}
+
+@media (min-width: 1024px) {
+  .mobileMenuButton {
+    display: none;
+  }
+}
+
+.mobileNav {
+  border-top: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  padding: 0.5rem 1.25rem 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .mobileNav {
+    display: none;
+  }
+}
+
+.mobileNavList {
+  display: flex;
+  flex-direction: column;
+}
+
+.mobileNavItem {
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+}
+
+.mobileNavItem:last-child {
+  border-bottom: none;
+}
+
+.mobileNavLink {
+  display: flex;
+  min-height: 3rem;
+  align-items: center;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-ink);
+}
+
+.mobileCta {
+  margin-top: 1.25rem;
+  width: 100%;
+}
+
+/* -----------------------------------------------------------------------
+   Footer (footer.tsx)
+   ----------------------------------------------------------------------- */
+
+.footer {
+  background-color: var(--color-charcoal);
+  color: color-mix(in srgb, var(--color-cream) 70%, transparent);
+}
+
+.footerInner {
+  margin-inline: auto;
+  max-width: 72rem;
+  padding: 4rem 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .footerInner {
+    padding-inline: 2rem;
+  }
+}
+
+.footerGrid {
+  display: grid;
+  gap: 3rem;
+}
+
+@media (min-width: 768px) {
+  .footerGrid {
+    grid-template-columns: 1.4fr 1fr 1fr;
+  }
+}
+
+.footerBrandCol {
+  max-width: 24rem;
+}
+
+.footerLogoLink {
+  display: inline-block;
+}
+
+.footerBlurb {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--color-cream) 60%, transparent);
+}
+
+.footerSocialRow {
+  margin-top: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.footerSocialLink {
+  display: flex;
+  height: 2.75rem;
+  width: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--color-cream) 20%, transparent);
+  color: var(--color-cream);
+  transition: all 0.2s;
+}
+
+.footerSocialLink:hover {
+  border-color: var(--color-red);
+  background-color: var(--color-red);
+  color: var(--color-cream);
+}
+
+.footerColHeading {
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--color-cream);
+  text-transform: uppercase;
+}
+
+.footerLinkList {
+  margin-top: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.footerLink {
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--color-cream) 60%, transparent);
+}
+
+.footerLink:hover {
+  color: var(--color-cream);
+}
+
+.footerContactList {
+  margin-top: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--color-cream) 60%, transparent);
+}
+
+.footerContactItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+}
+
+.footerContactIcon {
+  margin-top: 0.125rem;
+  flex-shrink: 0;
+  color: var(--color-cream);
+}
+
+.footerContactLink:hover {
+  color: var(--color-cream);
+}
+
+.footerBottom {
+  margin-top: 3.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-cream) 10%, transparent);
+  padding-top: 2rem;
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--color-cream) 50%, transparent);
+}
+
+@media (min-width: 640px) {
+  .footerBottom {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.footerLegalLinks {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.footerLegalLink:hover {
+  color: var(--color-cream);
+}
+
+/* -----------------------------------------------------------------------
+   Logo (logo.tsx)
+   ----------------------------------------------------------------------- */
+
+.logoMarkWrap {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  will-change: transform;
+  transition: all 0.3s ease-out;
+}
+
+.logoMarkWrapCompact {
+  height: 1.75rem;
+  width: 1.75rem;
+}
+
+.logoMarkWrapNormal {
+  height: 2.25rem;
+  width: 2.25rem;
+}
+
+.logoImage {
+  object-fit: contain;
+}
+
+.logoImageInvert {
+  filter: invert(1);
+}
+
+.logoRoot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.logoDark {
+  color: var(--color-charcoal);
+}
+
+.logoLight {
+  color: var(--color-cream);
+}
+
+.logoWordmark {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  transition: all 0.3s ease-out;
+}
+
+.logoWordmarkCompact {
+  font-size: 0.875rem;
+}
+
+.logoWordmarkNormal {
+  font-size: 1.125rem;
+}
+
+/* -----------------------------------------------------------------------
+   Button (button.tsx)
+   ----------------------------------------------------------------------- */
+
+.buttonShared {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  transition: background-color 0.2s;
+}
+
+.buttonShared:focus-visible {
+  outline: 2px solid;
+  outline-offset: 2px;
+}
+
+.buttonShared:active {
+  transform: scale(0.98);
+}
+
+.buttonPrimary {
+  background-color: var(--color-button-primary);
+  color: var(--color-cream);
+}
+.buttonPrimary:hover {
+  background-color: var(--color-button-primary-hover);
+}
+.buttonPrimary:focus-visible {
+  outline-color: var(--color-button-primary);
+}
+
+.buttonSecondary {
+  background-color: var(--color-button-secondary);
+  color: var(--color-cream);
+}
+.buttonSecondary:hover {
+  background-color: var(--color-button-secondary-hover);
+}
+.buttonSecondary:focus-visible {
+  outline-color: var(--color-button-secondary);
+}
+
+.buttonTertiary {
+  background-color: var(--color-button-tertiary);
+  color: var(--color-charcoal);
+}
+.buttonTertiary:hover {
+  background-color: var(--color-button-tertiary-hover);
+}
+.buttonTertiary:focus-visible {
+  outline-color: var(--color-button-tertiary);
+}
+
+.buttonArrowIcon {
+  transition: transform 0.2s;
+}
+
+.buttonShared:hover .buttonArrowIcon {
+  transform: translateX(0.125rem);
+}
+
+/* -----------------------------------------------------------------------
+   Eyebrow (eyebrow.tsx)
+   ----------------------------------------------------------------------- */
+
+.eyebrowRoot {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  color: var(--color-charcoal);
+  text-transform: uppercase;
+}
+
+.eyebrowDot {
+  height: 0.375rem;
+  width: 0.375rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background-color: var(--color-red);
+}
+
+/* -----------------------------------------------------------------------
+   Coming Soon (coming-soon.tsx)
+   ----------------------------------------------------------------------- */
+
+.comingSoonMain {
+  display: flex;
+  flex: 1 1 0%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8rem 1.25rem;
+  text-align: center;
+}
+
+.comingSoonHeading {
+  margin-top: 1rem;
+  font-family: var(--font-display);
+  font-size: 1.875rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+@media (min-width: 640px) {
+  .comingSoonHeading {
+    font-size: 2.25rem;
+  }
+}
+
+.comingSoonBlurb {
+  margin-top: 1rem;
+  max-width: 28rem;
+  color: var(--color-ink);
+}
+
+.comingSoonActions {
+  margin-top: 2rem;
+  display: flex;
+  gap: 1rem;
+}
+
+/* -----------------------------------------------------------------------
+   CompanyLogo (company-logos.tsx)
+   ----------------------------------------------------------------------- */
+
+.companyLogoMark {
+  display: inline-flex;
+  color: color-mix(in srgb, var(--color-charcoal) 55%, transparent);
+}

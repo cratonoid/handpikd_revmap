@@ -137,11 +137,18 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-cream font-sans text-ink">
         {/* <noscript> only renders for users with JavaScript disabled.
-            Several animations on this site (see src/components/reveal.tsx)
-            start elements at opacity: 0 and rely on JavaScript to reveal
-            them — if JS never runs, that content would stay invisible
-            forever. This inline <style> forces every ".reveal" element back
-            to fully visible for those users, as a safety net. */}
+            The scroll-in animation on `.reveal` elements (see
+            src/components/reveal.tsx) starts them at opacity: 0 and relies
+            on JavaScript to reveal them — if JS never runs, that content
+            would stay invisible forever. This inline <style> forces every
+            ".reveal" element back to fully visible for those users, as a
+            safety net. (Headings used to have a similar word-by-word
+            reveal via a SplitReveal component, but that relied ENTIRELY on
+            JavaScript with no equivalent CSS-only fallback for this
+            noscript case — not just when JS was disabled, but any time the
+            reveal script failed to run for any other reason — which could
+            leave a heading permanently blank. It's been removed in favor
+            of always-visible static headings.) */}
         <noscript>
           <style>{`.reveal{opacity:1 !important;transform:none !important}`}</style>
         </noscript>

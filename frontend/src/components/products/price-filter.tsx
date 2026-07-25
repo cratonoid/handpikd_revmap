@@ -11,8 +11,12 @@
 // and calls `onChange` when the user drags a handle or types a number. See
 // src/app/globals.css's big comment block on `.price-range-input` for how
 // the two-overlapping-<input>s trick that fakes a dual-handle slider works
-// at the CSS level — this file is the React/logic half of that same
-// feature.
+// at the CSS level (that part stays in globals.css since it targets the
+// native <input type="range"> pseudo-elements, which CSS Modules handle the
+// same way — the rest of this component's styling lives in
+// src/styles/products.module.css).
+import styles from "@/styles/products.module.css";
+
 export function PriceFilter({
   min,
   max,
@@ -54,19 +58,19 @@ export function PriceFilter({
 
   return (
     <div>
-      {/* The visual track. `relative` positioning here is what lets the
+      {/* The visual track. `position: relative` here is what lets the
           absolutely-positioned "fill" bar and the two range <input>s
           (which use `position: absolute; inset: 0` from globals.css) place
           themselves relative to THIS div instead of the whole page. */}
-      <div className="relative h-1.5 rounded-full bg-border">
+      <div className={styles.priceTrack}>
         {/* The colored bar BETWEEN the two handles. `left`/`right` are set
             as percentages (via the `pct` helper above) so it always spans
             exactly from the low handle's position to the high handle's
             position, no matter where they're dragged. Turns red instead of
             charcoal while a change is "pending" (not yet applied) — see
-            the Apply Filter flow explained in products-page-client.tsx. */}
+            the Apply Filters flow explained in products-page-client.tsx. */}
         <div
-          className={`absolute h-1.5 rounded-full transition-colors duration-200 ${pending ? "bg-red" : "bg-charcoal"}`}
+          className={`${styles.priceFill} ${pending ? styles.priceFillPending : ""}`}
           style={{ left: `${pct(lo)}%`, right: `${100 - pct(hi)}%` }}
         />
         {/* Two overlapping native range sliders — one for the low handle,
@@ -98,16 +102,15 @@ export function PriceFilter({
 
       {/* The two editable number boxes below the slider, showing the same
           values in a typed-number form as an alternative to dragging. */}
-      <div className="mt-5 flex items-center gap-3">
-        <label className="flex-1">
-          {/* `sr-only` ("screen-reader only") visually hides this label
-              while keeping it available to assistive tech — the ₹ symbol
-              + number box makes the purpose visually obvious to sighted
-              users, but a screen reader still needs an explicit label. */}
+      <div className={styles.priceInputRow}>
+        <label className={styles.priceInputLabel}>
+          {/* `sr-only` ("screen-reader only", a plain global Tailwind
+              utility) visually hides this label while keeping it available
+              to assistive tech — the ₹ symbol + number box makes the
+              purpose visually obvious to sighted users, but a screen
+              reader still needs an explicit label. */}
           <span className="sr-only">Minimum price</span>
-          <span
-            className={`flex items-center rounded-lg border bg-white px-3 py-2 text-sm text-charcoal transition-colors duration-200 ${pending ? "border-red" : "border-border"}`}
-          >
+          <span className={`${styles.priceInputBox} ${pending ? styles.priceInputBoxPending : ""}`}>
             ₹
             <input
               type="number"
@@ -115,18 +118,16 @@ export function PriceFilter({
               max={hi}
               value={lo}
               onChange={(e) => setLo(Number(e.target.value))}
-              className="ml-1 w-full bg-transparent outline-none"
+              className={styles.priceInputField}
             />
           </span>
         </label>
-        <span className="text-ink/50" aria-hidden="true">
+        <span className={styles.priceInputSeparator} aria-hidden="true">
           &ndash; {/* an en-dash ("–") between the two boxes, written as an HTML entity */}
         </span>
-        <label className="flex-1">
+        <label className={styles.priceInputLabel}>
           <span className="sr-only">Maximum price</span>
-          <span
-            className={`flex items-center rounded-lg border bg-white px-3 py-2 text-sm text-charcoal transition-colors duration-200 ${pending ? "border-red" : "border-border"}`}
-          >
+          <span className={`${styles.priceInputBox} ${pending ? styles.priceInputBoxPending : ""}`}>
             ₹
             <input
               type="number"
@@ -134,7 +135,7 @@ export function PriceFilter({
               max={max}
               value={hi}
               onChange={(e) => setHi(Number(e.target.value))}
-              className="ml-1 w-full bg-transparent outline-none"
+              className={styles.priceInputField}
             />
           </span>
         </label>

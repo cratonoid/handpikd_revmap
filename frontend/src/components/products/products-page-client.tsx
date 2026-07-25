@@ -4,23 +4,31 @@
 // <ProductsPageClient> — the whole interactive half of the /products page
 // ---------------------------------------------------------------------------
 // This is the biggest/most stateful component in the app. It owns ALL the
-// filter state (which categories are checked, what price range is applied)
-// and is the single place that actually computes the filtered product list
-// shown in the grid. The sidebar filter controls (<CategoryFilter>,
-// <PriceFilter>) are "dumb" — they don't know about filtering logic at all,
-// they just display whatever state THIS component hands them and report
-// user interactions back up via callback props.
+// filter state (which categories are checked, what price range is applied,
+// which page of results is showing) and is the single place that actually
+// computes the filtered + paginated product list shown in the grid. The
+// sidebar filter controls (<CategoryFilter>, <PriceFilter>) are "dumb" —
+// they don't know about filtering logic at all, they just display whatever
+// state THIS component hands them and report user interactions back up via
+// callback props.
 //
-// Rendered by src/app/products/page.tsx (a Server Component) underneath its
-// static banner — this file is the Client Component that takes over from
-// there.
+// Both category AND price filters use a "pending vs. applied" split: ticking
+// a checkbox or dragging the slider only updates the PENDING selection —
+// the grid keeps showing the last APPLIED results until the single "Apply
+// Filters" button (at the bottom of the sidebar) is pressed, which commits
+// both at once.
+//
+// Rendered by src/app/products/page.tsx (a Server Component) — this file is
+// the Client Component that takes over from there. Styling lives in
+// src/styles/products.module.css.
 import { useMemo, useState } from "react";
 import { categoryTree, products, priceBounds, collectIds, formatInr, type CategoryNode } from "@/lib/products-data";
 import { CategoryFilter } from "@/components/products/category-filter";
 import { PriceFilter } from "@/components/products/price-filter";
 import { ProductCard } from "@/components/products/product-card";
 import { Eyebrow } from "@/components/eyebrow";
-import { SlidersIcon, XMarkIcon } from "@/components/icons";
+import { SlidersIcon, XMarkIcon, ArrowRightIcon } from "@/components/icons";
+import styles from "@/styles/products.module.css";
 
 // `priceBounds` (from products-data.ts) is the exact min/max price across
 // every real product, which could be a fractional-looking number depending
@@ -31,22 +39,31 @@ import { SlidersIcon, XMarkIcon } from "@/components/icons";
 const PRICE_MIN = Math.floor(priceBounds.min);
 const PRICE_MAX = Math.ceil(priceBounds.max);
 
+// How many products to show per page of the grid.
+const PAGE_SIZE = 12;
+
+// Compares two Sets for equality (same size, same members) — plain `===`
+// never works for Sets/objects since it only checks "is this the exact same
+// object in memory," not "do these contain the same values." Used below to
+// tell whether the pending category selection actually differs from what's
+// applied.
+function setsAreEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const id of a) {
+    if (!b.has(id)) return false;
+  }
+  return true;
+}
+
 export function ProductsPageClient() {
-  // The Set of every currently-checked category id (e.g. {"drinkware",
-  // "mugs"}). A Set (rather than an array) is used because checking/adding/
-  // removing a single id is fast and the order of ids never matters here.
-  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  // Category checkboxes: PENDING is what's currently ticked on screen;
+  // APPLIED is what's actually filtering the grid. Same split as price,
+  // below.
+  const [pendingCheckedIds, setPendingCheckedIds] = useState<Set<string>>(new Set());
+  const [appliedCheckedIds, setAppliedCheckedIds] = useState<Set<string>>(new Set());
 
   // The slider/inputs move `pendingPriceRange` immediately; the grid only
-  // re-filters once "Apply Filter" commits it to `appliedPriceRange`.
-  //
-  // Splitting this into TWO separate pieces of state (pending vs. applied)
-  // is what powers the whole "drag the slider, see a red 'pending' warning,
-  // click Apply to actually filter" flow: `pendingPriceRange` is what the
-  // slider visually shows and updates instantly as you drag; the product
-  // grid below is filtered using `appliedPriceRange` instead, which only
-  // changes when the Apply button is clicked. Comparing the two tells us
-  // whether there's an unapplied change (see `priceIsPending` below).
+  // re-filters once "Apply Filters" commits it to `appliedPriceRange`.
   const [pendingPriceRange, setPendingPriceRange] = useState<[number, number]>([PRICE_MIN, PRICE_MAX]);
   const [appliedPriceRange, setAppliedPriceRange] = useState<[number, number]>([PRICE_MIN, PRICE_MAX]);
 
@@ -54,246 +71,239 @@ export function ProductsPageClient() {
   // relevant on small screens — see the JSX further down).
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
-  // True whenever the pending slider position differs from what's actually
-  // applied to the grid — drives the red slider/border/warning-text styling
-  // in the Price section below.
+  // Which page of (already filtered) results is currently showing.
+  const [page, setPage] = useState(1);
+
+  // True whenever the pending price differs from what's applied.
   const priceIsPending =
     pendingPriceRange[0] !== appliedPriceRange[0] || pendingPriceRange[1] !== appliedPriceRange[1];
+  // True whenever the pending category selection differs from what's applied.
+  const categoryIsPending = !setsAreEqual(pendingCheckedIds, appliedCheckedIds);
+  // True if EITHER filter has an unapplied change — drives the "Apply
+  // Filters" button's active/disabled look and the warning message below.
+  const anyFilterIsPending = priceIsPending || categoryIsPending;
 
-  // Passed down to <CategoryFilter> as its `onToggle` prop. Runs every time
-  // a category row is clicked.
+  // Passed down to <CategoryFilter> as its `onToggle` prop — updates the
+  // PENDING selection only; the grid doesn't change until Apply is pressed.
   function handleToggle(node: CategoryNode) {
-    // `setCheckedIds(prev => ...)` is the "updater function" form of
-    // useState's setter — instead of computing the new value directly, you
-    // give React a function that receives the PREVIOUS state and returns
-    // the new state. This is the safer way to update state that depends on
-    // its own previous value.
-    setCheckedIds((prev) => {
-      // Copy the previous Set into a new one (`new Set(prev)`) rather than
-      // mutating `prev` directly — React needs a genuinely NEW object to
-      // notice the state changed and re-render.
+    setPendingCheckedIds((prev) => {
       const next = new Set(prev);
       if (next.has(node.id)) {
         // Already checked -> uncheck it, AND every category nested inside
         // it (collectIds returns the node's own id plus all descendant
-        // ids — see products-data.ts). This is what makes un-checking
-        // "Drinkware" also un-check "Mugs", "Bottles", etc. underneath it.
+        // ids — see products-data.ts).
         collectIds(node).forEach((id) => next.delete(id));
       } else {
-        // Not checked yet -> check just this one node (its children start
-        // unchecked and only become checkable once this one is expanded —
-        // see category-filter.tsx).
         next.add(node.id);
       }
       return next;
     });
   }
 
-  // Called when the "Apply Filter" button is clicked — commits the pending
-  // slider position to the value that actually filters the grid.
-  function applyPriceFilter() {
+  // Commits BOTH pending category and pending price selections to the
+  // "applied" state that actually filters the grid, resets back to page 1
+  // (so you don't land on a now-empty page 3 after narrowing the results),
+  // and — on mobile, where this button also lives inside the slide-in
+  // drawer — closes the drawer. Calling setMobileFiltersOpen(false) here is
+  // harmless on desktop, since the drawer is never open there anyway.
+  function applyFilters() {
+    setAppliedCheckedIds(new Set(pendingCheckedIds));
     setAppliedPriceRange(pendingPriceRange);
+    setPage(1);
+    setMobileFiltersOpen(false);
   }
 
   // Resets every filter (categories AND price, both pending and applied)
-  // back to their defaults. Used by "Clear all", the empty-results "Clear
-  // filters" button, and indirectly wherever those appear.
+  // back to their defaults, and back to page 1.
   function clearFilters() {
-    setCheckedIds(new Set());
+    setPendingCheckedIds(new Set());
+    setAppliedCheckedIds(new Set());
     setPendingPriceRange([PRICE_MIN, PRICE_MAX]);
     setAppliedPriceRange([PRICE_MIN, PRICE_MAX]);
+    setPage(1);
   }
 
-  // The actual filtered list of products to display. `useMemo(fn, deps)`
-  // re-runs `fn` and recalculates the result ONLY when something in `deps`
-  // has changed since the last render — otherwise it reuses the previous
-  // result instead of recomputing it from scratch on every single render
-  // (e.g. even ones triggered by unrelated state like `mobileFiltersOpen`).
-  // With 59 products this recalculation is cheap either way, but `useMemo`
-  // is a common/idiomatic pattern for exactly this "derive one value from
-  // some state" situation.
+  // The full filtered list (before pagination), based on the APPLIED
+  // selections only. `useMemo` recomputes this only when the applied
+  // filters actually change, not on every render.
   const filtered = useMemo(() => {
     return products.filter((p) => {
       const inPrice = p.price >= appliedPriceRange[0] && p.price <= appliedPriceRange[1];
-      // A product matches the category filter if NO categories are
-      // checked at all (`checkedIds.size === 0`, meaning "show
-      // everything"), OR if any id in its own category path is in the
-      // checked set. `.some()` returns true as soon as it finds ONE
-      // matching id, without needing to check the rest.
-      const inCategory = checkedIds.size === 0 || p.categoryPath.some((id) => checkedIds.has(id));
+      const inCategory =
+        appliedCheckedIds.size === 0 || p.categoryPath.some((id) => appliedCheckedIds.has(id));
       return inPrice && inCategory;
     });
-  }, [checkedIds, appliedPriceRange]); // recompute only when these two actually change
+  }, [appliedCheckedIds, appliedPriceRange]);
 
-  // A single number representing "how many filters are currently active,"
-  // shown as a small badge on the mobile Filters button. Category filters
-  // count individually; the price range counts as at most 1 (it's either
-  // at its default or it isn't — there's no "how many" for a single range).
+  // How many pages the current filtered list needs, and which slice of it
+  // belongs on the current page. `Math.max(1, ...)` guarantees there's
+  // always at least 1 page, even when `filtered` is empty (avoiding a
+  // "page 0 of 0" edge case). `.slice(start, end)` pulls out just the 12
+  // products for the current page — e.g. page 1 = products[0..12), page 2 =
+  // products[12..24), etc.
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, page]);
+
+  // A single number representing "how many filters are currently applied,"
+  // shown as a small badge on the mobile Filters button.
   const activeCount =
-    checkedIds.size + (appliedPriceRange[0] !== PRICE_MIN || appliedPriceRange[1] !== PRICE_MAX ? 1 : 0);
+    appliedCheckedIds.size + (appliedPriceRange[0] !== PRICE_MIN || appliedPriceRange[1] !== PRICE_MAX ? 1 : 0);
 
   // The contents of the filter sidebar, built ONCE here as a JSX variable
-  // and then reused in TWO different places below: the desktop sticky
-  // <aside>, and the mobile slide-in drawer. Defining it once avoids
-  // duplicating this markup (and risking the two copies drifting out of
-  // sync) across both layouts.
+  // and reused in TWO places below: the desktop sticky <aside>, and the
+  // mobile slide-in drawer.
   const filterPanel = (
     <>
       {activeCount > 0 && (
-        <div className="flex items-center justify-end pb-3">
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="text-xs font-semibold text-charcoal hover:underline"
-          >
+        <div className={styles.clearAllRow}>
+          <button type="button" onClick={clearFilters} className={styles.clearAllButton}>
             Clear all
           </button>
         </div>
       )}
 
-      <div className="border-b border-border py-5">
+      <div className={styles.priceSection}>
         <Eyebrow as="p">Price</Eyebrow>
-        <p className="mt-1 text-xs text-ink/60">The highest price is {formatInr(PRICE_MAX)}</p>
-        <div className="mt-5">
+        <p className={styles.priceHint}>The highest price is {formatInr(PRICE_MAX)}</p>
+        <div className={styles.priceControlWrap}>
           <PriceFilter
             min={PRICE_MIN}
             max={PRICE_MAX}
-            value={pendingPriceRange} // the slider always reflects the PENDING value, not the applied one
+            value={pendingPriceRange}
             onChange={setPendingPriceRange}
             pending={priceIsPending}
           />
         </div>
-
-        {priceIsPending && (
-          <p role="status" className="mt-3 text-xs font-medium text-red">
-            Results below use the previous price range.
-          </p>
-        )}
-
-        <button
-          type="button"
-          onClick={applyPriceFilter}
-          disabled={!priceIsPending} // nothing to apply if the slider hasn't actually moved
-          className={`mt-4 flex min-h-10 w-full items-center justify-center rounded-full px-4 text-sm font-semibold transition-colors duration-200 ${
-            priceIsPending
-              ? "bg-button-primary text-cream hover:bg-button-primary-hover" // active/clickable look
-              : "bg-button-tertiary text-charcoal/40" // muted/disabled look
-          }`}
-        >
-          Apply Filter
-        </button>
       </div>
 
-      <div className="py-6">
+      <div className={styles.categorySection}>
         <Eyebrow as="p">Category</Eyebrow>
-        <div className="mt-4">
-          <CategoryFilter nodes={categoryTree} checkedIds={checkedIds} onToggle={handleToggle} />
+        <div className={styles.categoryTreeWrap}>
+          <CategoryFilter nodes={categoryTree} checkedIds={pendingCheckedIds} onToggle={handleToggle} />
         </div>
       </div>
+
+      {anyFilterIsPending && (
+        <p role="status" className={styles.pendingNotice}>
+          Results below don&apos;t reflect these changes yet.
+        </p>
+      )}
+
+      {/* The single "Apply Filters" button — now covers BOTH category and
+          price, and lives at the BOTTOM of the whole panel (moved down
+          from its old spot directly under the price slider). `position:
+          sticky; bottom: 0` (`.applyButton`) keeps it reachable at the
+          bottom of the sidebar's own scroll area even when the category
+          tree is long enough to scroll. */}
+      <button
+        type="button"
+        onClick={applyFilters}
+        disabled={!anyFilterIsPending}
+        className={`${styles.applyButton} ${anyFilterIsPending ? styles.applyButtonActive : styles.applyButtonInactive}`}
+      >
+        Apply Filters
+        {anyFilterIsPending && <ArrowRightIcon className="h-4 w-4" />}
+      </button>
     </>
   );
 
   return (
-    // Two-column grid on large screens (fixed 240px sidebar + flexible
-    // product area); stacks to one column below `lg`, where the sidebar is
-    // replaced entirely by the mobile drawer further down.
-    <div className="mx-auto max-w-[1680px] px-4 py-5 sm:px-6 sm:py-6 lg:grid lg:grid-cols-[240px_1fr] lg:items-start lg:gap-6">
+    <div className={styles.pageLayout}>
       {/* Mobile filter trigger + result count — only visible below `lg`. */}
-      <div className="mb-5 flex items-center justify-between lg:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileFiltersOpen(true)}
-          className="flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-4 py-2 text-sm font-semibold text-charcoal"
-        >
+      <div className={styles.mobileTopBar}>
+        <button type="button" onClick={() => setMobileFiltersOpen(true)} className={styles.mobileFilterTrigger}>
           <SlidersIcon className="h-4 w-4" />
           Filters
-          {activeCount > 0 && (
-            <span className="rounded-full bg-charcoal px-1.5 py-0.5 text-xs text-cream">{activeCount}</span>
-          )}
+          {activeCount > 0 && <span className={styles.filterBadgeCount}>{activeCount}</span>}
         </button>
-        <p className="text-sm text-ink/60">{filtered.length} products</p>
+        <p className={styles.resultCount}>{filtered.length} products</p>
       </div>
 
       {/* Desktop sidebar — sticky + independently scrollable from the
-          grid. `lg:sticky lg:top-24` pins it near the top of the viewport
-          once you scroll past it; `lg:max-h-[calc(100vh-6rem)]
-          lg:overflow-y-auto` caps its own height and gives IT a separate
-          scrollbar, so a long category list scrolls independently from the
-          (potentially much longer) product grid next to it. Hidden
-          entirely below `lg` — the mobile drawer below takes over there
-          instead. */}
-      <aside className="hidden lg:sticky lg:top-24 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-5">
-        {filterPanel}
-      </aside>
+          grid, with a beige gradient fading out on the right to visually
+          separate it from the product grid. Hidden entirely below `lg` —
+          the mobile drawer below takes over there instead. */}
+      <aside className={styles.sidebar}>{filterPanel}</aside>
 
       {/* Mobile filter drawer — only rendered at all while
-          `mobileFiltersOpen` is true. */}
+          `mobileFiltersOpen` is true. The shared `filterPanel` above
+          already includes its own "Apply Filters" button, which applies
+          AND closes this drawer — so there's no separate bottom button
+          here anymore. */}
       {mobileFiltersOpen && (
-        <div className="fixed inset-0 z-[60] lg:hidden">
-          {/* The semi-transparent backdrop covering the rest of the page.
-              Clicking it closes the drawer, same as the explicit close
-              button. */}
-          <div
-            className="absolute inset-0 bg-charcoal/50"
-            onClick={() => setMobileFiltersOpen(false)}
-            aria-hidden="true"
-          />
-          {/* The actual sliding panel, pinned to the left edge of the
-              screen. */}
-          <div className="absolute inset-y-0 left-0 flex w-[85vw] max-w-sm flex-col bg-cream px-5 pt-5 pb-8 shadow-xl">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="font-display text-lg font-semibold text-charcoal">Filters</p>
+        <div className={styles.drawerRoot}>
+          <div className={styles.drawerBackdrop} onClick={() => setMobileFiltersOpen(false)} aria-hidden="true" />
+          <div className={styles.drawerPanel}>
+            <div className={styles.drawerHeader}>
+              <p className={styles.drawerTitle}>Filters</p>
               <button
                 type="button"
                 onClick={() => setMobileFiltersOpen(false)}
                 aria-label="Close filters"
-                className="flex h-11 w-11 items-center justify-center rounded-full text-charcoal"
+                className={styles.drawerCloseButton}
               >
                 <XMarkIcon className="h-5 w-5" />
               </button>
             </div>
-            {/* Reuses the exact same `filterPanel` JSX defined above — the
-                desktop sidebar and this mobile drawer are never both
-                visible at once (one is CSS-hidden depending on screen
-                width), so sharing one copy of the controls is safe and
-                avoids duplicating all that markup. */}
-            <div className="flex-1 overflow-y-auto">{filterPanel}</div>
-            <button
-              type="button"
-              onClick={() => setMobileFiltersOpen(false)}
-              className="mt-4 min-h-11 rounded-full bg-button-primary px-6 py-3 text-sm font-semibold text-cream"
-            >
-              Show {filtered.length} products
-            </button>
+            <div className={styles.drawerScroll}>{filterPanel}</div>
           </div>
         </div>
       )}
 
       <div>
-        <div className="mb-6 hidden items-center justify-between lg:flex">
-          <p className="text-sm text-ink/60">{filtered.length} products</p>
+        <div className={styles.desktopResultRow}>
+          <p className={styles.resultCount}>{filtered.length} products</p>
         </div>
 
         {/* If filtering leaves NO products at all, show a helpful empty
-            state instead of a blank grid. Otherwise render the actual
-            grid. 2 columns on mobile, up to 4 on extra-large screens. */}
+            state instead of a blank grid. Otherwise render the current
+            PAGE of the filtered list (12 at a time). */}
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-24 text-center">
-            <p className="font-display text-lg font-semibold text-charcoal">No products match your filters</p>
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="mt-3 text-sm font-semibold text-charcoal hover:underline"
-            >
+          <div className={styles.emptyState}>
+            <p className={styles.emptyStateHeading}>No products match your filters</p>
+            <button type="button" onClick={clearFilters} className={styles.emptyStateButton}>
               Clear filters
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 xl:grid-cols-4">
-            {filtered.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
+          <>
+            <div className={styles.productGrid}>
+              {paginated.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+
+            {/* Pagination controls — only shown when there's more than one
+                page. `disabled` on Previous/Next prevents going past
+                either end instead of hiding the buttons, which keeps the
+                control's position stable as you page through. */}
+            {totalPages > 1 && (
+              <nav aria-label="Product pages" className={styles.paginationNav}>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                  className={styles.paginationButton}
+                >
+                  Previous
+                </button>
+                <p className={styles.paginationText}>
+                  Page {page} of {totalPages}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page === totalPages}
+                  className={styles.paginationButton}
+                >
+                  Next
+                </button>
+              </nav>
+            )}
+          </>
         )}
       </div>
     </div>

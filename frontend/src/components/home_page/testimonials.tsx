@@ -9,9 +9,9 @@ import { useRef } from "react";
 import { useGSAP } from "@gsap/react";
 import { gsap } from "@/lib/gsap";
 import { Reveal } from "@/components/reveal";
-import { SplitReveal } from "@/components/split-reveal";
 import { Eyebrow } from "@/components/eyebrow";
 import { QuoteIcon } from "@/components/icons";
+import styles from "@/styles/home-page.module.css";
 
 // Placeholder quotes — swap for real client feedback when available.
 const testimonials = [
@@ -38,11 +38,12 @@ const testimonials = [
   },
 ];
 
-// One background/text color combo per avatar, cycled through below with
+// One CSS class per avatar tone, cycled through below with
 // `avatarTones[i % avatarTones.length]` so the 3 testimonial cards each get
 // a visually distinct (but still on-brand) initials badge instead of all
-// looking identical.
-const avatarTones = ["bg-charcoal text-cream", "bg-red/10 text-red", "bg-cream-deep text-charcoal"];
+// looking identical. See `.avatarToneDark` / `.avatarToneRed` /
+// `.avatarToneBeige` in home-page.module.css.
+const avatarTones = [styles.avatarToneDark, styles.avatarToneRed, styles.avatarToneBeige];
 
 export function Testimonials() {
   const gridRef = useRef<HTMLDivElement>(null);
@@ -88,46 +89,36 @@ export function Testimonials() {
   );
 
   return (
-    <section className="flex flex-col bg-cream lg:min-h-screen lg:justify-center">
-      <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8 sm:py-24">
-        <Reveal className="mx-auto max-w-2xl text-center">
+    <section className={styles.testimonialsSection}>
+      <div className={styles.testimonialsInner}>
+        <Reveal className={styles.testimonialsHeader}>
           <Eyebrow>Client Feedback</Eyebrow>
-          <SplitReveal
-            as="h2"
-            text="What our partners say"
-            className="mt-3 font-display text-3xl font-semibold text-charcoal sm:text-4xl"
-          />
+          <h2 className={styles.testimonialsHeading}>What our partners say</h2>
         </Reveal>
 
         {/* `ref={gridRef}` is what the GSAP effect above uses to find the
             cards inside it via querySelectorAll. 1 column on mobile, 3
             columns from the `md` breakpoint up. */}
-        <div ref={gridRef} className="mt-14 grid gap-6 md:grid-cols-3">
+        <div ref={gridRef} className={styles.testimonialsGrid}>
           {testimonials.map((t, i) => (
-            <figure
-              key={t.name}
-              data-testimonial-card // matched by the querySelectorAll call above
-              className="flex h-full flex-col rounded-2xl border border-border bg-white p-7 shadow-lg shadow-charcoal/10 will-change-transform"
-            >
-              <QuoteIcon className="h-7 w-7 text-charcoal/70" />
-              <blockquote className="mt-4 flex-1 text-[0.95rem] leading-relaxed text-ink">
-                &ldquo;{t.quote}&rdquo;
-              </blockquote>
-              <figcaption className="mt-6 flex items-center gap-3">
+            <figure key={t.name} data-testimonial-card className={styles.testimonialsCard}>
+              <QuoteIcon className={styles.testimonialsQuoteIcon} />
+              <blockquote className={styles.testimonialsQuote}>&ldquo;{t.quote}&rdquo;</blockquote>
+              <figcaption className={styles.testimonialsFooter}>
                 {/* The colored circle showing the person's initials, e.g.
                     "PS" for Priya Shah — used instead of a real headshot
                     photo (there isn't one for a placeholder testimonial).
                     `i % avatarTones.length` cycles through the 3 color
                     options above regardless of how many testimonials exist. */}
                 <span
-                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full font-display text-sm font-semibold ${avatarTones[i % avatarTones.length]}`}
+                  className={`${styles.testimonialsAvatar} ${avatarTones[i % avatarTones.length]}`}
                   aria-hidden="true" // decorative — the person's real name is printed as text right next to it
                 >
                   {t.initials}
                 </span>
                 <div>
-                  <p className="text-sm font-semibold text-charcoal">{t.name}</p>
-                  <p className="text-xs text-ink/70">{t.title}</p>
+                  <p className={styles.testimonialsName}>{t.name}</p>
+                  <p className={styles.testimonialsTitle}>{t.title}</p>
                 </div>
               </figcaption>
             </figure>

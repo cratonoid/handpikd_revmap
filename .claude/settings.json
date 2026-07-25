@@ -7,7 +7,8 @@
       "Bash(curl -s http://localhost:3000/ -o /tmp/home2.html)",
       "Bash(npm install *)",
       "Bash(npm audit *)",
-      "Bash(curl -s http://localhost:3000/ -o /tmp/home3.html -w \"%{http_code}\\\\n\")"
+      "Bash(curl -s http://localhost:3000/ -o /tmp/home3.html -w \"%{http_code}\\\\n\")",
+      "Bash(npx tsc *)"
     ]
   }
 }

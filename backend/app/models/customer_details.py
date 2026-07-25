@@ -1,8 +1,8 @@
 # Schema for the #customer_details collection.
-from pydantic import BaseModel
+from beanie import Document
 
 
-class CustomerDetails(BaseModel):
+class CustomerDetails(Document):
     id: int
     user_id: int  # FK -> User.id
     registered_name: str
@@ -10,3 +10,6 @@ class CustomerDetails(BaseModel):
     address: str
     company_gst: str
     points: int
+
+    class Settings:
+        name = "customer_details"

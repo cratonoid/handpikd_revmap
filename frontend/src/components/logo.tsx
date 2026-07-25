@@ -13,10 +13,13 @@
 // DARK section (like the black Footer), plain black would be invisible, so
 // this component uses a CSS `invert` filter to flip it to white instead of
 // needing a second "light mode" image file.
+//
+// Styling lives in src/styles/shared.module.css.
 import Image from "next/image";
 import { useRef } from "react";
 import { useGSAP } from "@gsap/react";
 import { gsap } from "@/lib/gsap";
+import styles from "@/styles/shared.module.css";
 
 // The animated icon half of the logo, split into its own small component so
 // <Logo> itself (below) can stay focused on the wordmark/layout, and so this
@@ -35,7 +38,7 @@ function AnimatedLogoMark({ className = "", invert = false }: { className?: stri
     // has "reduce motion" turned on (checked directly with
     // `window.matchMedia` here, since this is a plain function rather than
     // a GSAP-managed effect where `gsap.matchMedia()` would normally be
-    // used — see split-reveal.tsx / counter.tsx for that pattern).
+    // used — see counter.tsx for that pattern).
     if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     // Stops any animation already running on this element. Needed because
@@ -71,27 +74,23 @@ function AnimatedLogoMark({ className = "", invert = false }: { className?: stri
   );
 
   return (
-    <span
-      ref={ref}
-      onMouseEnter={play} // replay the wiggle every time the mouse enters the logo
-      className={`relative inline-block shrink-0 will-change-transform ${className}`}
-    >
+    <span ref={ref} onMouseEnter={play} className={`${styles.logoMarkWrap} ${className}`}>
       {/* next/image's `fill` mode makes the image stretch to completely
-          fill its nearest positioned parent (hence `relative` on the <span>
-          above) instead of needing explicit width/height numbers — handy
-          here since this logo renders at different sizes (see the
+          fill its nearest positioned parent (hence `position: relative` on
+          `.logoMarkWrap`) instead of needing explicit width/height numbers
+          — handy here since this logo renders at different sizes (see the
           `compact` prop below). `sizes="40px"` tells Next.js roughly how
           large this image will actually be displayed, so it can generate
           an appropriately small optimized file instead of shipping a huge
-          one. The `invert` Tailwind class applies `filter: invert(1)`,
-          which flips black pixels to white (and vice versa) — that's the
-          "no second image file needed" trick mentioned above. */}
+          one. `.logoImageInvert` applies `filter: invert(1)`, which flips
+          black pixels to white (and vice versa) — that's the "no second
+          image file needed" trick mentioned above. */}
       <Image
         src="/logo-mark.png"
         alt="" // decorative — the visible "Handpikd" text right next to it already conveys the brand name to screen readers
         fill
         sizes="40px"
-        className={`object-contain ${invert ? "invert" : ""}`}
+        className={`${styles.logoImage} ${invert ? styles.logoImageInvert : ""}`}
       />
     </span>
   );
@@ -106,21 +105,17 @@ export function Logo({
   compact?: boolean;
   className?: string;
 }) {
-  const tone = variant === "dark" ? "text-charcoal" : "text-cream";
+  const tone = variant === "dark" ? styles.logoDark : styles.logoLight;
   return (
-    <span className={`inline-flex items-center gap-2.5 ${tone} ${className}`}>
+    <span className={`${styles.logoRoot} ${tone} ${className}`}>
       <AnimatedLogoMark
         invert={variant === "light"}
-        // `transition-all duration-300` animates the size change smoothly
-        // whenever `compact` flips (e.g. as the header shrinks on scroll),
-        // instead of jumping instantly between the two sizes.
-        className={`transition-all duration-300 ease-out ${compact ? "h-7 w-7" : "h-9 w-9"}`}
+        // transitions the size change smoothly whenever `compact` flips
+        // (e.g. as the header shrinks on scroll), instead of jumping
+        // instantly between the two sizes.
+        className={compact ? styles.logoMarkWrapCompact : styles.logoMarkWrapNormal}
       />
-      <span
-        className={`font-display font-semibold tracking-[0.18em] uppercase transition-all duration-300 ease-out ${
-          compact ? "text-sm" : "text-lg"
-        }`}
-      >
+      <span className={`${styles.logoWordmark} ${compact ? styles.logoWordmarkCompact : styles.logoWordmarkNormal}`}>
         Handpikd
       </span>
     </span>

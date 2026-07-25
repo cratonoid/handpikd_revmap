@@ -2,9 +2,9 @@
 // Shared GSAP setup
 // ---------------------------------------------------------------------------
 // GSAP (GreenSock Animation Platform) is the animation library this project
-// uses for anything scroll-driven (word-by-word text reveals, the price
-// slider's number counting up, etc.) — see split-reveal.tsx, counter.tsx,
-// who-we-are.tsx, and testimonials.tsx for components that use it.
+// uses for anything scroll-driven (the price slider's number counting up,
+// image/card reveal effects, etc.) — see counter.tsx, who-we-are.tsx, and
+// testimonials.tsx for components that use it.
 //
 // Every file that needs GSAP imports it from HERE (`@/lib/gsap`) instead of
 // importing directly from the "gsap" package. That's so the ScrollTrigger

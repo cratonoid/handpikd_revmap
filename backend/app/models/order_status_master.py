@@ -1,7 +1,10 @@
 # Schema for the #order_status_master collection.
-from pydantic import BaseModel
+from beanie import Document
 
 
-class OrderStatusMaster(BaseModel):
+class OrderStatusMaster(Document):
     id: int
     status_name: str
+
+    class Settings:
+        name = "order_status_master"

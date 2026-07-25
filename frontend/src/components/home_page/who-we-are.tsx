@@ -7,14 +7,17 @@
 // the other. Needs "use client" specifically because of the GSAP
 // scroll-driven image reveal effect below (everything else in this file
 // could be server-rendered on its own).
+//
+// Styling lives in src/styles/home-page.module.css — see the big comment at
+// the top of hero.tsx for how CSS Modules work in this project.
 import { useRef } from "react";
 import Image from "next/image";
 import { useGSAP } from "@gsap/react";
 import { gsap } from "@/lib/gsap";
 import { Reveal } from "@/components/reveal";
-import { SplitReveal } from "@/components/split-reveal";
 import { Eyebrow } from "@/components/eyebrow";
 import { Counter } from "@/components/counter";
+import styles from "@/styles/home-page.module.css";
 
 // Plain data array driving the three stat callouts below. Keeping this as
 // data (rather than three copy-pasted blocks of JSX) means adding/removing/
@@ -76,29 +79,27 @@ export function WhoWeAre() {
     // `id="who-we-are"` is the anchor target for the "About" nav link
     // ("/#who-we-are" in brand.ts) — clicking that link scrolls the page to
     // this exact element.
-    <section id="who-we-are" className="flex flex-col bg-cream-deep lg:min-h-screen lg:justify-center">
-      <div className="mx-auto grid max-w-6xl items-center gap-14 px-5 py-20 sm:px-8 sm:py-24 lg:grid-cols-2">
-        {/* `order-2 lg:order-1` + the image's `order-1 lg:order-2` below
-            swap which column comes first depending on screen size: on
-            mobile (stacked), the photo appears ABOVE the text; on large
-            screens (side-by-side), the text sits on the LEFT and the
-            photo on the RIGHT. This is a common trick for reordering
-            content responsively without duplicating any markup. */}
-        <Reveal className="order-2 lg:order-1">
+    <section id="who-we-are" className={styles.whoSection}>
+      <div className={styles.whoInner}>
+        {/* `.whoTextCol` / `.whoImageCol` swap their `order` depending on
+            screen size: on mobile (stacked), the photo appears ABOVE the
+            text; on large screens (side-by-side), the text sits on the
+            LEFT and the photo on the RIGHT. This is a common trick for
+            reordering content responsively without duplicating any
+            markup. */}
+        <Reveal className={styles.whoTextCol}>
           <Eyebrow>Who We Are</Eyebrow>
-          <SplitReveal
-            as="h2"
-            text="Corporate gifting, run like a program — not a scramble."
-            className="mt-4 font-display text-3xl font-semibold text-charcoal sm:text-4xl"
-          />
-          <p className="mt-5 leading-relaxed text-ink">
+          <h2 className={styles.whoHeading}>
+            Corporate gifting, run like a program — not a scramble.
+          </h2>
+          <p className={styles.whoParagraph}>
             Handpikd is a B2B corporate gifting company. We partner with
             procurement, HR, and marketing teams to design gifting programs
             that reflect their brand — then handle sourcing, personalization,
             warehousing, and nationwide fulfillment so nothing lands back on
             your plate.
           </p>
-          <p className="mt-4 leading-relaxed text-ink">
+          <p className={styles.whoParagraph}>
             Whether it&apos;s a single high-touch executive gift or a
             multi-thousand-recipient rollout, every order is handpikd,
             packed, and tracked by a dedicated account team.
@@ -107,34 +108,34 @@ export function WhoWeAre() {
           {/* `<dl>` (description list) is the semantically correct HTML
               element for a set of terms + their values — here, each stat's
               LABEL is the term (`<dt>`) and its NUMBER is the value
-              (`<dd>`). `sr-only` visually hides the label (screen-reader
-              only) since the number + smaller caption below already show
-              it visually; the `<dt>` exists mainly for a11y/semantic
-              correctness. */}
-          <dl className="mt-9 grid grid-cols-3 gap-6 border-t border-charcoal/15 pt-8">
+              (`<dd>`). `sr-only` (a plain global utility class defined in
+              globals.css) visually hides the label since the number +
+              smaller caption below already show it visually; the `<dt>`
+              exists mainly for a11y/semantic correctness. */}
+          <dl className={styles.whoStatsList}>
             {stats.map((stat) => (
               <div key={stat.label}>
                 <dt className="sr-only">{stat.label}</dt>
-                <dd className="font-display text-2xl font-semibold text-red sm:text-3xl">
+                <dd className={styles.whoStatValue}>
                   <Counter value={stat.value} suffix={stat.suffix} />
                 </dd>
-                <p className="mt-1 text-xs leading-snug text-ink/70">{stat.label}</p>
+                <p className={styles.whoStatLabel}>{stat.label}</p>
               </div>
             ))}
           </dl>
         </Reveal>
 
-        <div className="order-1 lg:order-2">
+        <div className={styles.whoImageCol}>
           <div
             ref={imageWrapRef} // this is the element the GSAP effect above animates
-            className="relative aspect-[5/4] w-full overflow-hidden rounded-[1.5rem] shadow-lg shadow-charcoal/10 will-change-transform"
+            className={styles.whoImageBox}
           >
             <Image
               src="https://images.unsplash.com/photo-1573167243872-43c6433b9d40?auto=format&fit=crop&w=1000&q=80"
               alt="Handpikd account team reviewing a corporate gifting program"
               fill
               sizes="(min-width: 1024px) 520px, 90vw"
-              className="object-cover"
+              className={styles.whoImageFill}
             />
           </div>
         </div>

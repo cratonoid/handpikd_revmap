@@ -8,8 +8,11 @@
 // "gift list" feature built yet — this exists purely to show what the
 // interaction WOULD feel like, with all the visual feedback already in
 // place for whenever real add-to-list logic gets wired up.
+//
+// Styling lives in src/styles/products.module.css.
 import { useEffect, useState } from "react";
 import { CheckIcon } from "@/components/icons";
+import styles from "@/styles/products.module.css";
 
 export function AddToGiftListButton({ productName }: { productName: string }) {
   // Whether this specific button is currently showing its "Added ✓" state.
@@ -36,11 +39,7 @@ export function AddToGiftListButton({ productName }: { productName: string }) {
       // screen reader user hears "Add [product] to gift list" normally,
       // and "[product] added to gift list" right after clicking.
       aria-label={added ? `${productName} added to gift list` : `Add ${productName} to gift list`}
-      className={`mt-3 flex min-h-10 w-full items-center justify-center gap-1.5 rounded-full border text-xs font-semibold tracking-wide transition-colors duration-200 active:scale-[0.98] ${
-        added
-          ? "border-charcoal bg-charcoal text-cream" // filled solid once added
-          : "border-charcoal/70 text-charcoal hover:bg-charcoal hover:text-cream" // outlined until then, fills in on hover
-      }`}
+      className={`${styles.giftButton} ${added ? styles.giftButtonAdded : ""}`}
     >
       {/* Ternary picks which content to render based on `added` — the
           checkmark icon + "Added" text, or just the plain call-to-action

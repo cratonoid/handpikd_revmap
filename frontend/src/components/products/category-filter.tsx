@@ -19,8 +19,11 @@
 // and report events upward) is often called "lifting state up," and it's
 // what lets the parent also use `checkedIds` to actually filter the product
 // grid, not just to control this sidebar.
+//
+// Styling lives in src/styles/products.module.css.
 import type { CategoryNode } from "@/lib/products-data";
 import { CheckIcon } from "@/components/icons";
+import styles from "@/styles/products.module.css";
 
 export function CategoryFilter({
   nodes, // the array of categories to render at THIS level (top-level categories on the first call, then a node's own `children` on recursive calls)
@@ -35,8 +38,9 @@ export function CategoryFilter({
 }) {
   return (
     // Top-level categories get no extra indent styling; nested levels get a
-    // left border + padding so the tree structure is visually obvious.
-    <ul className={depth === 0 ? "flex flex-col gap-0.5" : "mt-0.5 mb-1 flex flex-col gap-0.5 border-l border-border pl-4"}>
+    // left border + padding (`.categoryListNested`) so the tree structure
+    // is visually obvious.
+    <ul className={depth === 0 ? styles.categoryList : styles.categoryListNested}>
       {nodes.map((node) => {
         // `Set.has()` checks whether this specific node's id is currently
         // in the checked set — a Set is used (rather than an array) because
@@ -50,7 +54,7 @@ export function CategoryFilter({
               type="button"
               onClick={() => onToggle(node)}
               aria-pressed={checked} // tells assistive tech this button acts like a toggle, and its current on/off state
-              className="flex min-h-10 w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-cream-deep"
+              className={styles.categoryRow}
             >
               {/* The custom checkbox square — a plain <span> styled to
                   look like one, rather than a real <input type="checkbox">.
@@ -60,13 +64,13 @@ export function CategoryFilter({
                   correct `aria-pressed` toggle semantics. */}
               <span
                 aria-hidden="true"
-                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-                  checked ? "border-charcoal bg-charcoal" : "border-border bg-white"
-                }`}
+                className={`${styles.categoryCheckbox} ${checked ? styles.categoryCheckboxChecked : ""}`}
               >
-                {checked && <CheckIcon className="h-3 w-3 text-cream" strokeWidth={2.5} />}
+                {checked && <CheckIcon className={`h-3 w-3 ${styles.categoryCheckmark}`} strokeWidth={2.5} />}
               </span>
-              <span className={checked ? "font-semibold text-charcoal" : "text-ink"}>{node.label}</span>
+              <span className={`${styles.categoryLabel} ${checked ? styles.categoryLabelChecked : ""}`}>
+                {node.label}
+              </span>
             </button>
 
             {/* THE RECURSIVE PART: if this node is checked AND has

@@ -13,12 +13,13 @@
 // glance, and makes it trivial to reorder, add, or remove a whole section.
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
-import { Hero } from "@/components/sections/hero";
-import { WhoWeAre } from "@/components/sections/who-we-are";
-import { ClientMarquee } from "@/components/sections/client-marquee";
-import { WhatWeOffer } from "@/components/sections/what-we-offer";
-import { Testimonials } from "@/components/sections/testimonials";
-import { Connect } from "@/components/sections/connect";
+import { Hero } from "@/components/home_page/hero";
+import { WhoWeAre } from "@/components/home_page/who-we-are";
+import { ClientMarquee } from "@/components/home_page/client-marquee";
+import { WhatWeOffer } from "@/components/home_page/what-we-offer";
+import { Testimonials } from "@/components/home_page/testimonials";
+import { Connect } from "@/components/home_page/connect";
+import styles from "@/styles/shared.module.css";
 
 export default function Home() {
   return (
@@ -28,12 +29,13 @@ export default function Home() {
     // wrapping <div> to the actual HTML output.
     <>
       <Header />
-      {/* `flex-1` makes <main> stretch to fill any leftover vertical space
-          between the header and footer, so the footer stays pinned to the
-          bottom of the viewport on short pages instead of floating
-          partway up the screen. (This only works because <body> in
-          layout.tsx is `display: flex; flex-direction: column`.) */}
-      <main className="flex-1">
+      {/* `.pageMain` (flex: 1 1 0%) makes <main> stretch to fill any
+          leftover vertical space between the header and footer, so the
+          footer stays pinned to the bottom of the viewport on short pages
+          instead of floating partway up the screen. (This only works
+          because <body> in layout.tsx is `display: flex; flex-direction:
+          column`.) */}
+      <main className={styles.pageMain}>
         <Hero />
         <WhoWeAre />
         <ClientMarquee />

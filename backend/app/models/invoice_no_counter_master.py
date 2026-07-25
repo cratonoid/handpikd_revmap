@@ -1,7 +1,10 @@
 # Schema for the #invoice_no_counter_master collection.
-from pydantic import BaseModel
+from beanie import Document
 
 
-class InvoiceNoCounterMaster(BaseModel):
+class InvoiceNoCounterMaster(Document):
     id: int
     next_invoice_no: int
+
+    class Settings:
+        name = "invoice_no_counter_master"

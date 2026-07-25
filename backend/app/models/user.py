@@ -1,7 +1,7 @@
 # Schema for the #user collection.
 from enum import Enum
 
-from pydantic import BaseModel
+from beanie import Document
 
 
 class UserRole(str, Enum):
@@ -9,8 +9,11 @@ class UserRole(str, Enum):
     customer = "customer"
 
 
-class User(BaseModel):
+class User(Document):
     id: int
     mail: str
     password: str
     role: UserRole
+
+    class Settings:
+        name = "user"
