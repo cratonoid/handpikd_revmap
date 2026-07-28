@@ -147,3 +147,104 @@ export function InstagramIcon(props: IconProps) {
     </svg>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Dashboard icons (components/dashboard-shell.tsx)
+// ---------------------------------------------------------------------------
+// Used for the /admin and /customer sidebar nav links, plus the logout
+// action in the dashboard top bar.
+
+export function ChartBarIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 20V13M10 20V6M16 20v-9" />
+      <path d="M3 20h18" />
+    </svg>
+  );
+}
+
+export function UsersIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="9" cy="8.5" r="3" />
+      <path d="M3.5 20c.7-3.3 2.9-5.2 5.5-5.2s4.8 1.9 5.5 5.2" />
+      <circle cx="17" cy="9.2" r="2.3" />
+      <path d="M15.7 12.4c1.8.4 3.1 1.9 3.7 4.4" />
+    </svg>
+  );
+}
+
+export function ShoppingCartIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.2a2 2 0 0 0 2-1.6L20 8H6" />
+      <circle cx="9.5" cy="20" r="1.4" />
+      <circle cx="17" cy="20" r="1.4" />
+    </svg>
+  );
+}
+
+export function ArchiveBoxIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3.5" y="4" width="17" height="4.5" rx="1" />
+      <path d="M4.5 8.5V19a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1V8.5" />
+      <path d="M10 12.5h4" />
+    </svg>
+  );
+}
+
+export function CubeIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 3.5 20 8v8l-8 4.5L4 16V8l8-4.5Z" />
+      <path d="M4 8l8 4.5M12 12.5 20 8M12 12.5V21" />
+    </svg>
+  );
+}
+
+export function TagIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M11.5 4H5a1 1 0 0 0-1 1v6.5a1 1 0 0 0 .3.7l9 9a1 1 0 0 0 1.4 0l6.5-6.5a1 1 0 0 0 0-1.4l-9-9a1 1 0 0 0-.7-.3Z" />
+      <circle cx="8.5" cy="8.5" r="1.4" />
+    </svg>
+  );
+}
+
+export function DocumentTextIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M7 3.5h7l4 4V19.5a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" />
+      <path d="M14 3.5V8h4" />
+      <path d="M8.5 12.5h7M8.5 15.5h7M8.5 18h4" />
+    </svg>
+  );
+}
+
+export function ReceiptIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M6 3.5h12v17l-2.2-1.4L13.6 20l-1.6-1.4L10.4 20l-2.2-1.4L6 20.5Z" />
+      <path d="M8.5 8h7M8.5 11.5h7M8.5 15h4" />
+    </svg>
+  );
+}
+
+export function HomeIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 11.5 12 4l8 7.5" />
+      <path d="M6 10v9a1 1 0 0 0 1 1h3v-5h4v5h3a1 1 0 0 0 1-1v-9" />
+    </svg>
+  );
+}
+
+export function LogoutIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M9 4H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h3" />
+      <path d="M14 8l4 4-4 4M18 12H9" />
+    </svg>
+  );
+}

@@ -7,7 +7,9 @@ from app.core.config import settings
 from app.models import (
     Category,
     CustomerDetails,
+    CustomerIdCounter,
     CustomerPocDetails,
+    CustomerPocIdCounter,
     Inventory,
     InvoiceDetails,
     InvoiceNoCounterMaster,
@@ -20,6 +22,7 @@ from app.models import (
     SalesOrders,
     SalesSummary,
     User,
+    UserIdCounter,
     VendorDetails,
     VendorPocDetails,
 )
@@ -40,8 +43,11 @@ async def connect_to_mongo() -> None:
         database=client[settings.mongodb_db_name],
         document_models=[
             User,
+            UserIdCounter,
             CustomerDetails,
+            CustomerIdCounter,
             CustomerPocDetails,
+            CustomerPocIdCounter,
             VendorDetails,
             VendorPocDetails,
             ProductDetails,
