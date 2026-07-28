@@ -1,7 +1,9 @@
 # Models package: database document/schema models, one per MongoDB collection.
 from app.models.category import Category
 from app.models.customer_details import CustomerDetails
+from app.models.customer_id_counter import CustomerIdCounter
 from app.models.customer_poc_details import CustomerPocDetails
+from app.models.customer_poc_id_counter import CustomerPocIdCounter
 from app.models.inventory import Inventory
 from app.models.invoice_details import InvoiceDetails
 from app.models.invoice_no_counter_master import InvoiceNoCounterMaster
@@ -14,13 +16,16 @@ from app.models.purchase_summary import PurchaseSummary
 from app.models.sales_orders import SalesOrders
 from app.models.sales_summary import SalesSummary
 from app.models.user import User, UserRole
+from app.models.user_id_counter import UserIdCounter
 from app.models.vendor_details import VendorDetails
 from app.models.vendor_poc_details import VendorPocDetails
 
 __all__ = [
     "Category",
     "CustomerDetails",
+    "CustomerIdCounter",
     "CustomerPocDetails",
+    "CustomerPocIdCounter",
     "Inventory",
     "InvoiceDetails",
     "InvoiceNoCounterMaster",
@@ -34,6 +39,7 @@ __all__ = [
     "SalesSummary",
     "User",
     "UserRole",
+    "UserIdCounter",
     "VendorDetails",
     "VendorPocDetails",
 ]

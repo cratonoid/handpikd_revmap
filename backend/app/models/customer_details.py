@@ -10,6 +10,7 @@ class CustomerDetails(Document):
     address: str
     company_gst: str
     points: int
+    is_deleted: bool = False
 
     class Settings:
         name = "customer_details"
