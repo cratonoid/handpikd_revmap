@@ -1,4 +1,4 @@
-# Request/response bodies for the admin module's add_customer_details endpoint.
+# Request/response bodies for the admin module's customer detail endpoints.
 from pydantic import BaseModel, model_validator
 
 
@@ -25,3 +25,16 @@ class AddCustomerDetailsRequest(BaseModel):
 
 class AddCustomerDetailsResponse(BaseModel):
     message: str
+
+
+class CustomerDetailItem(BaseModel):
+    mail: str
+    password: str
+    registered_name: str
+    company_or_department: str
+    address: str
+    company_gst: str
+    points: int
+    is_deleted: bool
+    contact_name: list[str]
+    contact_phone: list[str]
