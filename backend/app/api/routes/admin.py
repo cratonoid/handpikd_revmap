@@ -18,6 +18,8 @@ from app.schemas.admin import (
     AddCustomerDetailsRequest,
     AddCustomerDetailsResponse,
     CustomerDetailItem,
+    UpdateCustomerDetailsRequest,
+    UpdateCustomerDetailsResponse,
 )
 from app.services.counters import get_next_id
 
@@ -61,7 +63,7 @@ async def add_customer_details(
         poc = CustomerPocDetails(id=poc_id, customer_id=customer_id, contact_name=contact_name, contact_phone=contact_phone)
         await poc.insert()
 
-    return AddCustomerDetailsResponse(message="customer added successfully")
+    return AddCustomerDetailsResponse(message="customer details added successfully")
 
 
 @router.get("/get_customer_details", response_model=list[CustomerDetailItem])
@@ -105,3 +107,36 @@ async def get_customer_details(
         )
 
     return response
+
+
+@router.post("/update_customer_details", response_model=UpdateCustomerDetailsResponse)
+async def update_customer_details(
+    payload: UpdateCustomerDetailsRequest,
+    _: User | None = Depends(require_admin),
+) -> UpdateCustomerDetailsResponse:
+    user = await User.find_one(User.mail == payload.mail)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="customer not found")
+
+    customer = await CustomerDetails.find_one(CustomerDetails.user_id == user.id)
+    if customer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="customer not found")
+
+    user.password = hash_password(payload.password)
+    await user.save()
+
+    customer.registered_name = payload.registered_name
+    customer.company_or_department = payload.company_or_department
+    customer.address = payload.address
+    customer.company_gst = payload.company_gst
+    customer.points = payload.points
+    customer.is_deleted = payload.is_deleted
+    await customer.save()
+
+    await CustomerPocDetails.find(CustomerPocDetails.customer_id == customer.id).delete()
+    for contact_name, contact_phone in zip(payload.contact_name, payload.contact_phone):
+        poc_id = await get_next_id(CustomerPocIdCounter, "next_customer_poc_id", CustomerPocDetails)
+        poc = CustomerPocDetails(id=poc_id, customer_id=customer.id, contact_name=contact_name, contact_phone=contact_phone)
+        await poc.insert()
+
+    return UpdateCustomerDetailsResponse(message="customer updated successfully")

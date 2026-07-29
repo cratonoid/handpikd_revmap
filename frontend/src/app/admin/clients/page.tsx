@@ -1,13 +1,8 @@
 import type { Metadata } from "next";
-import { DashboardModulePage } from "@/components/dashboard-placeholder";
+import { ClientsPageClient } from "@/components/admin/clients-page-client";
 
 export const metadata: Metadata = { title: "Clients" };
 
 export default function AdminClientsPage() {
-  return (
-    <DashboardModulePage
-      title="Clients"
-      description="View and manage client accounts and their points of contact."
-    />
-  );
+  return <ClientsPageClient />;
 }
