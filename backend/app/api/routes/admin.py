@@ -122,8 +122,9 @@ async def update_customer_details(
     if customer is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="customer not found")
 
-    user.password = hash_password(payload.password)
-    await user.save()
+    if payload.password:
+        user.password = hash_password(payload.password)
+        await user.save()
 
     customer.registered_name = payload.registered_name
     customer.company_or_department = payload.company_or_department

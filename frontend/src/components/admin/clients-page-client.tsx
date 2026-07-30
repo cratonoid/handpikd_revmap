@@ -18,11 +18,15 @@ import styles from "@/styles/dashboard.module.css";
 
 type ModalState = { mode: "add" } | { mode: "edit"; customer: Customer } | null;
 type LoadState = "loading" | "loaded" | "error";
+type View = "active" | "deleted";
 
 export function ClientsPageClient() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
+  const [view, setView] = useState<View>("active");
+
+  const visibleCustomers = customers.filter((c) => (view === "deleted" ? c.isDeleted : !c.isDeleted));
 
   useEffect(() => {
     let cancelled = false;
@@ -68,17 +72,39 @@ export function ClientsPageClient() {
         </Button>
       </div>
 
+      <div className={styles.viewToggle} role="tablist" aria-label="Client status">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "active"}
+          onClick={() => setView("active")}
+          className={`${styles.viewToggleButton} ${view === "active" ? styles.viewToggleButtonActive : ""}`}
+        >
+          Active clients
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "deleted"}
+          onClick={() => setView("deleted")}
+          className={`${styles.viewToggleButton} ${view === "deleted" ? styles.viewToggleButtonActive : ""}`}
+        >
+          Deleted clients
+        </button>
+      </div>
+
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
             <tr>
               <th className={styles.tableHeadCell}>S.No</th>
               <th className={styles.tableHeadCell}>Customer</th>
+              <th className={styles.tableHeadCell}>Department</th>
               <th className={styles.tableHeadCell}>GST number</th>
             </tr>
           </thead>
           <tbody>
-            {customers.map((customer, index) => (
+            {visibleCustomers.map((customer, index) => (
               <tr
                 key={customer.mail}
                 onClick={() => setModalState({ mode: "edit", customer })}
@@ -86,15 +112,16 @@ export function ClientsPageClient() {
               >
                 <td className={styles.tableCell}>{index + 1}</td>
                 <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{customer.registeredName}</td>
+                <td className={styles.tableCell}>{customer.companyOrDepartment}</td>
                 <td className={styles.tableCell}>{customer.companyGst}</td>
               </tr>
             ))}
           </tbody>
         </table>
         {loadState === "loading" && <p className={styles.pageSubtext}>Loading customers…</p>}
-        {loadState === "error" && <p className={styles.formError}>Couldn't load customers. Please try again.</p>}
-        {loadState === "loaded" && customers.length === 0 && (
-          <p className={styles.pageSubtext}>No customers yet.</p>
+        {loadState === "error" && <p className={styles.formError}>Couldn&apos;t load customers. Please try again.</p>}
+        {loadState === "loaded" && visibleCustomers.length === 0 && (
+          <p className={styles.pageSubtext}>{view === "deleted" ? "No deleted customers." : "No active customers."}</p>
         )}
       </div>
 

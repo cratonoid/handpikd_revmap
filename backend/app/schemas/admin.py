@@ -42,7 +42,9 @@ class CustomerDetailItem(BaseModel):
 
 class UpdateCustomerDetailsRequest(BaseModel):
     mail: str
-    password: str
+    # Empty string means "leave the current password unchanged" — see
+    # update_customer_details in routes/admin.py.
+    password: str = ""
     registered_name: str
     company_or_department: str
     address: str

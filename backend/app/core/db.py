@@ -6,6 +6,7 @@ from pymongo.asynchronous.database import AsyncDatabase
 from app.core.config import settings
 from app.models import (
     Category,
+    CategoryIdCounter,
     CustomerDetails,
     CustomerIdCounter,
     CustomerPocDetails,
@@ -62,6 +63,7 @@ async def connect_to_mongo() -> None:
             InvoiceNoCounterMaster,
             InvoiceDetails,
             Category,
+            CategoryIdCounter,
         ],
     )
 

@@ -7,10 +7,14 @@
 //   - mode "add"  -> POST /admin/add_customer_details    (new user + customer)
 //   - mode "edit" -> POST /admin/update_customer_details (existing customer,
 //                    looked up by email — see backend/app/api/routes/admin.py)
-// Both endpoints require the FULL record on every call (there's no PATCH),
-// including a password — update_customer_details unconditionally overwrites
-// the customer's login password with whatever is submitted, so the edit form
-// asks for a new password too rather than leaving it blank.
+// Both endpoints require the FULL record on every call (there's no PATCH).
+// In edit mode the email is locked (it's how update_customer_details looks
+// the customer up — there's no rename support) and the password is optional:
+// an empty string tells the backend to leave the current password alone.
+//
+// The delete/restore button reuses the same update_customer_details call
+// with every other field held as-is and just `is_deleted` flipped — a soft
+// delete, not a real removal, so it also works as an "undelete".
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
@@ -46,8 +50,10 @@ export function CustomerFormModal({
   );
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const isEdit = mode === "edit";
+  const wasDeleted = initialCustomer?.isDeleted ?? false;
   const title = isEdit ? "Edit customer" : "Add new customer";
 
   function updateContact(index: number, field: keyof Contact, value: string) {
@@ -62,15 +68,10 @@ export function CustomerFormModal({
     setContacts((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-
-    if (!form.checkValidity()) {
-      form.reportValidity();
-      return;
-    }
-
+  // Shared by the normal Save button and the delete/restore action below —
+  // both just POST the current form state to update_customer_details, only
+  // differing in what `is_deleted` should end up as.
+  async function submitPayload(isDeletedValue: boolean) {
     setStatus("saving");
     setError(null);
 
@@ -82,7 +83,7 @@ export function CustomerFormModal({
       address,
       company_gst: companyGst,
       points,
-      is_deleted: initialCustomer?.isDeleted ?? false,
+      is_deleted: isDeletedValue,
       contact_name: contacts.map((c) => c.name),
       contact_phone: contacts.map((c) => c.phone),
     };
@@ -113,13 +114,30 @@ export function CustomerFormModal({
         address,
         companyGst,
         points,
-        isDeleted: initialCustomer?.isDeleted ?? false,
+        isDeleted: isDeletedValue,
         contacts,
       });
     } catch {
       setError("Couldn't reach the server. Please try again.");
       setStatus("idle");
     }
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+
+    if (!form.checkValidity()) {
+      form.reportValidity();
+      return;
+    }
+
+    void submitPayload(wasDeleted);
+  }
+
+  function handleDeleteOrRestore() {
+    setConfirmingDelete(false);
+    void submitPayload(!wasDeleted);
   }
 
   return (
@@ -144,12 +162,13 @@ export function CustomerFormModal({
           <div className={styles.formGrid}>
             <div>
               <label htmlFor="mail" className={styles.formLabel}>
-                Email
+                Email{isEdit && " (cannot be changed)"}
               </label>
               <input
                 id="mail"
                 type="email"
                 required
+                disabled={isEdit}
                 value={mail}
                 onChange={(e) => setMail(e.target.value)}
                 className={styles.formInput}
@@ -158,12 +177,12 @@ export function CustomerFormModal({
 
             <div>
               <label htmlFor="password" className={styles.formLabel}>
-                {isEdit ? "New password" : "Password"}
+                {isEdit ? "New password (leave blank to keep current)" : "Password"}
               </label>
               <input
                 id="password"
                 type="password"
-                required
+                required={!isEdit}
                 minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -291,12 +310,50 @@ export function CustomerFormModal({
           )}
 
           <div className={styles.modalActions}>
-            <Button type="button" variant="tertiary" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" disabled={status === "saving"}>
-              {status === "saving" ? "Saving…" : "Save"}
-            </Button>
+            <div className={styles.modalActionsLeft}>
+              {isEdit && !confirmingDelete && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(true)}
+                  disabled={status === "saving"}
+                  className={`${styles.triggerButtonBase} ${wasDeleted ? styles.restoreTriggerButton : styles.deleteTriggerButton}`}
+                >
+                  {wasDeleted ? "Restore customer" : "Delete customer"}
+                </button>
+              )}
+
+              {isEdit && confirmingDelete && (
+                <div className={styles.deleteConfirmRow}>
+                  <span className={styles.deleteConfirmText}>
+                    {wasDeleted
+                      ? "Are you sure you want to restore this customer?"
+                      : "Are you sure you want to delete this customer?"}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="tertiary"
+                    onClick={() => setConfirmingDelete(false)}
+                    disabled={status === "saving"}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="button" variant="primary" onClick={handleDeleteOrRestore} disabled={status === "saving"}>
+                    {status === "saving" ? "Saving…" : wasDeleted ? "Yes, restore" : "Yes, delete"}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {!confirmingDelete && (
+              <div className={styles.modalActionsRight}>
+                <Button type="button" variant="tertiary" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button type="submit" variant="primary" disabled={status === "saving"}>
+                  {status === "saving" ? "Saving…" : "Save"}
+                </Button>
+              </div>
+            )}
           </div>
         </form>
       </div>

@@ -1,5 +1,6 @@
 # Models package: database document/schema models, one per MongoDB collection.
 from app.models.category import Category
+from app.models.category_id_counter import CategoryIdCounter
 from app.models.customer_details import CustomerDetails
 from app.models.customer_id_counter import CustomerIdCounter
 from app.models.customer_poc_details import CustomerPocDetails
@@ -22,6 +23,7 @@ from app.models.vendor_poc_details import VendorPocDetails
 
 __all__ = [
     "Category",
+    "CategoryIdCounter",
     "CustomerDetails",
     "CustomerIdCounter",
     "CustomerPocDetails",

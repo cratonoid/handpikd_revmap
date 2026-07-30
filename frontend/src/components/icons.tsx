@@ -248,3 +248,25 @@ export function LogoutIcon(props: IconProps) {
     </svg>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Category tree icons (components/admin/category-tree-node.tsx)
+// ---------------------------------------------------------------------------
+
+// Expand/collapse chevron — rotated 90deg via CSS when a tree node is
+// expanded, so only one icon is needed for both states.
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M9 5.5 15.5 12 9 18.5" />
+    </svg>
+  );
+}
+
+export function PlusIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}

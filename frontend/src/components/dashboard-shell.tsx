@@ -17,13 +17,26 @@
 // determined attacker. Real enforcement happens once each module wires up
 // to its API.
 //
-// sessionStorage isn't available while this renders on the server, so the
-// stored role is read via useSyncExternalStore rather than a plain
-// useState+useEffect pair — its getServerSnapshot/getSnapshot split is
-// exactly React's built-in tool for "browser-only value that must not
-// mismatch the server-rendered HTML," and it reconciles to the real value
-// synchronously before paint instead of needing setState inside an effect.
-import { useEffect, useSyncExternalStore, type ReactNode } from "react";
+// This used to read the stored role via useSyncExternalStore with a
+// getServerSnapshot that always returned null (sessionStorage isn't
+// available on the server). That meant the very FIRST commit — server
+// render and the initial client hydration alike — always saw "no role"
+// and was therefore always "unauthorized", and its useEffect fired
+// router.replace("/login") immediately off that first commit. React does
+// correct the mismatch with a follow-up re-render once the real
+// sessionStorage value is known, but that happens one commit too late —
+// the redirect from the first commit had already fired. Net effect: ANY
+// fresh/full page load of /admin or /customer bounced straight to /login
+// even with a perfectly valid session; it only "worked" when navigating
+// here client-side (e.g. right after logging in), which never hit that
+// first mismatched commit.
+//
+// Fix: don't give this value a server snapshot to mismatch against at
+// all. `status` starts as "checking" identically on server and first
+// client render (a plain literal, not read from storage), so there's
+// nothing to correct — the role is only read inside an effect, which by
+// definition runs after hydration has already settled.
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/logo";
@@ -70,35 +83,36 @@ const ROLE_LABEL: Record<UserRole, string> = {
   customer: "Customer",
 };
 
-// The stored role never changes from outside this component during its
-// lifetime (it's only ever set at login, before the dashboard mounts), so
-// the "subscribe" half of useSyncExternalStore has nothing to listen for.
-function subscribeToNothing() {
-  return () => {};
-}
-
-function getServerRoleSnapshot(): UserRole | null {
-  return null;
-}
+type AuthStatus = "checking" | "authorized" | "unauthorized";
 
 export function DashboardShell({ role, children }: { role: UserRole; children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const storedRole = useSyncExternalStore(subscribeToNothing, getUserRole, getServerRoleSnapshot);
-  const authorized = storedRole === role;
+  const [status, setStatus] = useState<AuthStatus>("checking");
+
+  // Runs once, after mount — i.e. only once hydration has already
+  // settled, so there's no earlier "unauthorized" commit for a redirect
+  // to have fired from. The setState is deferred into a microtask
+  // callback (rather than called synchronously in the effect body) per
+  // react-hooks/set-state-in-effect.
+  useEffect(() => {
+    queueMicrotask(() => {
+      setStatus(getUserRole() === role ? "authorized" : "unauthorized");
+    });
+  }, [role]);
 
   useEffect(() => {
-    if (!authorized) {
+    if (status === "unauthorized") {
       router.replace("/login");
     }
-  }, [authorized, router]);
+  }, [status, router]);
 
   function handleLogout() {
     clearSession();
     router.push("/login");
   }
 
-  if (!authorized) {
+  if (status !== "authorized") {
     return null;
   }
 

@@ -1,13 +1,8 @@
 import type { Metadata } from "next";
-import { DashboardModulePage } from "@/components/dashboard-placeholder";
+import { CategoriesPageClient } from "@/components/admin/categories-page-client";
 
 export const metadata: Metadata = { title: "Categories" };
 
 export default function AdminCategoriesPage() {
-  return (
-    <DashboardModulePage
-      title="Categories"
-      description="Organize products into categories for the catalogue."
-    />
-  );
+  return <CategoriesPageClient />;
 }

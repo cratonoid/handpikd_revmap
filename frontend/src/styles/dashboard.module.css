@@ -245,6 +245,41 @@
 }
 
 /* -----------------------------------------------------------------------
+   Active/Deleted view toggle (components/admin/clients-page-client.tsx)
+   ----------------------------------------------------------------------- */
+
+.viewToggle {
+  margin-top: 1.5rem;
+  display: inline-flex;
+  gap: 0.25rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  padding: 0.25rem;
+}
+
+.viewToggleButton {
+  border-radius: 9999px;
+  padding: 0.5rem 1.1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+}
+
+.viewToggleButton:hover {
+  background-color: color-mix(in srgb, var(--color-border) 18%, transparent);
+}
+
+.viewToggleButtonActive,
+.viewToggleButtonActive:hover {
+  background-color: var(--color-charcoal);
+  color: var(--color-cream);
+}
+
+/* -----------------------------------------------------------------------
    Data table (components/admin/clients-page-client.tsx)
    ----------------------------------------------------------------------- */
 /* Deliberately NOT a bordered/rounded "card" — the list flows straight out
@@ -253,7 +288,7 @@
    a strong header rule instead of a grid of borders. */
 
 .tableWrap {
-  margin-top: 1.5rem;
+  margin-top: 1rem;
   overflow-x: auto;
 }
 
@@ -305,6 +340,20 @@
   font-weight: 700;
   font-size: 0.9375rem;
   color: var(--color-charcoal);
+}
+
+/* Narrows the S.No column and pulls the next column in close behind it,
+   instead of the two sitting evenly spaced like every other column pair. */
+.tableHeadCellSerial,
+.tableCellSerial {
+  width: 1%;
+  padding-right: 0.5rem;
+  white-space: nowrap;
+}
+
+.tableHeadCellTight,
+.tableCellTight {
+  padding-left: 0.5rem;
 }
 
 /* -----------------------------------------------------------------------
@@ -413,6 +462,12 @@
   border-color: var(--color-charcoal);
 }
 
+.formInput:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background-color: color-mix(in srgb, var(--color-border) 12%, transparent);
+}
+
 .formError {
   font-size: 0.875rem;
   font-weight: 600;
@@ -490,8 +545,319 @@
 
 .modalActions {
   display: flex;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
   gap: 0.75rem;
+}
+
+.modalActionsLeft {
+  display: flex;
+  align-items: center;
+}
+
+.modalActionsRight {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+.triggerButtonBase {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  padding: 0.75rem 1.75rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  transition: background-color 0.2s;
+}
+
+.triggerButtonBase:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deleteTriggerButton {
+  color: var(--color-cream);
+  background-color: var(--color-red);
+}
+
+.deleteTriggerButton:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--color-red) 82%, black);
+}
+
+.restoreTriggerButton {
+  color: var(--color-cream);
+  background-color: var(--color-charcoal);
+}
+
+.restoreTriggerButton:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--color-charcoal) 80%, white);
+}
+
+.deleteConfirmRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.deleteConfirmText {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+/* -----------------------------------------------------------------------
+   Category hierarchy popup (components/admin/category-tree-modal.tsx,
+   components/admin/category-tree-node.tsx)
+   ----------------------------------------------------------------------- */
+/* The tree is rendered as nested <ul>s that indent via a left border +
+   margin/padding on .treeChildren — each extra nesting level adds one more
+   step automatically, no depth math needed in JS. It grows DOWN (scrollable
+   .treeScrollArea) rather than sideways, which is what keeps a very wide/deep
+   category tree usable instead of turning into a horizontal org chart.
+
+   Every row is full-width and split into .treeNodeMain (toggle + name, left)
+   and .treeNodeActions (count + add button, pushed right via margin-left:
+   auto). Because .treeChildren only ever adds LEFT-side indent (no right
+   padding/margin), a row's right edge lands in the same place regardless of
+   depth — so the count/add-button column lines up in a straight vertical
+   line down the whole tree, and a child's row sits directly under its
+   parent's rather than drifting off to some unrelated column. */
+
+.categoryTreeModalPanel {
+  max-width: 42rem;
+}
+
+.treeScrollArea {
+  max-height: 65vh;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 0.75rem 1.5rem 1.5rem;
+}
+
+.treeRoot,
+.treeChildren {
+  list-style: none;
+}
+
+.treeChildren {
+  margin-left: 0.6rem;
+  padding-left: 0.6rem;
+  border-left: 1px dashed var(--color-border);
+}
+
+.treeNode {
+  width: 100%;
+}
+
+.treeNodeRow {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  transition: background-color 0.15s;
+}
+
+.treeNodeMain {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.treeNodeActions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+  padding-left: 1rem;
+}
+
+.treeNodeRow:hover {
+  background-color: color-mix(in srgb, var(--color-border) 18%, transparent);
+}
+
+.treeToggleButton {
+  display: flex;
+  height: 1.5rem;
+  width: 1.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.375rem;
+  color: var(--color-ink);
+}
+
+.treeToggleButton:disabled {
+  visibility: hidden;
+}
+
+.treeToggleIconOpen {
+  transform: rotate(90deg);
+}
+
+.treeNodeNameRoot {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-charcoal);
+  white-space: nowrap;
+}
+
+.treeNodeName {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+
+.treeNodeCount {
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, var(--color-border) 25%, transparent);
+  padding: 0.1rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.treeAddButton {
+  display: flex;
+  height: 1.5rem;
+  width: 1.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: var(--color-ink);
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+}
+
+.treeAddButton:hover {
+  background-color: var(--color-charcoal);
+  color: var(--color-cream);
+}
+
+.treeDeleteButton {
+  display: flex;
+  height: 1.5rem;
+  width: 1.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: var(--color-ink);
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+}
+
+.treeDeleteButton:hover {
+  background-color: color-mix(in srgb, var(--color-red) 15%, transparent);
+  color: var(--color-red);
+}
+
+.treeDeleteConfirmRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.25rem 0 0.5rem 2.35rem;
+}
+
+.treeAddForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.25rem 0 0.5rem 2.35rem;
+}
+
+.treeAddInput {
+  min-width: 16rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8125rem;
+  color: var(--color-charcoal);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.treeAddInput:focus {
+  border-color: var(--color-charcoal);
+}
+
+.treeAddConfirmButton {
+  border-radius: 0.5rem;
+  background-color: var(--color-charcoal);
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-cream);
+  white-space: nowrap;
+}
+
+.treeAddCancelButton {
+  padding: 0.4rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+
+.treeAddCancelButton:hover {
+  color: var(--color-charcoal);
+  text-decoration: underline;
+}
+
+/* -----------------------------------------------------------------------
+   Inline children preview in the categories table
+   (components/admin/categories-page-client.tsx)
+   ----------------------------------------------------------------------- */
+/* Single-clicking a parent row toggles this straight in the table (reusing
+   the same <CategoryTreeNode> the popup uses) instead of opening the popup —
+   double-click still does that. Capped at a fixed height with its own
+   scrollbar so previewing a parent with a large subtree doesn't blow out the
+   whole page's height. */
+
+.tableCategoryName {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.tableChevron {
+  flex-shrink: 0;
+  color: var(--color-ink);
+  transition: transform 0.15s;
+}
+
+.tableChevronOpen {
+  transform: rotate(90deg);
+}
+
+.tableDropdownCell {
+  padding: 0;
+}
+
+.tableDropdownCell .treeRoot {
+  max-height: 22rem;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding: 0.75rem 1.25rem 1rem 2.1rem;
+  background-color: color-mix(in srgb, var(--color-cream-deep) 12%, transparent);
+  border-bottom: 1px solid var(--color-border);
 }
 
 /* -----------------------------------------------------------------------
