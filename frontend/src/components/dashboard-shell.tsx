@@ -49,6 +49,7 @@ import {
   LogoutIcon,
   ReceiptIcon,
   ShoppingCartIcon,
+  StorefrontIcon,
   TagIcon,
   UsersIcon,
 } from "@/components/icons";
@@ -65,6 +66,7 @@ const NAV_ITEMS: Record<UserRole, NavItem[]> = {
   admin: [
     { label: "Analytical Dashboard", href: "/admin", icon: ChartBarIcon },
     { label: "Clients", href: "/admin/clients", icon: UsersIcon },
+    { label: "Vendors", href: "/admin/vendors", icon: StorefrontIcon },
     { label: "Orders", href: "/admin/orders", icon: ShoppingCartIcon },
     { label: "Inventory", href: "/admin/inventory", icon: ArchiveBoxIcon },
     { label: "Products", href: "/admin/products", icon: CubeIcon },

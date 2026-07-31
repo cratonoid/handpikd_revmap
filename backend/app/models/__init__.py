@@ -19,7 +19,9 @@ from app.models.sales_summary import SalesSummary
 from app.models.user import User, UserRole
 from app.models.user_id_counter import UserIdCounter
 from app.models.vendor_details import VendorDetails
+from app.models.vendor_id_counter import VendorIdCounter
 from app.models.vendor_poc_details import VendorPocDetails
+from app.models.vendor_poc_id_counter import VendorPocIdCounter
 
 __all__ = [
     "Category",
@@ -43,5 +45,7 @@ __all__ = [
     "UserRole",
     "UserIdCounter",
     "VendorDetails",
+    "VendorIdCounter",
     "VendorPocDetails",
+    "VendorPocIdCounter",
 ]

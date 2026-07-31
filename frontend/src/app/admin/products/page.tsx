@@ -1,13 +1,8 @@
 import type { Metadata } from "next";
-import { DashboardModulePage } from "@/components/dashboard-placeholder";
+import { ProductsPageClient } from "@/components/admin/products-page-client";
 
 export const metadata: Metadata = { title: "Products" };
 
 export default function AdminProductsPage() {
-  return (
-    <DashboardModulePage
-      title="Products"
-      description="Manage the product catalogue, pricing, and images."
-    />
-  );
+  return <ProductsPageClient />;
 }

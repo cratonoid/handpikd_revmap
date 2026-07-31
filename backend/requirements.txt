@@ -6,3 +6,5 @@ httpx
 beanie
 pyjwt
 bcrypt
+python-multipart
+opencv-python-headless

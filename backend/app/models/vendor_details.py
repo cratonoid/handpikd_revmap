@@ -7,8 +7,10 @@ class VendorDetails(Document):
     registered_name: str
     gst: str
     address: str
-    qr_code: str
+    # Populated later by the separate add_qr_code endpoint, not at creation.
+    qr_code: str = ""
     description: str
+    is_deleted: bool = False
 
     class Settings:
         name = "vendor_details"

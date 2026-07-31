@@ -25,7 +25,9 @@ from app.models import (
     User,
     UserIdCounter,
     VendorDetails,
+    VendorIdCounter,
     VendorPocDetails,
+    VendorPocIdCounter,
 )
 
 client: AsyncMongoClient | None = None
@@ -50,7 +52,9 @@ async def connect_to_mongo() -> None:
             CustomerPocDetails,
             CustomerPocIdCounter,
             VendorDetails,
+            VendorIdCounter,
             VendorPocDetails,
+            VendorPocIdCounter,
             ProductDetails,
             ProductImageDetails,
             Inventory,

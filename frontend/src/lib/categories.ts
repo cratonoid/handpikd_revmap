@@ -105,3 +105,25 @@ export function findCategoryNode(tree: CategoryNode[], targetId: string): Catego
 export function countDescendants(node: CategoryNode): number {
   return node.children.reduce((sum, child) => sum + 1 + countDescendants(child), 0);
 }
+
+export type FlatCategory = { id: string; name: string; depth: number };
+
+// Depth-first flatten of the tree into one list, with each node's nesting
+// depth attached — used by the product form's category multiselect
+// (components/admin/multi-select-dropdown.tsx), which shows every category
+// (parents and leaves alike) as one indented list rather than a nested tree.
+export function flattenCategories(tree: CategoryNode[], depth = 0): FlatCategory[] {
+  const result: FlatCategory[] = [];
+  for (const node of tree) {
+    result.push({ id: node.id, name: node.name, depth });
+    result.push(...flattenCategories(node.children, depth + 1));
+  }
+  return result;
+}
+
+// Looks up display names for a set of category ids, in the order given —
+// used to render a product's category chips without re-walking the tree.
+export function namesForCategoryIds(flat: FlatCategory[], ids: string[]): string[] {
+  const namesById = new Map(flat.map((c) => [c.id, c.name]));
+  return ids.map((id) => namesById.get(id) ?? id);
+}

@@ -249,6 +249,16 @@ export function LogoutIcon(props: IconProps) {
   );
 }
 
+export function StorefrontIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 9.5 5 4h14l1 5.5" />
+      <path d="M4 9.5a2.25 2.25 0 0 0 4.5 0 2.25 2.25 0 0 0 4.5 0 2.25 2.25 0 0 0 4.5 0 2.25 2.25 0 0 0 2.5 0V20H4V9.5Z" />
+      <path d="M9.5 20v-5.5h5V20" />
+    </svg>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Category tree icons (components/admin/category-tree-node.tsx)
 // ---------------------------------------------------------------------------
