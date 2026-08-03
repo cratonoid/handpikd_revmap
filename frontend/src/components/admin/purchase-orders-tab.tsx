@@ -3,12 +3,12 @@
 // ---------------------------------------------------------------------------
 // <PurchaseOrdersTab> — "Purchase orders" tab on /admin/orders
 // ---------------------------------------------------------------------------
-// Mirrors components/admin/vendors-page-client.tsx. Owns the purchase order
-// table (fetched from GET /admin/get_purchase_order_details, see
-// lib/purchase-orders.ts — not yet implemented on the backend) plus the
-// vendor and product lists the "+ New purchase order" form needs to populate
-// its vendor picker and per-line product picker (components/admin/
-// purchase-order-form-modal.tsx).
+// Mirrors components/admin/vendors-page-client.tsx, including its add/edit
+// split: "+ New purchase order" opens the popup in "add" mode; double-clicking
+// an existing row opens it in "edit" mode, pre-filled with that row's data.
+// Both modes save through the same popup (components/admin/
+// purchase-order-form-modal.tsx), which POSTs to create_new_purchase_order /
+// update_purchase_order_details (backend/app/api/routes/orders.py).
 //
 // Two separate vendor fetches: the full get_vendor_details list (`vendors`)
 // resolves the table's vendor column, including for orders whose vendor has
@@ -23,6 +23,7 @@ import { fetchVendors, fetchVendorsList, type Vendor, type VendorOption } from "
 import { fetchProducts, type Product } from "@/lib/products";
 import styles from "@/styles/dashboard.module.css";
 
+type ModalState = { mode: "add" } | { mode: "edit"; order: PurchaseOrder } | null;
 type LoadState = "loading" | "loaded";
 
 export function PurchaseOrdersTab() {
@@ -31,7 +32,7 @@ export function PurchaseOrdersTab() {
   const [vendorOptions, setVendorOptions] = useState<VendorOption[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
-  const [modalOpen, setModalOpen] = useState(false);
+  const [modalState, setModalState] = useState<ModalState>(null);
 
   const vendorsById = new Map(vendors.map((v) => [v.id, v]));
 
@@ -48,8 +49,8 @@ export function PurchaseOrdersTab() {
         setLoadState("loaded");
       })
       .catch(() => {
-        // get_purchase_order_details / get_product_details aren't live on
-        // the backend yet, so a failed fetch is the expected state for now.
+        // A failed fetch (e.g. the backend being unreachable) falls back to
+        // an empty list rather than showing a scary error.
         if (cancelled) return;
         setLoadState("loaded");
       });
@@ -59,9 +60,19 @@ export function PurchaseOrdersTab() {
     };
   }, []);
 
-  function handleSaved(order: PurchaseOrder) {
-    setOrders((prev) => [...prev, order]);
-    setModalOpen(false);
+  // Re-fetches the full list instead of upserting a client-constructed
+  // order, since create_new_purchase_order only returns {message} — no real
+  // id to key off of. Without this, a freshly-created order would sit in
+  // local state with a placeholder id: 0, and editing it before a page
+  // refresh would 404 against the real backend (no order actually has id 0).
+  function handleSaved() {
+    setModalState(null);
+    fetchPurchaseOrders()
+      .then(setOrders)
+      .catch(() => {
+        // Keep showing the previous list rather than clearing it on a
+        // transient refetch failure — the save itself already succeeded.
+      });
   }
 
   const nextPurchaseOrderNo = orders.reduce((max, o) => Math.max(max, o.purchaseOrderNo), 0) + 1;
@@ -70,7 +81,7 @@ export function PurchaseOrdersTab() {
     <>
       <div className={styles.pageHeaderRow}>
         <p className={styles.pageSubtext}>Raise and track purchase orders placed with vendors.</p>
-        <Button type="button" variant="primary" onClick={() => setModalOpen(true)}>
+        <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
           + New purchase order
         </Button>
       </div>
@@ -89,7 +100,11 @@ export function PurchaseOrdersTab() {
           </thead>
           <tbody>
             {orders.map((order, index) => (
-              <tr key={order.id || `${order.purchaseOrderNo}-${index}`} className={styles.tableRow}>
+              <tr
+                key={order.id || `${order.purchaseOrderNo}-${index}`}
+                onDoubleClick={() => setModalState({ mode: "edit", order })}
+                className={styles.tableRow}
+              >
                 <td className={styles.tableCell}>{index + 1}</td>
                 <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{order.purchaseOrderNo}</td>
                 <td className={styles.tableCell}>{vendorsById.get(order.vendorId)?.registeredName ?? "—"}</td>
@@ -106,12 +121,14 @@ export function PurchaseOrdersTab() {
         )}
       </div>
 
-      {modalOpen && (
+      {modalState && (
         <PurchaseOrderFormModal
+          mode={modalState.mode}
+          initialOrder={modalState.mode === "edit" ? modalState.order : undefined}
           vendors={vendorOptions}
           products={products}
           nextPurchaseOrderNo={nextPurchaseOrderNo}
-          onClose={() => setModalOpen(false)}
+          onClose={() => setModalState(null)}
           onSaved={handleSaved}
         />
       )}

@@ -1,12 +1,16 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// <PurchaseOrderFormModal> — "+ New purchase order" popup on the Purchase
-// orders tab of /admin/orders
+// <PurchaseOrderFormModal> — add/edit popup on the Purchase orders tab of
+// /admin/orders
 // ---------------------------------------------------------------------------
-// Mirrors components/admin/vendor-form-modal.tsx (add-only for now — there's
-// no edit/delete flow yet since purchase orders aren't shown as editable in
-// this first pass). POSTs to /admin/create_new_purchase_order (routes/orders.py).
+// Mirrors components/admin/vendor-form-modal.tsx's add/edit split (no
+// delete/restore here, though — PurchaseOrders has no is_deleted-style flag,
+// unlike VendorDetails):
+//   - mode "add"  -> POST /admin/create_new_purchase_order
+//   - mode "edit" -> POST /admin/update_purchase_order_details (existing
+//                    order, looked up by id)
+// Both live in backend/app/api/routes/orders.py.
 //
 // This is the form the vendor and product APIs feed into:
 //   - Vendor (SingleSelectDropdown) is populated from GET /admin/get_vendors_list
@@ -27,6 +31,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
+import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import type { PurchaseOrder } from "@/lib/purchase-orders";
 import type { VendorOption } from "@/lib/vendors";
 import type { Product } from "@/lib/products";
@@ -39,35 +44,70 @@ type Status = "idle" | "saving";
 type LineItem = {
   productId: string | null;
   quantity: number;
-  rate: number;
+  // Plain text, sanitized via sanitizeDecimalInput (see lib/decimal-input.ts)
+  // rather than a controlled type="number" input, so a leading "0" can just
+  // be typed over instead of leaving stray zeros until blur.
+  rate: string;
 };
 
 function emptyLineItem(): LineItem {
-  return { productId: null, quantity: 1, rate: 0 };
+  return { productId: null, quantity: 1, rate: "" };
+}
+
+// Reassembles an existing order's parallel productIds/quantities/rates
+// arrays (see lib/purchase-orders.ts) back into per-line-item rows for the
+// form's local state.
+function lineItemsFromOrder(order: PurchaseOrder): LineItem[] {
+  if (order.productIds.length === 0) return [emptyLineItem()];
+  return order.productIds.map((productId, index) => ({
+    productId: String(productId),
+    quantity: order.quantities[index] ?? 1,
+    rate: String(order.rates[index] ?? ""),
+  }));
 }
 
 export function PurchaseOrderFormModal({
+  mode,
+  initialOrder,
   vendors,
   products,
   nextPurchaseOrderNo,
   onClose,
   onSaved,
 }: {
+  mode: "add" | "edit";
+  // Only present in "edit" mode — pre-fills every field.
+  initialOrder?: PurchaseOrder;
   vendors: VendorOption[];
   products: Product[];
   nextPurchaseOrderNo: number;
   onClose: () => void;
-  onSaved: (order: PurchaseOrder) => void;
+  // No order payload — the backend only returns {message} (see
+  // create_new_purchase_order/update_purchase_order_details), so the parent
+  // re-fetches the authoritative list from GET /admin/get_purchase_order_details
+  // rather than the caller reconstructing one client-side (which is what
+  // produced a fake id: 0 for new orders, breaking their very next edit).
+  onSaved: () => void;
 }) {
-  const [vendorId, setVendorId] = useState<string | null>(null);
-  const [purchaseOrderNo, setPurchaseOrderNo] = useState(nextPurchaseOrderNo);
-  const [lineItems, setLineItems] = useState<LineItem[]>([emptyLineItem()]);
-  const [sgstAmount, setSgstAmount] = useState<number>(0);
-  const [cgstAmount, setCgstAmount] = useState<number>(0);
-  const [igstAmount, setIgstAmount] = useState<number>(0);
-  const [description, setDescription] = useState("");
+  const [vendorId, setVendorId] = useState<string | null>(
+    initialOrder ? String(initialOrder.vendorId) : null,
+  );
+  const [purchaseOrderNo, setPurchaseOrderNo] = useState(initialOrder?.purchaseOrderNo ?? nextPurchaseOrderNo);
+  const [lineItems, setLineItems] = useState<LineItem[]>(
+    initialOrder ? lineItemsFromOrder(initialOrder) : [emptyLineItem()],
+  );
+  // Plain text, sanitized via sanitizeDecimalInput — same reasoning as
+  // LineItem.rate above, so these don't start as a "0" that has to be
+  // deleted before typing a real amount.
+  const [sgstAmount, setSgstAmount] = useState(initialOrder?.sgstAmount != null ? String(initialOrder.sgstAmount) : "");
+  const [cgstAmount, setCgstAmount] = useState(initialOrder?.cgstAmount != null ? String(initialOrder.cgstAmount) : "");
+  const [igstAmount, setIgstAmount] = useState(initialOrder?.igstAmount != null ? String(initialOrder.igstAmount) : "");
+  const [description, setDescription] = useState(initialOrder?.description ?? "");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+
+  const isEdit = mode === "edit";
+  const title = isEdit ? "Edit purchase order" : "New purchase order";
 
   // vendors comes from GET /admin/get_vendors_list, which only returns active
   // vendors, so isDeleted is always false here.
@@ -87,8 +127,9 @@ export function PurchaseOrderFormModal({
   );
   const productsById = useMemo(() => new Map(products.map((p) => [String(p.id), p])), [products]);
 
-  const totalAmountBeforeTax = lineItems.reduce((sum, item) => sum + item.quantity * item.rate, 0);
-  const totalAmountAfterTax = totalAmountBeforeTax + sgstAmount + cgstAmount + igstAmount;
+  const totalAmountBeforeTax = lineItems.reduce((sum, item) => sum + item.quantity * (Number(item.rate) || 0), 0);
+  const totalAmountAfterTax =
+    totalAmountBeforeTax + (Number(sgstAmount) || 0) + (Number(cgstAmount) || 0) + (Number(igstAmount) || 0);
 
   function updateLineItem(index: number, changes: Partial<LineItem>) {
     setLineItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...changes } : item)));
@@ -96,14 +137,14 @@ export function PurchaseOrderFormModal({
 
   function handleProductChange(index: number, productId: string) {
     const product = productsById.get(productId);
-    updateLineItem(index, { productId, rate: product?.vendorRate ?? 0 });
+    updateLineItem(index, { productId, rate: product ? String(product.vendorRate) : "" });
   }
 
   // Switching vendors invalidates any products already picked for the old
   // one, since the product picker is scoped to a single vendor's catalogue.
   function handleVendorChange(newVendorId: string | null) {
     setVendorId(newVendorId);
-    setLineItems((prev) => prev.map((item) => ({ ...item, productId: null, rate: 0 })));
+    setLineItems((prev) => prev.map((item) => ({ ...item, productId: null, rate: "" })));
   }
 
   function addLineItem() {
@@ -134,46 +175,52 @@ export function PurchaseOrderFormModal({
     // product_ids/quantities/rates are parallel arrays, one entry per line
     // item — the backend re-derives the totals from these rather than
     // trusting totalAmountBeforeTax/AfterTax computed here.
+    const productIds = lineItems.map((item) => Number(item.productId));
+    const quantities = lineItems.map((item) => item.quantity);
+    const rates = lineItems.map((item) => Number(item.rate) || 0);
+    const sgstAmountValue = Number(sgstAmount) || null;
+    const cgstAmountValue = Number(cgstAmount) || null;
+    const igstAmountValue = Number(igstAmount) || null;
+
     const payload = {
+      ...(isEdit ? { id: initialOrder?.id } : {}),
       purchase_order_no: purchaseOrderNo,
       vendor_id: Number(vendorId),
-      product_ids: lineItems.map((item) => Number(item.productId)),
-      quantities: lineItems.map((item) => item.quantity),
-      rates: lineItems.map((item) => item.rate),
-      sgst_amount: sgstAmount || null,
-      cgst_amount: cgstAmount || null,
-      igst_amount: igstAmount || null,
+      product_ids: productIds,
+      quantities,
+      rates,
+      sgst_amount: sgstAmountValue,
+      cgst_amount: cgstAmountValue,
+      igst_amount: igstAmountValue,
       description,
     };
 
     try {
-      const response = await apiFetch("/admin/create_new_purchase_order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const response = await apiFetch(
+        isEdit ? "/admin/update_purchase_order_details" : "/admin/create_new_purchase_order",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
 
       if (!response.ok) {
-        setError(
-          response.status === 409
-            ? "A purchase order with this number already exists."
-            : "Something went wrong. Please try again.",
-        );
+        if (response.status === 409) {
+          setError("A purchase order with this number already exists.");
+        } else {
+          // Surface the backend's actual reason (e.g. "vendor not found",
+          // "product 12 does not belong to the selected vendor") instead of
+          // guessing — a 404 here can mean the order, the vendor, or a
+          // product wasn't found, not just the order.
+          const detail = await response.json().catch(() => null);
+          setError(typeof detail?.detail === "string" ? detail.detail : "Something went wrong. Please try again.");
+        }
         setStatus("idle");
         return;
       }
 
-      onSaved({
-        id: 0,
-        purchaseOrderNo,
-        vendorId: Number(vendorId),
-        totalAmountBeforeTax,
-        sgstAmount: sgstAmount || null,
-        cgstAmount: cgstAmount || null,
-        igstAmount: igstAmount || null,
-        totalAmountAfterTax,
-        description,
-      });
+      onSaved();
     } catch {
       setError("Couldn't reach the server. Please try again.");
       setStatus("idle");
@@ -191,7 +238,7 @@ export function PurchaseOrderFormModal({
       >
         <div className={styles.modalHeader}>
           <h2 id="purchase-order-modal-title" className={styles.modalTitle}>
-            New purchase order
+            {title}
           </h2>
           <button type="button" onClick={onClose} aria-label="Close" className={styles.modalCloseButton}>
             <XMarkIcon className="h-5 w-5" />
@@ -271,12 +318,11 @@ export function PurchaseOrderFormModal({
                 />
 
                 <input
-                  type="number"
-                  min={0}
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   required
                   value={item.rate}
-                  onChange={(e) => updateLineItem(index, { rate: Number(e.target.value) })}
+                  onChange={(e) => updateLineItem(index, { rate: sanitizeDecimalInput(e.target.value) })}
                   aria-label={`Line ${index + 1} rate`}
                   className={styles.formInput}
                 />
@@ -284,7 +330,7 @@ export function PurchaseOrderFormModal({
                 <input
                   type="text"
                   disabled
-                  value={`₹${(item.quantity * item.rate).toFixed(2)}`}
+                  value={`₹${(item.quantity * (Number(item.rate) || 0)).toFixed(2)}`}
                   aria-label={`Line ${index + 1} total`}
                   className={styles.formInput}
                 />
@@ -309,11 +355,10 @@ export function PurchaseOrderFormModal({
               </label>
               <input
                 id="sgstAmount"
-                type="number"
-                min={0}
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 value={sgstAmount}
-                onChange={(e) => setSgstAmount(Number(e.target.value))}
+                onChange={(e) => setSgstAmount(sanitizeDecimalInput(e.target.value))}
                 className={styles.formInput}
               />
             </div>
@@ -324,11 +369,10 @@ export function PurchaseOrderFormModal({
               </label>
               <input
                 id="cgstAmount"
-                type="number"
-                min={0}
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 value={cgstAmount}
-                onChange={(e) => setCgstAmount(Number(e.target.value))}
+                onChange={(e) => setCgstAmount(sanitizeDecimalInput(e.target.value))}
                 className={styles.formInput}
               />
             </div>
@@ -339,11 +383,10 @@ export function PurchaseOrderFormModal({
               </label>
               <input
                 id="igstAmount"
-                type="number"
-                min={0}
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 value={igstAmount}
-                onChange={(e) => setIgstAmount(Number(e.target.value))}
+                onChange={(e) => setIgstAmount(sanitizeDecimalInput(e.target.value))}
                 className={styles.formInput}
               />
             </div>
