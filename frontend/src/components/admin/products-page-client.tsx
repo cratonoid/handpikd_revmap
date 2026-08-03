@@ -10,6 +10,12 @@
 // add/edit popup's vendor single-select and category multiselect
 // (components/admin/product-form-modal.tsx).
 //
+// Two separate vendor fetches: the full get_vendor_details list (`vendors`)
+// resolves the table's vendor column, including for products whose vendor
+// has since been soft-deleted; the lightweight get_vendors_list
+// (`vendorOptions`) feeds the popup's picker, which should only offer active
+// vendors.
+//
 // ProductDetails has no is_deleted flag, only is_visible — so "Active" /
 // "Hidden" here is exactly the vendors page's "Active" / "Deleted" toggle,
 // just renamed to match the field it's actually driving. Clicking a row
@@ -19,7 +25,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { ProductFormModal } from "@/components/admin/product-form-modal";
 import { fetchProducts, type Product } from "@/lib/products";
-import { fetchVendors, type Vendor } from "@/lib/vendors";
+import { fetchVendors, fetchVendorsList, type Vendor, type VendorOption } from "@/lib/vendors";
 import { fetchCategories, flattenCategories, namesForCategoryIds, type FlatCategory } from "@/lib/categories";
 import { CubeIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
@@ -31,6 +37,7 @@ type View = "active" | "hidden";
 export function ProductsPageClient() {
   const [products, setProducts] = useState<Product[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [vendorOptions, setVendorOptions] = useState<VendorOption[]>([]);
   const [flatCategories, setFlatCategories] = useState<FlatCategory[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
@@ -42,11 +49,12 @@ export function ProductsPageClient() {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([fetchProducts(), fetchVendors(), fetchCategories()])
-      .then(([productData, vendorData, categoryTree]) => {
+    Promise.all([fetchProducts(), fetchVendors(), fetchVendorsList(), fetchCategories()])
+      .then(([productData, vendorData, vendorOptionData, categoryTree]) => {
         if (cancelled) return;
         setProducts(productData);
         setVendors(vendorData);
+        setVendorOptions(vendorOptionData);
         setFlatCategories(flattenCategories(categoryTree));
         setLoadState("loaded");
       })
@@ -186,7 +194,7 @@ export function ProductsPageClient() {
         <ProductFormModal
           mode={modalState.mode}
           initialProduct={modalState.mode === "edit" ? modalState.product : undefined}
-          vendors={vendors}
+          vendors={vendorOptions}
           categoryOptions={categoryOptions}
           onClose={() => setModalState(null)}
           onSaved={handleSaved}

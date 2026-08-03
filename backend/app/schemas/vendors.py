@@ -31,6 +31,11 @@ class ConvertVendorQrResponse(BaseModel):
     qr_code: str
 
 
+class VendorListItem(BaseModel):
+    vendor_id: int
+    vendor_name: str
+
+
 class VendorDetailItem(BaseModel):
     id: int
     registered_name: str

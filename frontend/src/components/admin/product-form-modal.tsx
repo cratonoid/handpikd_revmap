@@ -27,13 +27,28 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
 import type { Product } from "@/lib/products";
-import type { Vendor } from "@/lib/vendors";
+import type { VendorOption } from "@/lib/vendors";
 import { MultiSelectDropdown, type MultiSelectOption } from "@/components/admin/multi-select-dropdown";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
 import { CubeIcon, XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
 type Status = "idle" | "saving";
+
+// Keeps rate/price/GST fields as plain text so a leading "0" can just be
+// typed over instead of fighting a controlled type="number" input (which
+// re-renders through Number() on every keystroke and leaves stray leading
+// zeros, e.g. "05", until the field loses focus). Strips anything that
+// isn't a digit or a decimal point, and collapses extra leading zeros
+// (but not "0.5"-style values, where the leading zero is meaningful).
+function sanitizeDecimalInput(raw: string): string {
+  let value = raw.replace(/[^\d.]/g, "");
+  const firstDot = value.indexOf(".");
+  if (firstDot !== -1) {
+    value = value.slice(0, firstDot + 1) + value.slice(firstDot + 1).replace(/\./g, "");
+  }
+  return value.replace(/^0+(?=\d)/, "");
+}
 
 export function ProductFormModal({
   mode,
@@ -46,7 +61,7 @@ export function ProductFormModal({
   mode: "add" | "edit";
   // Only present in "edit" mode — pre-fills every field.
   initialProduct?: Product;
-  vendors: Vendor[];
+  vendors: VendorOption[];
   categoryOptions: MultiSelectOption[];
   onClose: () => void;
   onSaved: (product: Product) => void;
@@ -57,10 +72,12 @@ export function ProductFormModal({
     initialProduct ? String(initialProduct.vendorId) : null,
   );
   const [categoryIds, setCategoryIds] = useState<string[]>(initialProduct?.categoryIds ?? []);
-  const [vendorRate, setVendorRate] = useState(initialProduct?.vendorRate ?? 0);
-  const [actualPrice, setActualPrice] = useState(initialProduct?.actualPrice ?? 0);
-  const [discountedPrice, setDiscountedPrice] = useState(initialProduct?.discountedPrice ?? 0);
-  const [gstPerc, setGstPerc] = useState(initialProduct?.gstPerc ?? 0);
+  const [vendorRate, setVendorRate] = useState(initialProduct ? String(initialProduct.vendorRate) : "");
+  const [actualPrice, setActualPrice] = useState(initialProduct ? String(initialProduct.actualPrice) : "");
+  const [discountedPrice, setDiscountedPrice] = useState(
+    initialProduct ? String(initialProduct.discountedPrice) : "",
+  );
+  const [gstPerc, setGstPerc] = useState(initialProduct ? String(initialProduct.gstPerc) : "");
   const [moq, setMoq] = useState(initialProduct?.moq ?? 1);
   const [description, setDescription] = useState(initialProduct?.description ?? "");
   const [imagePaths, setImagePaths] = useState<string[]>(
@@ -74,10 +91,13 @@ export function ProductFormModal({
   const wasHidden = initialProduct ? !initialProduct.isVisible : false;
   const title = isEdit ? "Edit product" : "Add new product";
 
+  // vendors comes from GET /admin/get_vendors_list, which only returns active
+  // vendors — isDeleted is always false here (a since-deleted vendor on an
+  // older product just won't resolve to a label in the picker anymore).
   const vendorOptions: SingleSelectOption[] = vendors.map((vendor) => ({
     value: String(vendor.id),
-    label: vendor.registeredName,
-    isDeleted: vendor.isDeleted,
+    label: vendor.name,
+    isDeleted: false,
   }));
 
   function updateImagePath(index: number, value: string) {
@@ -104,10 +124,10 @@ export function ProductFormModal({
       product_name: productName,
       hsn_code: hsnCode,
       vendor_id: vendorId !== null ? Number(vendorId) : null,
-      vendor_rate: vendorRate,
-      actual_price: actualPrice,
-      discounted_price: discountedPrice,
-      gst_perc: gstPerc,
+      vendor_rate: Number(vendorRate) || 0,
+      actual_price: Number(actualPrice) || 0,
+      discounted_price: Number(discountedPrice) || 0,
+      gst_perc: Number(gstPerc) || 0,
       category_ids: categoryIds.map(Number),
       moq,
       description,
@@ -139,10 +159,10 @@ export function ProductFormModal({
         productName,
         hsnCode,
         vendorId: vendorId !== null ? Number(vendorId) : 0,
-        vendorRate,
-        actualPrice,
-        discountedPrice,
-        gstPerc,
+        vendorRate: Number(vendorRate) || 0,
+        actualPrice: Number(actualPrice) || 0,
+        discountedPrice: Number(discountedPrice) || 0,
+        gstPerc: Number(gstPerc) || 0,
         categoryIds,
         moq,
         description,
@@ -262,12 +282,11 @@ export function ProductFormModal({
               </label>
               <input
                 id="vendorRate"
-                type="number"
-                min={0}
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 required
                 value={vendorRate}
-                onChange={(e) => setVendorRate(Number(e.target.value))}
+                onChange={(e) => setVendorRate(sanitizeDecimalInput(e.target.value))}
                 className={styles.formInput}
               />
             </div>
@@ -278,13 +297,11 @@ export function ProductFormModal({
               </label>
               <input
                 id="gstPerc"
-                type="number"
-                min={0}
-                max={100}
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 required
                 value={gstPerc}
-                onChange={(e) => setGstPerc(Number(e.target.value))}
+                onChange={(e) => setGstPerc(sanitizeDecimalInput(e.target.value))}
                 className={styles.formInput}
               />
             </div>
@@ -295,12 +312,11 @@ export function ProductFormModal({
               </label>
               <input
                 id="actualPrice"
-                type="number"
-                min={0}
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 required
                 value={actualPrice}
-                onChange={(e) => setActualPrice(Number(e.target.value))}
+                onChange={(e) => setActualPrice(sanitizeDecimalInput(e.target.value))}
                 className={styles.formInput}
               />
             </div>
@@ -311,12 +327,11 @@ export function ProductFormModal({
               </label>
               <input
                 id="discountedPrice"
-                type="number"
-                min={0}
-                step="0.01"
+                type="text"
+                inputMode="decimal"
                 required
                 value={discountedPrice}
-                onChange={(e) => setDiscountedPrice(Number(e.target.value))}
+                onChange={(e) => setDiscountedPrice(sanitizeDecimalInput(e.target.value))}
                 className={styles.formInput}
               />
             </div>

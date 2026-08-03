@@ -12,10 +12,9 @@ class AddCategoryResponse(BaseModel):
 
 
 class CategoryItem(BaseModel):
-    id: int
+    category_id: int
     category_name: str
     parent_id: int | None = None
-    is_parent: bool
 
 
 # Only supports deletion for now (see update_category in routes/categories.py);

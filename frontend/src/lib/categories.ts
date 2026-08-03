@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Category tree — backed by GET/POST /admin/categories/* (backend/app/api/routes/categories.py)
 // ---------------------------------------------------------------------------
-// get_categories returns a flat list (id, category_name, parent_id, is_parent);
+// get_categories returns a flat list (category_id, category_name, parent_id);
 // buildTree turns that into the nested CategoryNode shape the UI renders.
 // add_category only returns a success message (no created record), so the
 // page re-fetches the whole tree after a successful add rather than trying
@@ -16,21 +16,20 @@ export type CategoryNode = {
 
 // Shape returned by the backend's CategoryItem schema.
 type CategoryItem = {
-  id: number;
+  category_id: number;
   category_name: string;
   parent_id: number | null;
-  is_parent: boolean;
 };
 
 function buildTree(items: CategoryItem[]): CategoryNode[] {
   const nodesById = new Map<number, CategoryNode>();
   for (const item of items) {
-    nodesById.set(item.id, { id: String(item.id), name: item.category_name, children: [] });
+    nodesById.set(item.category_id, { id: String(item.category_id), name: item.category_name, children: [] });
   }
 
   const roots: CategoryNode[] = [];
   for (const item of items) {
-    const node = nodesById.get(item.id)!;
+    const node = nodesById.get(item.category_id)!;
     const parent = item.parent_id !== null ? nodesById.get(item.parent_id) : undefined;
     (parent ?? { children: roots }).children.push(node);
   }

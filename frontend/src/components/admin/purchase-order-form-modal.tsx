@@ -6,28 +6,29 @@
 // ---------------------------------------------------------------------------
 // Mirrors components/admin/vendor-form-modal.tsx (add-only for now — there's
 // no edit/delete flow yet since purchase orders aren't shown as editable in
-// this first pass). POSTs to /admin/add_purchase_order_details, which
-// doesn't exist on the backend yet — see backend/app/models/purchase_orders.py.
+// this first pass). POSTs to /admin/create_new_purchase_order (routes/orders.py).
 //
 // This is the form the vendor and product APIs feed into:
-//   - Vendor (SingleSelectDropdown) is populated from GET /admin/get_vendor_details
-//     (lib/vendors.ts — already live on the backend).
+//   - Vendor (SingleSelectDropdown) is populated from GET /admin/get_vendors_list
+//     (lib/vendors.ts — a lightweight id+name list of active vendors).
 //   - Each line item's product <select> is populated from
-//     GET /admin/get_product_details (lib/products.ts — not yet implemented),
-//     filtered down to the chosen vendor's own products. Picking a product
-//     auto-fills that line's rate from the product's vendor_rate, which the
-//     admin can still override.
-// total_amount_before_tax / total_amount_after_tax are computed from the
-// line items + tax fields rather than typed in directly.
+//     GET /admin/get_product_details (lib/products.ts), filtered down to the
+//     chosen vendor's own products, and stays disabled with no options until
+//     a vendor is picked. Picking a product auto-fills that line's rate from
+//     the product's vendor_rate, which the admin can still override.
+// total_amount_before_tax / total_amount_after_tax are computed here for
+// display, but the backend re-derives them server-side from the submitted
+// product_ids/quantities/rates rather than trusting these fields.
 //
-// Line items themselves aren't part of the PurchaseOrders payload — see the
-// comment atop lib/purchase-orders.ts for why (#purchase_summary has no FK
-// back to a purchase order yet). They only drive the computed totals here.
+// Line items are submitted as parallel product_ids/quantities/rates arrays
+// (see CreateNewPurchaseOrderRequest in backend/app/schemas/purchase_orders.py),
+// each persisted as its own #purchase_summary row tied back to the new
+// purchase order via purchase_order_id.
 import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
 import type { PurchaseOrder } from "@/lib/purchase-orders";
-import type { Vendor } from "@/lib/vendors";
+import type { VendorOption } from "@/lib/vendors";
 import type { Product } from "@/lib/products";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
 import { XMarkIcon } from "@/components/icons";
@@ -52,7 +53,7 @@ export function PurchaseOrderFormModal({
   onClose,
   onSaved,
 }: {
-  vendors: Vendor[];
+  vendors: VendorOption[];
   products: Product[];
   nextPurchaseOrderNo: number;
   onClose: () => void;
@@ -68,16 +69,20 @@ export function PurchaseOrderFormModal({
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
 
+  // vendors comes from GET /admin/get_vendors_list, which only returns active
+  // vendors, so isDeleted is always false here.
   const vendorOptions: SingleSelectOption[] = vendors.map((vendor) => ({
     value: String(vendor.id),
-    label: vendor.registeredName,
-    isDeleted: vendor.isDeleted,
+    label: vendor.name,
+    isDeleted: false,
   }));
 
-  // Once a vendor is picked, line items can only draw from that vendor's own
-  // products — a purchase order is placed with a single vendor.
+  // A purchase order is placed with a single vendor, so line items can only
+  // draw from that vendor's own products — until a vendor is picked, the
+  // product picker has nothing to offer and stays disabled (see the <select>
+  // below) rather than falling back to every product.
   const availableProducts = useMemo(
-    () => (vendorId ? products.filter((p) => p.vendorId === Number(vendorId)) : products),
+    () => (vendorId ? products.filter((p) => p.vendorId === Number(vendorId)) : []),
     [products, vendorId],
   );
   const productsById = useMemo(() => new Map(products.map((p) => [String(p.id), p])), [products]);
@@ -92,6 +97,13 @@ export function PurchaseOrderFormModal({
   function handleProductChange(index: number, productId: string) {
     const product = productsById.get(productId);
     updateLineItem(index, { productId, rate: product?.vendorRate ?? 0 });
+  }
+
+  // Switching vendors invalidates any products already picked for the old
+  // one, since the product picker is scoped to a single vendor's catalogue.
+  function handleVendorChange(newVendorId: string | null) {
+    setVendorId(newVendorId);
+    setLineItems((prev) => prev.map((item) => ({ ...item, productId: null, rate: 0 })));
   }
 
   function addLineItem() {
@@ -119,19 +131,23 @@ export function PurchaseOrderFormModal({
     setStatus("saving");
     setError(null);
 
+    // product_ids/quantities/rates are parallel arrays, one entry per line
+    // item — the backend re-derives the totals from these rather than
+    // trusting totalAmountBeforeTax/AfterTax computed here.
     const payload = {
       purchase_order_no: purchaseOrderNo,
       vendor_id: Number(vendorId),
-      total_amount_before_tax: totalAmountBeforeTax,
+      product_ids: lineItems.map((item) => Number(item.productId)),
+      quantities: lineItems.map((item) => item.quantity),
+      rates: lineItems.map((item) => item.rate),
       sgst_amount: sgstAmount || null,
       cgst_amount: cgstAmount || null,
       igst_amount: igstAmount || null,
-      total_amount_after_tax: totalAmountAfterTax,
       description,
     };
 
     try {
-      const response = await apiFetch("/admin/add_purchase_order_details", {
+      const response = await apiFetch("/admin/create_new_purchase_order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -204,7 +220,7 @@ export function PurchaseOrderFormModal({
               placeholder="Select a vendor"
               options={vendorOptions}
               selectedValue={vendorId}
-              onChange={setVendorId}
+              onChange={handleVendorChange}
             />
           </div>
 
@@ -229,11 +245,13 @@ export function PurchaseOrderFormModal({
                 <select
                   value={item.productId ?? ""}
                   onChange={(e) => handleProductChange(index, e.target.value)}
+                  required
+                  disabled={!vendorId}
                   aria-label={`Line ${index + 1} product`}
                   className={styles.formInput}
                 >
                   <option value="" disabled>
-                    Select a product…
+                    {vendorId ? "Select a product…" : "Select a vendor first"}
                   </option>
                   {availableProducts.map((product) => (
                     <option key={product.id} value={String(product.id)}>

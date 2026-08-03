@@ -4,6 +4,7 @@ from beanie import Document
 
 class PurchaseSummary(Document):
     id: int
+    purchase_order_id: int  # FK -> PurchaseOrders.id
     product_id: int  # FK -> ProductDetails.id
     quantity: int
     rate: float

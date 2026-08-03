@@ -66,10 +66,45 @@ async def add_customer_details(
     return AddCustomerDetailsResponse(message="customer details added successfully")
 
 
-@router.get("/get_customer_details", response_model=list[CustomerDetailItem])
+async def _get_customer_detail_by_mail(mail: str) -> CustomerDetailItem:
+    # Joins all three tables for a single customer: User (login/password),
+    # CustomerDetails (profile), CustomerPocDetails (contacts) — keyed by
+    # email since that's the only stable identifier the frontend has (there's
+    # no customer id exposed to it).
+    user = await User.find_one(User.mail == mail)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="customer not found")
+
+    customer = await CustomerDetails.find_one(CustomerDetails.user_id == user.id)
+    if customer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="customer not found")
+
+    pocs = await CustomerPocDetails.find(CustomerPocDetails.customer_id == customer.id).to_list()
+
+    return CustomerDetailItem(
+        mail=user.mail,
+        password=user.password,
+        registered_name=customer.registered_name,
+        company_or_department=customer.company_or_department,
+        address=customer.address,
+        company_gst=customer.company_gst,
+        points=customer.points,
+        is_deleted=customer.is_deleted,
+        contact_name=[poc.contact_name for poc in pocs],
+        contact_phone=[poc.contact_phone for poc in pocs],
+    )
+
+
+@router.get("/get_customer_details", response_model=list[CustomerDetailItem] | CustomerDetailItem)
 async def get_customer_details(
+    mail: str | None = None,
     _: User | None = Depends(require_admin),
-) -> list[CustomerDetailItem]:
+) -> list[CustomerDetailItem] | CustomerDetailItem:
+    # ?mail=... looks up a single customer (404 if not found); omitted, this
+    # keeps returning every customer, as the /admin/clients table relies on.
+    if mail is not None:
+        return await _get_customer_detail_by_mail(mail)
+
     customers = await CustomerDetails.find_all().to_list()
     if not customers:
         return []

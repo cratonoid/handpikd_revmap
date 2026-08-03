@@ -7,11 +7,12 @@
 //
 // PurchaseOrders itself has no line-item field — product/quantity/rate rows
 // belong to the separate #purchase_summary collection
-// (backend/app/models/purchase_summary.py), which currently has no FK back
-// to a purchase order. Until that link exists, the form's line items
-// (purchase-order-form-modal.tsx) stay client-side only — used to compute
-// total_amount_before_tax — rather than being submitted or persisted
-// individually.
+// (backend/app/models/purchase_summary.py), linked back via its
+// purchase_order_id FK. Those rows are submitted by
+// purchase-order-form-modal.tsx as parallel product_ids/quantities/rates
+// arrays to POST /admin/create_new_purchase_order (routes/orders.py), not
+// through this file — there's no GET endpoint for purchase order line items
+// yet, only for the orders themselves (fetchPurchaseOrders below).
 import { apiFetch } from "@/lib/api";
 
 export type PurchaseOrder = {

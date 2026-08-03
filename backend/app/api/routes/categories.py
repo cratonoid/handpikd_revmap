@@ -24,10 +24,9 @@ async def get_categories(
     categories = await Category.find_all().to_list()
     return [
         CategoryItem(
-            id=category.id,
+            category_id=category.id,
             category_name=category.category_name,
             parent_id=category.parent_id,
-            is_parent=category.is_parent,
         )
         for category in categories
     ]

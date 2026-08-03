@@ -9,11 +9,17 @@
 // vendor and product lists the "+ New purchase order" form needs to populate
 // its vendor picker and per-line product picker (components/admin/
 // purchase-order-form-modal.tsx).
+//
+// Two separate vendor fetches: the full get_vendor_details list (`vendors`)
+// resolves the table's vendor column, including for orders whose vendor has
+// since been soft-deleted; the lightweight get_vendors_list
+// (`vendorOptions`) feeds the popup's picker, which should only offer active
+// vendors.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { PurchaseOrderFormModal } from "@/components/admin/purchase-order-form-modal";
 import { fetchPurchaseOrders, type PurchaseOrder } from "@/lib/purchase-orders";
-import { fetchVendors, type Vendor } from "@/lib/vendors";
+import { fetchVendors, fetchVendorsList, type Vendor, type VendorOption } from "@/lib/vendors";
 import { fetchProducts, type Product } from "@/lib/products";
 import styles from "@/styles/dashboard.module.css";
 
@@ -22,6 +28,7 @@ type LoadState = "loading" | "loaded";
 export function PurchaseOrdersTab() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [vendorOptions, setVendorOptions] = useState<VendorOption[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalOpen, setModalOpen] = useState(false);
@@ -31,11 +38,12 @@ export function PurchaseOrdersTab() {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([fetchPurchaseOrders(), fetchVendors(), fetchProducts()])
-      .then(([orderData, vendorData, productData]) => {
+    Promise.all([fetchPurchaseOrders(), fetchVendors(), fetchVendorsList(), fetchProducts()])
+      .then(([orderData, vendorData, vendorOptionData, productData]) => {
         if (cancelled) return;
         setOrders(orderData);
         setVendors(vendorData);
+        setVendorOptions(vendorOptionData);
         setProducts(productData);
         setLoadState("loaded");
       })
@@ -100,7 +108,7 @@ export function PurchaseOrdersTab() {
 
       {modalOpen && (
         <PurchaseOrderFormModal
-          vendors={vendors}
+          vendors={vendorOptions}
           products={products}
           nextPurchaseOrderNo={nextPurchaseOrderNo}
           onClose={() => setModalOpen(false)}

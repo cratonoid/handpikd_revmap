@@ -38,14 +38,8 @@ type CustomerDetailItem = {
   contact_phone: string[];
 };
 
-export async function fetchCustomers(): Promise<Customer[]> {
-  const response = await apiFetch("/admin/get_customer_details");
-  if (!response.ok) {
-    throw new Error("Failed to load customers");
-  }
-
-  const items: CustomerDetailItem[] = await response.json();
-  return items.map((item) => ({
+function toCustomer(item: CustomerDetailItem): Customer {
+  return {
     mail: item.mail,
     registeredName: item.registered_name,
     companyOrDepartment: item.company_or_department,
@@ -57,5 +51,28 @@ export async function fetchCustomers(): Promise<Customer[]> {
       name,
       phone: item.contact_phone[index] ?? "",
     })),
-  }));
+  };
+}
+
+export async function fetchCustomers(): Promise<Customer[]> {
+  const response = await apiFetch("/admin/get_customer_details");
+  if (!response.ok) {
+    throw new Error("Failed to load customers");
+  }
+
+  const items: CustomerDetailItem[] = await response.json();
+  return items.map(toCustomer);
+}
+
+// Single-customer lookup by email — GET /admin/get_customer_details?mail=...
+// joins User + CustomerDetails + CustomerPocDetails for that one customer and
+// returns a single object (not a list). 404s if no customer has that email.
+export async function fetchCustomerDetail(mail: string): Promise<Customer> {
+  const response = await apiFetch(`/admin/get_customer_details?mail=${encodeURIComponent(mail)}`);
+  if (!response.ok) {
+    throw new Error("Failed to load customer");
+  }
+
+  const item: CustomerDetailItem = await response.json();
+  return toCustomer(item);
 }

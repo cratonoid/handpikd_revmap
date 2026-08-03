@@ -44,6 +44,29 @@ type VendorDetailItem = {
   contact_phone: string[];
 };
 
+export type VendorOption = {
+  id: number;
+  name: string;
+};
+
+type VendorListItem = {
+  vendor_id: number;
+  vendor_name: string;
+};
+
+// Lightweight id+name list for vendor-picker dropdowns (product and purchase
+// order popups) — GET /admin/get_vendors_list only returns active vendors,
+// unlike fetchVendors's full get_vendor_details.
+export async function fetchVendorsList(): Promise<VendorOption[]> {
+  const response = await apiFetch("/admin/get_vendors_list");
+  if (!response.ok) {
+    throw new Error("Failed to load vendors");
+  }
+
+  const items: VendorListItem[] = await response.json();
+  return items.map((item) => ({ id: item.vendor_id, name: item.vendor_name }));
+}
+
 export async function fetchVendors(): Promise<Vendor[]> {
   const response = await apiFetch("/admin/get_vendor_details");
   if (!response.ok) {

@@ -13,6 +13,7 @@ from app.schemas.vendors import (
     UpdateVendorDetailsRequest,
     UpdateVendorDetailsResponse,
     VendorDetailItem,
+    VendorListItem,
 )
 from app.services.counters import get_next_id
 from app.services.qr import InvalidQrCodeError, decode_upi_qr
@@ -42,6 +43,18 @@ async def add_vendor_details(
         await poc.insert()
 
     return AddVendorDetailsResponse(message="vendor successfully added")
+
+
+@router.get("/get_vendors_list", response_model=list[VendorListItem])
+async def get_vendors_list(
+    _: User | None = Depends(require_admin),
+) -> list[VendorListItem]:
+    # Lightweight id+name list for vendor-picker dropdowns (e.g. the product
+    # and purchase order popups) — unlike get_vendor_details, this excludes
+    # soft-deleted vendors and skips the address/GST/POC lookups those popups
+    # don't need.
+    vendors = await VendorDetails.find(VendorDetails.is_deleted == False).to_list()
+    return [VendorListItem(vendor_id=vendor.id, vendor_name=vendor.registered_name) for vendor in vendors]
 
 
 @router.get("/get_vendor_details", response_model=list[VendorDetailItem])
