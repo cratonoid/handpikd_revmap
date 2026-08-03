@@ -1159,6 +1159,84 @@
 }
 
 /* -----------------------------------------------------------------------
+   Purchase order line items + totals
+   (components/admin/purchase-order-form-modal.tsx)
+   ----------------------------------------------------------------------- */
+
+.lineItemsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.lineItemsHeaderRow {
+  display: none;
+  grid-template-columns: 2fr 1fr 1fr 1fr auto;
+  gap: 0.5rem;
+  padding-inline: 1rem;
+}
+
+@media (min-width: 640px) {
+  .lineItemsHeaderRow {
+    display: grid;
+  }
+}
+
+.lineItemRow {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr;
+  align-items: center;
+}
+
+@media (min-width: 640px) {
+  .lineItemRow {
+    grid-template-columns: 2fr 1fr 1fr 1fr auto;
+  }
+}
+
+.totalsGrid {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+@media (min-width: 560px) {
+  .totalsGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.totalsRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 1.5rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 1rem;
+}
+
+.totalsRowItem {
+  text-align: right;
+}
+
+.totalsRowLabel {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink);
+}
+
+.totalsRowValue {
+  margin-top: 0.15rem;
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+/* -----------------------------------------------------------------------
    Module placeholder (components/dashboard-placeholder.tsx)
    ----------------------------------------------------------------------- */
 
