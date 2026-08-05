@@ -18,6 +18,7 @@ from app.schemas.purchase_orders import (
     CreateNewPurchaseOrderRequest,
     CreateNewPurchaseOrderResponse,
     PurchaseOrderDetailItem,
+    PurchaseOrderListItem,
     UpdatePurchaseOrderDetailsRequest,
     UpdatePurchaseOrderDetailsResponse,
 )
@@ -43,12 +44,13 @@ async def _validate_products_belong_to_vendor(product_ids: list[int], vendor_id:
 def _compute_totals(
     quantities: list[int],
     rates: list[float],
-    sgst_amount: float | None,
-    cgst_amount: float | None,
-    igst_amount: float | None,
+    sgst_perc: float | None,
+    cgst_perc: float | None,
+    igst_perc: float | None,
 ) -> tuple[float, float]:
     total_before_tax = sum(quantity * rate for quantity, rate in zip(quantities, rates))
-    total_after_tax = total_before_tax + (sgst_amount or 0) + (cgst_amount or 0) + (igst_amount or 0)
+    tax_perc = (sgst_perc or 0) + (cgst_perc or 0) + (igst_perc or 0)
+    total_after_tax = total_before_tax * (1 + tax_perc / 100)
     return total_before_tax, total_after_tax
 
 
@@ -83,7 +85,7 @@ async def create_new_purchase_order(
 
     await _validate_products_belong_to_vendor(payload.product_ids, payload.vendor_id)
     total_amount_before_tax, total_amount_after_tax = _compute_totals(
-        payload.quantities, payload.rates, payload.sgst_amount, payload.cgst_amount, payload.igst_amount
+        payload.quantities, payload.rates, payload.sgst_perc, payload.cgst_perc, payload.igst_perc
     )
 
     purchase_order_id = await get_next_id(PurchaseOrderIdCounter, "next_purchase_order_id", PurchaseOrders)
@@ -92,9 +94,9 @@ async def create_new_purchase_order(
         purchase_order_no=payload.purchase_order_no,
         vendor_id=payload.vendor_id,
         total_amount_before_tax=total_amount_before_tax,
-        sgst_amount=payload.sgst_amount,
-        cgst_amount=payload.cgst_amount,
-        igst_amount=payload.igst_amount,
+        sgst_perc=payload.sgst_perc,
+        cgst_perc=payload.cgst_perc,
+        igst_perc=payload.igst_perc,
         total_amount_after_tax=total_amount_after_tax,
         description=payload.description,
     )
@@ -103,6 +105,32 @@ async def create_new_purchase_order(
     await _insert_purchase_summary_rows(purchase_order_id, payload.product_ids, payload.quantities, payload.rates)
 
     return CreateNewPurchaseOrderResponse(message="purchase order successfully created")
+
+
+@router.get("/get_purchase_order_list", response_model=list[PurchaseOrderListItem])
+async def get_purchase_order_list(
+    _: User | None = Depends(require_admin),
+) -> list[PurchaseOrderListItem]:
+    # Lightweight id+PO no.+vendor name list for the sales order form's
+    # "related purchase orders" multiselect. PurchaseOrders has no
+    # is_deleted, so unlike get_vendors_list/get_customer_list this covers
+    # every purchase order.
+    orders = await PurchaseOrders.find_all().to_list()
+    if not orders:
+        return []
+
+    vendor_ids = [order.vendor_id for order in orders]
+    vendors = await VendorDetails.find(In(VendorDetails.id, vendor_ids)).to_list()
+    vendor_names_by_id = {vendor.id: vendor.registered_name for vendor in vendors}
+
+    return [
+        PurchaseOrderListItem(
+            id=order.id,
+            purchase_order_no=order.purchase_order_no,
+            vendor_name=vendor_names_by_id.get(order.vendor_id, "—"),
+        )
+        for order in orders
+    ]
 
 
 @router.get("/get_purchase_order_details", response_model=list[PurchaseOrderDetailItem])
@@ -131,9 +159,9 @@ async def get_purchase_order_details(
                 quantities=[item.quantity for item in line_items],
                 rates=[item.rate for item in line_items],
                 total_amount_before_tax=order.total_amount_before_tax,
-                sgst_amount=order.sgst_amount,
-                cgst_amount=order.cgst_amount,
-                igst_amount=order.igst_amount,
+                sgst_perc=order.sgst_perc,
+                cgst_perc=order.cgst_perc,
+                igst_perc=order.igst_perc,
                 total_amount_after_tax=order.total_amount_after_tax,
                 description=order.description,
             )
@@ -163,15 +191,15 @@ async def update_purchase_order_details(
 
     await _validate_products_belong_to_vendor(payload.product_ids, payload.vendor_id)
     total_amount_before_tax, total_amount_after_tax = _compute_totals(
-        payload.quantities, payload.rates, payload.sgst_amount, payload.cgst_amount, payload.igst_amount
+        payload.quantities, payload.rates, payload.sgst_perc, payload.cgst_perc, payload.igst_perc
     )
 
     purchase_order.purchase_order_no = payload.purchase_order_no
     purchase_order.vendor_id = payload.vendor_id
     purchase_order.total_amount_before_tax = total_amount_before_tax
-    purchase_order.sgst_amount = payload.sgst_amount
-    purchase_order.cgst_amount = payload.cgst_amount
-    purchase_order.igst_amount = payload.igst_amount
+    purchase_order.sgst_perc = payload.sgst_perc
+    purchase_order.cgst_perc = payload.cgst_perc
+    purchase_order.igst_perc = payload.igst_perc
     purchase_order.total_amount_after_tax = total_amount_after_tax
     purchase_order.description = payload.description
     await purchase_order.save()

@@ -29,6 +29,12 @@ class ConvertVendorQrResponse(BaseModel):
     # This is what gets stored in VendorDetails.qr_code — see routes/vendors.py's
     # convert_vendor_qr.
     qr_code: str
+    # "QR code added" / "QR code updated" — derived from whether the vendor
+    # named by the request's optional vendor_id already had a qr_code set.
+    # Purely informational for the popup; the decode itself never writes to
+    # the database (that happens later via add_vendor_details/
+    # update_vendor_details).
+    message: str
 
 
 class VendorListItem(BaseModel):

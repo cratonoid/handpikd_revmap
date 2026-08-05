@@ -24,8 +24,10 @@ from app.models import (
     PurchaseOrders,
     PurchaseSummary,
     PurchaseSummaryIdCounter,
+    SalesOrderIdCounter,
     SalesOrders,
     SalesSummary,
+    SalesSummaryIdCounter,
     User,
     UserIdCounter,
     VendorDetails,
@@ -36,11 +38,29 @@ from app.models import (
 
 client: AsyncMongoClient | None = None
 
+# Fixed seed rows for the sales order lifecycle — new sales orders default to
+# "Pending" (looked up by name in routes/sales_orders.py) and the edit form's
+# status dropdown is populated from this master list via get_order_status_list.
+_ORDER_STATUS_SEED = [
+    (1, "Pending"),
+    (2, "Confirmed"),
+    (3, "Shipped"),
+    (4, "Delivered"),
+    (5, "Cancelled"),
+]
+
 
 def get_db() -> AsyncDatabase:
     if client is None:
         raise RuntimeError("MongoDB client is not connected")
     return client[settings.mongodb_db_name]
+
+
+async def _seed_order_statuses() -> None:
+    if await OrderStatusMaster.find_all().count() > 0:
+        return
+    for status_id, status_name in _ORDER_STATUS_SEED:
+        await OrderStatusMaster(id=status_id, status_name=status_name).insert()
 
 
 async def connect_to_mongo() -> None:
@@ -71,13 +91,16 @@ async def connect_to_mongo() -> None:
             OrderStatusMaster,
             OrderNoCounterMaster,
             SalesOrders,
+            SalesOrderIdCounter,
             SalesSummary,
+            SalesSummaryIdCounter,
             InvoiceNoCounterMaster,
             InvoiceDetails,
             Category,
             CategoryIdCounter,
         ],
     )
+    await _seed_order_statuses()
 
 
 async def close_mongo_connection() -> None:

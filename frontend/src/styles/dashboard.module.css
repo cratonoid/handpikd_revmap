@@ -446,6 +446,16 @@
   color: var(--color-ink);
 }
 
+/* Marks a required field's label — a plain text "*" would inherit the
+   label's uppercase/letter-spacing styling oddly, so this resets weight and
+   spacing back to normal for just the asterisk. */
+.requiredMark {
+  margin-left: 0.2rem;
+  font-weight: 700;
+  letter-spacing: normal;
+  color: var(--color-red);
+}
+
 .formInput {
   width: 100%;
   border-radius: 0.75rem;
@@ -515,6 +525,41 @@
   border: 1px solid var(--color-border);
   background-color: var(--color-cream);
   object-fit: contain;
+}
+
+/* Stands in for the file input's native "Choose File" button, whose label
+   text browsers don't let you override — the real <input type="file"> is
+   visually hidden (sr-only) and triggered via this label's htmlFor. */
+.qrFileButton {
+  display: inline-flex;
+  width: fit-content;
+  cursor: pointer;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+  transition: border-color 0.2s;
+}
+
+.qrFileButton:hover {
+  border-color: var(--color-charcoal);
+}
+
+.qrValueRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.qrValueRow .pageSubtext {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .contactsSection {
@@ -880,7 +925,12 @@
   max-height: 22rem;
   overflow-y: auto;
   overflow-x: auto;
-  padding: 0.75rem 1.25rem 1rem 2.1rem;
+  /* Lands flush under the parent row's name text: .tableCellTight's own
+     left padding (0.5rem) + the chevron's reserved width (h-3.5 = 0.875rem)
+     + its gap (.tableCategoryName's 0.35rem). This cell now shares the same
+     table column as the name cell (see categories-page-client.tsx), so no
+     other offset is needed. */
+  padding: 0.75rem 1.25rem 1rem 1.725rem;
   background-color: color-mix(in srgb, var(--color-cream-deep) 12%, transparent);
   border-bottom: 1px solid var(--color-border);
 }
@@ -1132,14 +1182,18 @@
 
 .imageRow {
   display: grid;
-  grid-template-columns: 2.75rem 1fr auto;
+  grid-template-columns: 6rem 1fr auto;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.75rem;
 }
 
+/* Fixed 1:1 box regardless of the source image's own dimensions —
+   object-fit: cover crops/resizes it to fill the square instead of
+   stretching, so a non-square pasted URL still previews as a square. */
 .imageThumb {
-  height: 2.75rem;
-  width: 2.75rem;
+  height: 6rem;
+  width: 6rem;
+  aspect-ratio: 1 / 1;
   border-radius: 0.5rem;
   border: 1px solid var(--color-border);
   object-fit: cover;
@@ -1148,8 +1202,9 @@
 
 .imageThumbEmpty {
   display: flex;
-  height: 2.75rem;
-  width: 2.75rem;
+  height: 6rem;
+  width: 6rem;
+  aspect-ratio: 1 / 1;
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
@@ -1171,9 +1226,8 @@
 
 .lineItemsHeaderRow {
   display: none;
-  grid-template-columns: 2fr 1fr 1fr 1fr auto;
+  grid-template-columns: 2fr 1fr 1fr 0.8fr 1fr 2.75rem;
   gap: 0.5rem;
-  padding-inline: 1rem;
 }
 
 @media (min-width: 640px) {
@@ -1191,7 +1245,40 @@
 
 @media (min-width: 640px) {
   .lineItemRow {
-    grid-template-columns: 2fr 1fr 1fr 1fr auto;
+    grid-template-columns: 2fr 1fr 1fr 0.8fr 1fr 2.75rem;
+  }
+}
+
+/* -----------------------------------------------------------------------
+   Sales order line items
+   (components/admin/sales-order-form-modal.tsx)
+   One extra pair of columns vs. purchase orders' .lineItemRow (tax % + tax
+   amount), since sales order tax is captured per line item rather than as a
+   flat order-level SGST/CGST/IGST amount.
+   ----------------------------------------------------------------------- */
+
+.salesLineItemsHeaderRow {
+  display: none;
+  grid-template-columns: 2fr 0.8fr 0.9fr 0.7fr 0.9fr 0.9fr 2.75rem;
+  gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .salesLineItemsHeaderRow {
+    display: grid;
+  }
+}
+
+.salesLineItemRow {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr;
+  align-items: center;
+}
+
+@media (min-width: 640px) {
+  .salesLineItemRow {
+    grid-template-columns: 2fr 0.8fr 0.9fr 0.7fr 0.9fr 0.9fr 2.75rem;
   }
 }
 

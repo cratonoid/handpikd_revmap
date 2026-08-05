@@ -134,6 +134,7 @@ export function VendorsPageClient() {
         <VendorFormModal
           mode={modalState.mode}
           initialVendor={modalState.mode === "edit" ? modalState.vendor : undefined}
+          vendors={vendors}
           onClose={() => setModalState(null)}
           onSaved={handleSaved}
         />

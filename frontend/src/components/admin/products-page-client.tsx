@@ -26,7 +26,13 @@ import { Button } from "@/components/button";
 import { ProductFormModal } from "@/components/admin/product-form-modal";
 import { fetchProducts, type Product } from "@/lib/products";
 import { fetchVendors, fetchVendorsList, type Vendor, type VendorOption } from "@/lib/vendors";
-import { fetchCategories, flattenCategories, namesForCategoryIds, type FlatCategory } from "@/lib/categories";
+import {
+  descendantIdsById,
+  fetchCategories,
+  flattenCategories,
+  namesForCategoryIds,
+  type FlatCategory,
+} from "@/lib/categories";
 import { CubeIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
@@ -39,6 +45,7 @@ export function ProductsPageClient() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [vendorOptions, setVendorOptions] = useState<VendorOption[]>([]);
   const [flatCategories, setFlatCategories] = useState<FlatCategory[]>([]);
+  const [categoryDescendants, setCategoryDescendants] = useState<Map<string, string[]>>(new Map());
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
   const [view, setView] = useState<View>("active");
@@ -56,6 +63,7 @@ export function ProductsPageClient() {
         setVendors(vendorData);
         setVendorOptions(vendorOptionData);
         setFlatCategories(flattenCategories(categoryTree));
+        setCategoryDescendants(descendantIdsById(categoryTree));
         setLoadState("loaded");
       })
       .catch(() => {
@@ -81,7 +89,12 @@ export function ProductsPageClient() {
     setModalState(null);
   }
 
-  const categoryOptions = flatCategories.map((c) => ({ value: c.id, label: c.name, depth: c.depth }));
+  const categoryOptions = flatCategories.map((c) => ({
+    value: c.id,
+    label: c.name,
+    depth: c.depth,
+    descendantIds: categoryDescendants.get(c.id) ?? [],
+  }));
 
   return (
     <>

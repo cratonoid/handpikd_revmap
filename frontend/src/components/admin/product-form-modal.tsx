@@ -27,7 +27,8 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
-import type { Product } from "@/lib/products";
+import { GST_PERCENT_OPTIONS } from "@/lib/gst";
+import { deleteProductImage, type Product } from "@/lib/products";
 import type { VendorOption } from "@/lib/vendors";
 import { MultiSelectDropdown, type MultiSelectOption } from "@/components/admin/multi-select-dropdown";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
@@ -72,6 +73,11 @@ export function ProductFormModal({
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // Which image row is mid-delete (disables its button) and any error from
+  // that request — separate from the form's own error/status since deleting
+  // an image happens immediately, independent of the Save button.
+  const [deletingImageIndex, setDeletingImageIndex] = useState<number | null>(null);
+  const [imageDeleteError, setImageDeleteError] = useState<string | null>(null);
 
   const isEdit = mode === "edit";
   const wasHidden = initialProduct ? !initialProduct.isVisible : false;
@@ -94,8 +100,31 @@ export function ProductFormModal({
     setImagePaths((prev) => [...prev, ""]);
   }
 
-  function removeImageRow(index: number) {
-    setImagePaths((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
+  // If this row's path was already persisted (part of the product's saved
+  // imagePaths when the form opened), delete it from the backend right away
+  // via delete_product_image rather than waiting for a full form Save — a
+  // brand-new, not-yet-saved row just comes out of local state, since
+  // there's nothing to delete server-side yet.
+  async function removeImageRow(index: number) {
+    if (imagePaths.length === 1) return;
+
+    const path = imagePaths[index].trim();
+    const wasPersisted = isEdit && initialProduct != null && initialProduct.imagePaths.includes(path);
+
+    if (wasPersisted && initialProduct) {
+      setDeletingImageIndex(index);
+      setImageDeleteError(null);
+      try {
+        await deleteProductImage(initialProduct.id, path);
+      } catch {
+        setImageDeleteError("Couldn't delete image. Please try again.");
+        setDeletingImageIndex(null);
+        return;
+      }
+      setDeletingImageIndex(null);
+    }
+
+    setImagePaths((prev) => prev.filter((_, i) => i !== index));
   }
 
   // Shared by the normal Save button and the delete/restore action below —
@@ -205,7 +234,7 @@ export function ProductFormModal({
           <div className={styles.formGrid}>
             <div className={styles.formGridFullSpan}>
               <label htmlFor="productName" className={styles.formLabel}>
-                Product name
+                Product name<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="productName"
@@ -219,7 +248,7 @@ export function ProductFormModal({
 
             <div>
               <label htmlFor="hsnCode" className={styles.formLabel}>
-                HSN code
+                HSN code<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="hsnCode"
@@ -233,7 +262,7 @@ export function ProductFormModal({
 
             <div>
               <label htmlFor="moq" className={styles.formLabel}>
-                MOQ (minimum order qty)
+                MOQ (minimum order qty)<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="moq"
@@ -249,6 +278,7 @@ export function ProductFormModal({
             <SingleSelectDropdown
               label="Vendor"
               placeholder="Select a vendor"
+              required
               options={vendorOptions}
               selectedValue={vendorId}
               onChange={setVendorId}
@@ -264,7 +294,7 @@ export function ProductFormModal({
 
             <div>
               <label htmlFor="vendorRate" className={styles.formLabel}>
-                Vendor rate
+                Vendor rate<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="vendorRate"
@@ -279,22 +309,30 @@ export function ProductFormModal({
 
             <div>
               <label htmlFor="gstPerc" className={styles.formLabel}>
-                GST %
+                GST %<span className={styles.requiredMark}>*</span>
               </label>
-              <input
+              <select
                 id="gstPerc"
-                type="text"
-                inputMode="decimal"
                 required
                 value={gstPerc}
-                onChange={(e) => setGstPerc(sanitizeDecimalInput(e.target.value))}
+                onChange={(e) => setGstPerc(e.target.value)}
                 className={styles.formInput}
-              />
+              >
+                <option value="" disabled>
+                  Select GST %
+                </option>
+                {/* Hardcoded placeholder slabs — see lib/gst.ts */}
+                {GST_PERCENT_OPTIONS.map((percent) => (
+                  <option key={percent} value={percent}>
+                    {percent}%
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
               <label htmlFor="actualPrice" className={styles.formLabel}>
-                Actual price
+                Actual price<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="actualPrice"
@@ -309,7 +347,7 @@ export function ProductFormModal({
 
             <div>
               <label htmlFor="discountedPrice" className={styles.formLabel}>
-                Discounted price
+                Discounted price<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="discountedPrice"
@@ -324,7 +362,7 @@ export function ProductFormModal({
 
             <div className={styles.formGridFullSpan}>
               <label htmlFor="description" className={styles.formLabel}>
-                Description
+                Description<span className={styles.requiredMark}>*</span>
               </label>
               <textarea
                 id="description"
@@ -359,7 +397,7 @@ export function ProductFormModal({
                   />
                 ) : (
                   <div className={styles.imageThumbEmpty}>
-                    <CubeIcon className="h-4 w-4" />
+                    <CubeIcon className="h-8 w-8" />
                   </div>
                 )}
                 <input
@@ -372,8 +410,8 @@ export function ProductFormModal({
                 />
                 <button
                   type="button"
-                  onClick={() => removeImageRow(index)}
-                  disabled={imagePaths.length === 1}
+                  onClick={() => void removeImageRow(index)}
+                  disabled={imagePaths.length === 1 || deletingImageIndex === index}
                   aria-label={`Remove image ${index + 1}`}
                   className={styles.removeContactButton}
                 >
@@ -381,6 +419,12 @@ export function ProductFormModal({
                 </button>
               </div>
             ))}
+
+            {imageDeleteError && (
+              <p role="alert" aria-live="polite" className={styles.formError}>
+                {imageDeleteError}
+              </p>
+            )}
           </div>
 
           {error && (

@@ -39,12 +39,18 @@ type Status = "idle" | "saving";
 export function VendorFormModal({
   mode,
   initialVendor,
+  vendors,
   onClose,
   onSaved,
 }: {
   mode: "add" | "edit";
   // Only present in "edit" mode — pre-fills every field.
   initialVendor?: Vendor;
+  // Every other vendor (from GET /admin/get_vendor_details), used to catch a
+  // freshly-scanned QR code that's already assigned elsewhere — two vendors
+  // sharing one UPI QR would silently route one of them's payments to the
+  // other.
+  vendors: Vendor[];
   onClose: () => void;
   onSaved: (vendor: Vendor) => void;
 }) {
@@ -63,6 +69,10 @@ export function VendorFormModal({
   const [qrPreviewUrl, setQrPreviewUrl] = useState<string | null>(null);
   const [qrStatus, setQrStatus] = useState<"idle" | "converting">("idle");
   const [qrError, setQrError] = useState<string | null>(null);
+  // "QR code added"/"QR code updated", from convert_vendor_qr's response —
+  // see lib/vendors.ts. Purely a confirmation message; cleared on error/removal
+  // and re-set on every successful decode.
+  const [qrMessage, setQrMessage] = useState<string | null>(null);
 
   const isEdit = mode === "edit";
   const wasDeleted = initialVendor?.isDeleted ?? false;
@@ -76,16 +86,34 @@ export function VendorFormModal({
     setQrPreviewUrl(URL.createObjectURL(file));
     setQrStatus("converting");
     setQrError(null);
+    setQrMessage(null);
 
     try {
-      const decoded = await convertVendorQr(file);
+      const { qrCode: decoded, message } = await convertVendorQr(file, initialVendor?.id);
+
+      const duplicate = vendors.find((v) => v.id !== initialVendor?.id && v.qrCode === decoded);
+      if (duplicate) {
+        setQrError(`This QR code is already used by ${duplicate.registeredName}.`);
+        setQrCode("");
+        return;
+      }
+
       setQrCode(decoded);
+      setQrMessage(message);
     } catch (err) {
       setQrError(err instanceof Error ? err.message : "Failed to read QR code");
       setQrCode("");
     } finally {
       setQrStatus("idle");
     }
+  }
+
+  function removeQrCode() {
+    setQrCode("");
+    setQrPreviewUrl(null);
+    setQrError(null);
+    setQrStatus("idle");
+    setQrMessage(null);
   }
 
   function updatePoc(index: number, field: keyof VendorPoc, value: string) {
@@ -193,7 +221,7 @@ export function VendorFormModal({
           <div className={styles.formGrid}>
             <div>
               <label htmlFor="registeredName" className={styles.formLabel}>
-                Registered name
+                Registered name<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="registeredName"
@@ -207,7 +235,7 @@ export function VendorFormModal({
 
             <div>
               <label htmlFor="gst" className={styles.formLabel}>
-                GST number
+                GST number<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="gst"
@@ -221,7 +249,7 @@ export function VendorFormModal({
 
             <div className={styles.formGridFullSpan}>
               <label htmlFor="address" className={styles.formLabel}>
-                Address
+                Address<span className={styles.requiredMark}>*</span>
               </label>
               <textarea
                 id="address"
@@ -235,7 +263,7 @@ export function VendorFormModal({
 
             <div className={styles.formGridFullSpan}>
               <label htmlFor="description" className={styles.formLabel}>
-                Description
+                Description<span className={styles.requiredMark}>*</span>
               </label>
               <textarea
                 id="description"
@@ -257,12 +285,15 @@ export function VendorFormModal({
                   <img src={qrPreviewUrl} alt="Uploaded QR code" className={styles.qrPreview} />
                 )}
                 <div className={styles.qrUploadControls}>
+                  <label htmlFor="qrCodeUpload" className={styles.qrFileButton}>
+                    {qrCode ? "Replace QR" : "Choose file"}
+                  </label>
                   <input
                     id="qrCodeUpload"
                     type="file"
                     accept="image/*"
                     onChange={handleQrFileChange}
-                    className={styles.formInput}
+                    className="sr-only"
                   />
                   {qrStatus === "converting" && <p className={styles.pageSubtext}>Reading QR code…</p>}
                   {qrError && (
@@ -271,9 +302,19 @@ export function VendorFormModal({
                     </p>
                   )}
                   {qrCode && qrStatus === "idle" && !qrError && (
-                    <p className={styles.pageSubtext} title={qrCode}>
-                      {qrCode}
-                    </p>
+                    <div className={styles.qrValueRow}>
+                      <p className={styles.pageSubtext} title={qrCode}>
+                        {qrMessage && `${qrMessage} — `}Value: {qrCode}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={removeQrCode}
+                        aria-label="Remove QR code"
+                        className={styles.removeContactButton}
+                      >
+                        <XMarkIcon className="h-4 w-4" />
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -282,7 +323,9 @@ export function VendorFormModal({
 
           <div className={styles.contactsSection}>
             <div className={styles.contactsHeader}>
-              <span className={styles.formLabel}>Points of contact</span>
+              <span className={styles.formLabel}>
+                Points of contact<span className={styles.requiredMark}>*</span>
+              </span>
               <button type="button" onClick={addPocRow} className={styles.addContactButton}>
                 + Add contact
               </button>

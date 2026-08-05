@@ -89,12 +89,25 @@ export async function fetchVendors(): Promise<Vendor[]> {
   }));
 }
 
+export type ConvertedQr = {
+  qrCode: string;
+  // "QR code added" / "QR code updated" — depends on whether `vendorId`
+  // already had a qr_code set, so it's only meaningful when a vendorId was
+  // passed (i.e. editing an existing vendor).
+  message: string;
+};
+
 // Uploads a vendor's QR code image and returns its decoded standard UPI
 // string. Rejects (with the backend's detail message) if the image has no
-// QR code, or the QR code isn't a "upi://pay?..." payment link.
-export async function convertVendorQr(file: File): Promise<string> {
+// QR code, or the QR code isn't a "upi://pay?..." payment link. `vendorId`
+// is only passed in "edit" mode — see convert_vendor_qr in
+// backend/app/api/routes/vendors.py for how it's used to pick the message.
+export async function convertVendorQr(file: File, vendorId?: number): Promise<ConvertedQr> {
   const formData = new FormData();
   formData.append("file", file);
+  if (vendorId !== undefined) {
+    formData.append("vendor_id", String(vendorId));
+  }
 
   const response = await apiFetch("/admin/convert_vendor_qr", {
     method: "POST",
@@ -106,6 +119,6 @@ export async function convertVendorQr(file: File): Promise<string> {
     throw new Error(detail?.detail ?? "Failed to read QR code");
   }
 
-  const { qr_code: qrCode }: { qr_code: string } = await response.json();
-  return qrCode;
+  const { qr_code: qrCode, message }: { qr_code: string; message: string } = await response.json();
+  return { qrCode, message };
 }

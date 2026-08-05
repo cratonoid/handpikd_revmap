@@ -75,7 +75,15 @@ export function PurchaseOrdersTab() {
       });
   }
 
-  const nextPurchaseOrderNo = orders.reduce((max, o) => Math.max(max, o.purchaseOrderNo), 0) + 1;
+  // purchase_order_no is free-form text now, so only fold in the
+  // numeric-looking ones for the suggested next value — the admin can still
+  // freely overwrite it with anything.
+  const nextPurchaseOrderNo = String(
+    orders.reduce((max, o) => {
+      const numeric = Number(o.purchaseOrderNo);
+      return Number.isFinite(numeric) && o.purchaseOrderNo.trim() !== "" ? Math.max(max, numeric) : max;
+    }, 0) + 1,
+  );
 
   return (
     <>

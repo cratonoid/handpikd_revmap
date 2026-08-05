@@ -126,3 +126,27 @@ export function namesForCategoryIds(flat: FlatCategory[], ids: string[]): string
   const namesById = new Map(flat.map((c) => [c.id, c.name]));
   return ids.map((id) => namesById.get(id) ?? id);
 }
+
+function collectDescendantIds(node: CategoryNode): string[] {
+  const ids: string[] = [];
+  for (const child of node.children) {
+    ids.push(child.id, ...collectDescendantIds(child));
+  }
+  return ids;
+}
+
+// Every node's full set of descendant ids (children, grandchildren, ...) —
+// used by the product form's category multiselect so picking a parent
+// category also picks its whole subtree (see MultiSelectOption.descendantIds
+// in multi-select-dropdown.tsx).
+export function descendantIdsById(tree: CategoryNode[]): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  function walk(nodes: CategoryNode[]) {
+    for (const node of nodes) {
+      map.set(node.id, collectDescendantIds(node));
+      walk(node.children);
+    }
+  }
+  walk(tree);
+  return map;
+}

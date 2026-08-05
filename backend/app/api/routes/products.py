@@ -16,6 +16,8 @@ from app.models import (
 from app.schemas.products import (
     AddProductDetailsRequest,
     AddProductDetailsResponse,
+    DeleteProductImageRequest,
+    DeleteProductImageResponse,
     ProductDetailItem,
     UpdateProductDetailsRequest,
     UpdateProductDetailsResponse,
@@ -126,3 +128,24 @@ async def update_product_details(
     await _replace_image_paths(product.id, payload.image_paths)
 
     return UpdateProductDetailsResponse(message="product updated successfully")
+
+
+@router.post("/delete_product_image", response_model=DeleteProductImageResponse)
+async def delete_product_image(
+    payload: DeleteProductImageRequest,
+    _: User | None = Depends(require_admin),
+) -> DeleteProductImageResponse:
+    product = await ProductDetails.get(payload.product_id)
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="product not found")
+
+    image = await ProductImageDetails.find_one(
+        ProductImageDetails.product_id == payload.product_id,
+        ProductImageDetails.image_path == payload.image_path,
+    )
+    if image is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="image not found")
+
+    await image.delete()
+
+    return DeleteProductImageResponse(message="image deleted successfully")

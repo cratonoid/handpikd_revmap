@@ -18,6 +18,7 @@ from app.schemas.admin import (
     AddCustomerDetailsRequest,
     AddCustomerDetailsResponse,
     CustomerDetailItem,
+    CustomerListItem,
     UpdateCustomerDetailsRequest,
     UpdateCustomerDetailsResponse,
 )
@@ -64,6 +65,22 @@ async def add_customer_details(
         await poc.insert()
 
     return AddCustomerDetailsResponse(message="customer details added successfully")
+
+
+@router.get("/get_customer_list", response_model=list[CustomerListItem])
+async def get_customer_list(
+    _: User | None = Depends(require_admin),
+) -> list[CustomerListItem]:
+    # Lightweight id+name list for customer-picker dropdowns (the sales order
+    # popup) — unlike get_vendors_list, this returns every customer, active
+    # and deleted, since CustomerDetailItem has no numeric id at all and this
+    # is the only place the frontend can resolve a sales order's cust_id back
+    # to a name (including for orders placed against a since-deleted customer).
+    customers = await CustomerDetails.find_all().to_list()
+    return [
+        CustomerListItem(customer_id=customer.id, customer_name=customer.registered_name, is_deleted=customer.is_deleted)
+        for customer in customers
+    ]
 
 
 async def _get_customer_detail_by_mail(mail: str) -> CustomerDetailItem:

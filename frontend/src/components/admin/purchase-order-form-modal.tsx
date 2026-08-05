@@ -32,6 +32,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
+import { GST_PERCENT_OPTIONS } from "@/lib/gst";
 import type { PurchaseOrder } from "@/lib/purchase-orders";
 import type { VendorOption } from "@/lib/vendors";
 import type { Product } from "@/lib/products";
@@ -80,7 +81,7 @@ export function PurchaseOrderFormModal({
   initialOrder?: PurchaseOrder;
   vendors: VendorOption[];
   products: Product[];
-  nextPurchaseOrderNo: number;
+  nextPurchaseOrderNo: string;
   onClose: () => void;
   // No order payload — the backend only returns {message} (see
   // create_new_purchase_order/update_purchase_order_details), so the parent
@@ -96,12 +97,14 @@ export function PurchaseOrderFormModal({
   const [lineItems, setLineItems] = useState<LineItem[]>(
     initialOrder ? lineItemsFromOrder(initialOrder) : [emptyLineItem()],
   );
-  // Plain text, sanitized via sanitizeDecimalInput — same reasoning as
-  // LineItem.rate above, so these don't start as a "0" that has to be
-  // deleted before typing a real amount.
-  const [sgstAmount, setSgstAmount] = useState(initialOrder?.sgstAmount != null ? String(initialOrder.sgstAmount) : "");
-  const [cgstAmount, setCgstAmount] = useState(initialOrder?.cgstAmount != null ? String(initialOrder.cgstAmount) : "");
-  const [igstAmount, setIgstAmount] = useState(initialOrder?.igstAmount != null ? String(initialOrder.igstAmount) : "");
+  // Percentages (of the line items' subtotal), not rupee amounts — chosen
+  // from the hardcoded GST_PERCENT_OPTIONS dropdown (see lib/gst.ts).
+  // Indian GST rules mean a purchase order is taxed as EITHER sgstPerc +
+  // cgstPerc (intra-state) OR igstPerc alone (inter-state), never both —
+  // enforced in handleSubmit below.
+  const [sgstPerc, setSgstPerc] = useState(initialOrder?.sgstPerc != null ? String(initialOrder.sgstPerc) : "");
+  const [cgstPerc, setCgstPerc] = useState(initialOrder?.cgstPerc != null ? String(initialOrder.cgstPerc) : "");
+  const [igstPerc, setIgstPerc] = useState(initialOrder?.igstPerc != null ? String(initialOrder.igstPerc) : "");
   const [description, setDescription] = useState(initialOrder?.description ?? "");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -126,10 +129,12 @@ export function PurchaseOrderFormModal({
     [products, vendorId],
   );
   const productsById = useMemo(() => new Map(products.map((p) => [String(p.id), p])), [products]);
+  const vendorHasNoProducts = Boolean(vendorId) && availableProducts.length === 0;
 
   const totalAmountBeforeTax = lineItems.reduce((sum, item) => sum + item.quantity * (Number(item.rate) || 0), 0);
-  const totalAmountAfterTax =
-    totalAmountBeforeTax + (Number(sgstAmount) || 0) + (Number(cgstAmount) || 0) + (Number(igstAmount) || 0);
+  const totalTaxPerc = (Number(sgstPerc) || 0) + (Number(cgstPerc) || 0) + (Number(igstPerc) || 0);
+  const totalTaxAmount = totalAmountBeforeTax * (totalTaxPerc / 100);
+  const totalAmountAfterTax = totalAmountBeforeTax + totalTaxAmount;
 
   function updateLineItem(index: number, changes: Partial<LineItem>) {
     setLineItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...changes } : item)));
@@ -164,6 +169,18 @@ export function PurchaseOrderFormModal({
       return;
     }
 
+    const sgstPercValue = Number(sgstPerc) || null;
+    const cgstPercValue = Number(cgstPerc) || null;
+    const igstPercValue = Number(igstPerc) || null;
+
+    // Indian GST: a purchase order is taxed as EITHER SGST+CGST (intra-state)
+    // OR IGST alone (inter-state), never both at once — enforced again on
+    // the backend (see _check_gst_combo in schemas/purchase_orders.py).
+    if ((sgstPercValue || cgstPercValue) && igstPercValue) {
+      setError("Use either SGST + CGST or IGST, not both.");
+      return;
+    }
+
     if (!form.checkValidity()) {
       form.reportValidity();
       return;
@@ -178,9 +195,6 @@ export function PurchaseOrderFormModal({
     const productIds = lineItems.map((item) => Number(item.productId));
     const quantities = lineItems.map((item) => item.quantity);
     const rates = lineItems.map((item) => Number(item.rate) || 0);
-    const sgstAmountValue = Number(sgstAmount) || null;
-    const cgstAmountValue = Number(cgstAmount) || null;
-    const igstAmountValue = Number(igstAmount) || null;
 
     const payload = {
       ...(isEdit ? { id: initialOrder?.id } : {}),
@@ -189,9 +203,9 @@ export function PurchaseOrderFormModal({
       product_ids: productIds,
       quantities,
       rates,
-      sgst_amount: sgstAmountValue,
-      cgst_amount: cgstAmountValue,
-      igst_amount: igstAmountValue,
+      sgst_perc: sgstPercValue,
+      cgst_perc: cgstPercValue,
+      igst_perc: igstPercValue,
       description,
     };
 
@@ -249,15 +263,14 @@ export function PurchaseOrderFormModal({
           <div className={styles.formGrid}>
             <div>
               <label htmlFor="purchaseOrderNo" className={styles.formLabel}>
-                Purchase order no.
+                Purchase order no.<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="purchaseOrderNo"
-                type="number"
-                min={1}
+                type="text"
                 required
                 value={purchaseOrderNo}
-                onChange={(e) => setPurchaseOrderNo(Number(e.target.value))}
+                onChange={(e) => setPurchaseOrderNo(e.target.value)}
                 className={styles.formInput}
               />
             </div>
@@ -265,6 +278,11 @@ export function PurchaseOrderFormModal({
             <SingleSelectDropdown
               label="Vendor"
               placeholder="Select a vendor"
+              required
+              // vendors here always comes from get_vendors_list, which is
+              // active-only — the Active/Deleted tabs would just show an
+              // always-empty "Deleted" tab, so skip them.
+              showStatusFilter={false}
               options={vendorOptions}
               selectedValue={vendorId}
               onChange={handleVendorChange}
@@ -279,122 +297,170 @@ export function PurchaseOrderFormModal({
               </button>
             </div>
 
+            {vendorHasNoProducts && (
+              <p className={styles.pageSubtext}>This vendor has no products yet — add products for this vendor first.</p>
+            )}
+
             <div className={styles.lineItemsHeaderRow}>
-              <span className={styles.formLabel}>Product</span>
-              <span className={styles.formLabel}>Quantity</span>
-              <span className={styles.formLabel}>Rate</span>
+              <span className={styles.formLabel}>
+                Product<span className={styles.requiredMark}>*</span>
+              </span>
+              <span className={styles.formLabel}>
+                Quantity<span className={styles.requiredMark}>*</span>
+              </span>
+              <span className={styles.formLabel}>
+                Rate<span className={styles.requiredMark}>*</span>
+              </span>
+              <span className={styles.formLabel}>GST %</span>
               <span className={styles.formLabel}>Line total</span>
               <span />
             </div>
 
-            {lineItems.map((item, index) => (
-              <div key={index} className={styles.lineItemRow}>
-                <select
-                  value={item.productId ?? ""}
-                  onChange={(e) => handleProductChange(index, e.target.value)}
-                  required
-                  disabled={!vendorId}
-                  aria-label={`Line ${index + 1} product`}
-                  className={styles.formInput}
-                >
-                  <option value="" disabled>
-                    {vendorId ? "Select a product…" : "Select a vendor first"}
-                  </option>
-                  {availableProducts.map((product) => (
-                    <option key={product.id} value={String(product.id)}>
-                      {product.productName}
+            {lineItems.map((item, index) => {
+              // Read-only reference value pulled straight from the selected
+              // product's own gst_perc — purely informational alongside this
+              // form's order-level SGST/CGST/IGST% combo below, not summed
+              // into it.
+              const lineGstPerc = productsById.get(item.productId ?? "")?.gstPerc;
+              return (
+                <div key={index} className={styles.lineItemRow}>
+                  <select
+                    value={item.productId ?? ""}
+                    onChange={(e) => handleProductChange(index, e.target.value)}
+                    required
+                    disabled={!vendorId}
+                    aria-label={`Line ${index + 1} product`}
+                    className={styles.formInput}
+                  >
+                    <option value="" disabled>
+                      {vendorId ? "Select a product…" : "Select a vendor first"}
                     </option>
-                  ))}
-                </select>
+                    {availableProducts.map((product) => (
+                      <option key={product.id} value={String(product.id)}>
+                        {product.productName}
+                      </option>
+                    ))}
+                  </select>
 
-                <input
-                  type="number"
-                  min={1}
-                  required
-                  value={item.quantity}
-                  onChange={(e) => updateLineItem(index, { quantity: Number(e.target.value) })}
-                  aria-label={`Line ${index + 1} quantity`}
-                  className={styles.formInput}
-                />
+                  <input
+                    type="number"
+                    min={1}
+                    required
+                    value={item.quantity}
+                    onChange={(e) => updateLineItem(index, { quantity: Number(e.target.value) })}
+                    aria-label={`Line ${index + 1} quantity`}
+                    className={styles.formInput}
+                  />
 
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  required
-                  value={item.rate}
-                  onChange={(e) => updateLineItem(index, { rate: sanitizeDecimalInput(e.target.value) })}
-                  aria-label={`Line ${index + 1} rate`}
-                  className={styles.formInput}
-                />
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    required
+                    value={item.rate}
+                    onChange={(e) => updateLineItem(index, { rate: sanitizeDecimalInput(e.target.value) })}
+                    aria-label={`Line ${index + 1} rate`}
+                    className={styles.formInput}
+                  />
 
-                <input
-                  type="text"
-                  disabled
-                  value={`₹${(item.quantity * (Number(item.rate) || 0)).toFixed(2)}`}
-                  aria-label={`Line ${index + 1} total`}
-                  className={styles.formInput}
-                />
+                  <input
+                    type="text"
+                    disabled
+                    value={lineGstPerc != null ? `${lineGstPerc}%` : "—"}
+                    aria-label={`Line ${index + 1} product GST percent`}
+                    className={styles.formInput}
+                  />
 
-                <button
-                  type="button"
-                  onClick={() => removeLineItem(index)}
-                  disabled={lineItems.length === 1}
-                  aria-label={`Remove line ${index + 1}`}
-                  className={styles.removeContactButton}
-                >
-                  <XMarkIcon className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
+                  <input
+                    type="text"
+                    disabled
+                    value={`₹${(item.quantity * (Number(item.rate) || 0)).toFixed(2)}`}
+                    aria-label={`Line ${index + 1} total`}
+                    className={styles.formInput}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={() => removeLineItem(index)}
+                    disabled={lineItems.length === 1}
+                    aria-label={`Remove line ${index + 1}`}
+                    className={styles.removeContactButton}
+                  >
+                    <XMarkIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              );
+            })}
           </div>
 
           <div className={styles.totalsGrid}>
             <div>
-              <label htmlFor="sgstAmount" className={styles.formLabel}>
-                SGST amount
+              <label htmlFor="sgstPerc" className={styles.formLabel}>
+                SGST %
               </label>
-              <input
-                id="sgstAmount"
-                type="text"
-                inputMode="decimal"
-                value={sgstAmount}
-                onChange={(e) => setSgstAmount(sanitizeDecimalInput(e.target.value))}
+              <select
+                id="sgstPerc"
+                value={sgstPerc}
+                onChange={(e) => setSgstPerc(e.target.value)}
                 className={styles.formInput}
-              />
+              >
+                <option value="">—</option>
+                {/* Hardcoded placeholder slabs — see lib/gst.ts */}
+                {GST_PERCENT_OPTIONS.map((percent) => (
+                  <option key={percent} value={percent}>
+                    {percent}%
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
-              <label htmlFor="cgstAmount" className={styles.formLabel}>
-                CGST amount
+              <label htmlFor="cgstPerc" className={styles.formLabel}>
+                CGST %
               </label>
-              <input
-                id="cgstAmount"
-                type="text"
-                inputMode="decimal"
-                value={cgstAmount}
-                onChange={(e) => setCgstAmount(sanitizeDecimalInput(e.target.value))}
+              <select
+                id="cgstPerc"
+                value={cgstPerc}
+                onChange={(e) => setCgstPerc(e.target.value)}
                 className={styles.formInput}
-              />
+              >
+                <option value="">—</option>
+                {GST_PERCENT_OPTIONS.map((percent) => (
+                  <option key={percent} value={percent}>
+                    {percent}%
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
-              <label htmlFor="igstAmount" className={styles.formLabel}>
-                IGST amount
+              <label htmlFor="igstPerc" className={styles.formLabel}>
+                IGST %
               </label>
-              <input
-                id="igstAmount"
-                type="text"
-                inputMode="decimal"
-                value={igstAmount}
-                onChange={(e) => setIgstAmount(sanitizeDecimalInput(e.target.value))}
+              <select
+                id="igstPerc"
+                value={igstPerc}
+                onChange={(e) => setIgstPerc(e.target.value)}
                 className={styles.formInput}
-              />
+              >
+                <option value="">—</option>
+                {GST_PERCENT_OPTIONS.map((percent) => (
+                  <option key={percent} value={percent}>
+                    {percent}%
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
+          {(Number(sgstPerc) || Number(cgstPerc)) > 0 && Number(igstPerc) > 0 && (
+            <p role="alert" aria-live="polite" className={styles.formError}>
+              Use either SGST + CGST or IGST, not both.
+            </p>
+          )}
+
           <div>
             <label htmlFor="description" className={styles.formLabel}>
-              Description
+              Description<span className={styles.requiredMark}>*</span>
             </label>
             <textarea
               id="description"
@@ -410,6 +476,10 @@ export function PurchaseOrderFormModal({
             <div className={styles.totalsRowItem}>
               <p className={styles.totalsRowLabel}>Total before tax</p>
               <p className={styles.totalsRowValue}>₹{totalAmountBeforeTax.toFixed(2)}</p>
+            </div>
+            <div className={styles.totalsRowItem}>
+              <p className={styles.totalsRowLabel}>Total tax ({totalTaxPerc}%)</p>
+              <p className={styles.totalsRowValue}>₹{totalTaxAmount.toFixed(2)}</p>
             </div>
             <div className={styles.totalsRowItem}>
               <p className={styles.totalsRowLabel}>Total after tax</p>

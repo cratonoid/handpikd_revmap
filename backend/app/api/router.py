@@ -1,7 +1,7 @@
 # Aggregates all route modules into a single router mounted by app/main.py.
 from fastapi import APIRouter
 
-from app.api.routes import admin, auth, authentication, categories, orders, products, test, vendors
+from app.api.routes import admin, auth, authentication, categories, orders, products, sales_orders, test, vendors
 
 api_router = APIRouter()
 api_router.include_router(test.router)
@@ -12,3 +12,4 @@ api_router.include_router(categories.router)
 api_router.include_router(vendors.router)
 api_router.include_router(products.router)
 api_router.include_router(orders.router)
+api_router.include_router(sales_orders.router)

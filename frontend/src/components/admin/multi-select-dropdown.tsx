@@ -17,17 +17,32 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRightIcon, XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
-export type MultiSelectOption = { value: string; label: string; depth?: number };
+export type MultiSelectOption = {
+  value: string;
+  label: string;
+  depth?: number;
+  // Every descendant's value (children, grandchildren, ...) — when set,
+  // toggling this option also toggles all of them together, so picking a
+  // parent category picks its whole subtree instead of leaving children
+  // unselected. See lib/categories.ts's descendantIdsById.
+  descendantIds?: string[];
+};
 
 export function MultiSelectDropdown({
   label,
   placeholder = "Select…",
+  searchPlaceholder = "Search categories…",
+  emptyMessage = "No categories match.",
   options,
   selectedValues,
   onChange,
 }: {
   label: string;
   placeholder?: string;
+  // Defaults preserve product-form-modal.tsx's category picker wording — new
+  // call sites (e.g. the related purchase orders picker) pass their own.
+  searchPlaceholder?: string;
+  emptyMessage?: string;
   options: MultiSelectOption[];
   selectedValues: string[];
   onChange: (values: string[]) => void;
@@ -69,10 +84,17 @@ export function MultiSelectDropdown({
   }, [open]);
 
   function toggleValue(value: string) {
+    // Selecting/deselecting a category with children carries its whole
+    // subtree along with it, so a parent's checked state always matches
+    // "all of its descendants are selected too."
+    const descendantIds = options.find((o) => o.value === value)?.descendantIds ?? [];
+    const group = [value, ...descendantIds];
+
     if (selectedSet.has(value)) {
-      onChange(selectedValues.filter((v) => v !== value));
+      const groupSet = new Set(group);
+      onChange(selectedValues.filter((v) => !groupSet.has(v)));
     } else {
-      onChange([...selectedValues, value]);
+      onChange([...new Set([...selectedValues, ...group])]);
     }
   }
 
@@ -134,7 +156,7 @@ export function MultiSelectDropdown({
           <input
             type="text"
             autoFocus
-            placeholder="Search categories…"
+            placeholder={searchPlaceholder}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className={styles.selectSearchInput}
@@ -151,7 +173,7 @@ export function MultiSelectDropdown({
           </div>
 
           <div className={styles.selectList}>
-            {filteredOptions.length === 0 && <p className={styles.selectEmpty}>No categories match.</p>}
+            {filteredOptions.length === 0 && <p className={styles.selectEmpty}>{emptyMessage}</p>}
             {filteredOptions.map((option) => {
               const isSelected = selectedSet.has(option.value);
               return (

@@ -65,3 +65,14 @@ class UpdateCustomerDetailsRequest(BaseModel):
 
 class UpdateCustomerDetailsResponse(BaseModel):
     message: str
+
+
+class CustomerListItem(BaseModel):
+    # Lightweight id+name shape for customer-picker dropdowns (the sales
+    # order popup) — unlike get_vendors_list/VendorListItem, this returns
+    # EVERY customer (active and deleted), since CustomerDetailItem above has
+    # no numeric id at all and this is the only place the frontend can
+    # resolve a sales order's cust_id back to a name.
+    customer_id: int
+    customer_name: str
+    is_deleted: bool

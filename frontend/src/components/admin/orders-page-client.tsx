@@ -3,19 +3,19 @@
 // ---------------------------------------------------------------------------
 // <OrdersPageClient> — the interactive half of /admin/orders
 // ---------------------------------------------------------------------------
-// Splits the module into two tabs: "Purchase orders" (components/admin/
-// purchase-orders-tab.tsx — table + "+ New purchase order" form) and "Sales
-// orders", which is left as a placeholder for now (SalesOrders references
-// order_status_id and related_purchase_order_ids, which need more design
-// thought before building its table/form).
+// Splits the module into two tabs: "Sales orders" (components/admin/
+// sales-orders-tab.tsx — table + "+ New sales order" form) and "Purchase
+// orders" (components/admin/purchase-orders-tab.tsx). Sales orders is the
+// default/first tab since it's the primary day-to-day workflow.
 import { useState } from "react";
 import { PurchaseOrdersTab } from "@/components/admin/purchase-orders-tab";
+import { SalesOrdersTab } from "@/components/admin/sales-orders-tab";
 import styles from "@/styles/dashboard.module.css";
 
-type Tab = "purchase" | "sales";
+type Tab = "sales" | "purchase";
 
 export function OrdersPageClient() {
-  const [tab, setTab] = useState<Tab>("purchase");
+  const [tab, setTab] = useState<Tab>("sales");
 
   return (
     <>
@@ -26,31 +26,24 @@ export function OrdersPageClient() {
         <button
           type="button"
           role="tab"
-          aria-selected={tab === "purchase"}
-          onClick={() => setTab("purchase")}
-          className={`${styles.viewToggleButton} ${tab === "purchase" ? styles.viewToggleButtonActive : ""}`}
-        >
-          Purchase orders
-        </button>
-        <button
-          type="button"
-          role="tab"
           aria-selected={tab === "sales"}
           onClick={() => setTab("sales")}
           className={`${styles.viewToggleButton} ${tab === "sales" ? styles.viewToggleButtonActive : ""}`}
         >
           Sales orders
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "purchase"}
+          onClick={() => setTab("purchase")}
+          className={`${styles.viewToggleButton} ${tab === "purchase" ? styles.viewToggleButtonActive : ""}`}
+        >
+          Purchase orders
+        </button>
       </div>
 
-      {tab === "purchase" ? (
-        <PurchaseOrdersTab />
-      ) : (
-        <div className={styles.placeholderCard}>
-          <p className={styles.placeholderHeading}>Sales orders coming soon</p>
-          <p className={styles.placeholderBlurb}>This tab will connect to its API next.</p>
-        </div>
-      )}
+      {tab === "sales" ? <SalesOrdersTab /> : <PurchaseOrdersTab />}
     </>
   );
 }

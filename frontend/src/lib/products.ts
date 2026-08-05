@@ -53,6 +53,20 @@ type ProductDetailItem = {
   image_paths: string[];
 };
 
+// Deletes a single already-saved image immediately (backend/app/api/routes/
+// products.py's delete_product_image) rather than waiting for a full
+// update_product_details save — see product-form-modal.tsx.
+export async function deleteProductImage(productId: number, imagePath: string): Promise<void> {
+  const response = await apiFetch("/admin/delete_product_image", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ product_id: productId, image_path: imagePath }),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to delete image");
+  }
+}
+
 export async function fetchProducts(): Promise<Product[]> {
   const response = await apiFetch("/admin/get_product_details");
   if (!response.ok) {

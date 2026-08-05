@@ -64,7 +64,7 @@ export function AddCategoryModal({
         <form onSubmit={handleSubmit} className={styles.modalForm}>
           <div>
             <label htmlFor="categoryName" className={styles.formLabel}>
-              Category name
+              Category name<span className={styles.requiredMark}>*</span>
             </label>
             <input
               id="categoryName"

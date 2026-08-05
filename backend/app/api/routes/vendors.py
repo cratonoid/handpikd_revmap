@@ -2,7 +2,7 @@
 # contact, restricted to admins (bypassed entirely when settings.auth_enabled
 # is False, matching require_admin in routes/admin.py).
 from beanie.operators import In
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from app.api.routes.admin import require_admin
 from app.models import User, VendorDetails, VendorIdCounter, VendorPocDetails, VendorPocIdCounter
@@ -120,6 +120,11 @@ async def update_vendor_details(
 @router.post("/convert_vendor_qr", response_model=ConvertVendorQrResponse)
 async def convert_vendor_qr(
     file: UploadFile = File(...),
+    # Only present in "edit" mode (see components/admin/vendor-form-modal.tsx)
+    # — lets the message below distinguish a vendor's first QR from a
+    # replacement of one they already had. Omitted entirely for a
+    # brand-new vendor, which is always "added".
+    vendor_id: int | None = Form(default=None),
     _: User | None = Depends(require_admin),
 ) -> ConvertVendorQrResponse:
     image_bytes = await file.read()
@@ -128,4 +133,10 @@ async def convert_vendor_qr(
     except InvalidQrCodeError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
-    return ConvertVendorQrResponse(qr_code=qr_code)
+    had_existing_qr = False
+    if vendor_id is not None:
+        vendor = await VendorDetails.get(vendor_id)
+        had_existing_qr = bool(vendor and vendor.qr_code)
+
+    message = "QR code updated" if had_existing_qr else "QR code added"
+    return ConvertVendorQrResponse(qr_code=qr_code, message=message)

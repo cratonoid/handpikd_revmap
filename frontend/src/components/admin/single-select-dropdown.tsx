@@ -18,12 +18,33 @@ export type SingleSelectOption = { value: string; label: string; isDeleted: bool
 export function SingleSelectDropdown({
   label,
   placeholder = "Select…",
+  entityLabel = "vendors",
+  hideLabel = false,
+  required = false,
+  // Hides the Active/Deleted tab row — for call sites whose `options` only
+  // ever come from an active-only list (e.g. get_vendors_list), where the
+  // "Deleted" tab would always be empty and just be confusing UI.
+  showStatusFilter = true,
   options,
   selectedValue,
   onChange,
 }: {
   label: string;
   placeholder?: string;
+  // Plural noun used in the search placeholder ("Search {entityLabel}…") and
+  // empty-state text ("No {group} {entityLabel} match.") — defaults to
+  // "vendors" so the two existing call sites (product-form-modal.tsx,
+  // purchase-order-form-modal.tsx) don't need to change.
+  entityLabel?: string;
+  // When a column header already conveys what this field is (e.g. a "Product"
+  // column above a per-line-item picker), keep `label` for screen readers but
+  // render it visually hidden instead of duplicating the column header.
+  hideLabel?: boolean;
+  // Purely visual (a "*" next to the label) — this isn't a real <select>, so
+  // there's no native HTML validation to hook into. Callers still enforce it
+  // themselves before submit (e.g. "Please select a vendor").
+  required?: boolean;
+  showStatusFilter?: boolean;
   options: SingleSelectOption[];
   selectedValue: string | null;
   onChange: (value: string) => void;
@@ -77,7 +98,10 @@ export function SingleSelectDropdown({
 
   return (
     <div ref={wrapperRef} className={styles.selectWrapper}>
-      <span className={styles.formLabel}>{label}</span>
+      <span className={hideLabel ? "sr-only" : styles.formLabel}>
+        {label}
+        {required && <span className={styles.requiredMark}>*</span>}
+      </span>
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
@@ -102,35 +126,41 @@ export function SingleSelectDropdown({
           <input
             type="text"
             autoFocus
-            placeholder="Search vendors…"
+            placeholder={`Search ${entityLabel}…`}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className={styles.selectSearchInput}
           />
 
-          <div className={styles.selectToggleRow} role="tablist" aria-label="Vendor status">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={group === "active"}
-              onClick={() => setGroup("active")}
-              className={`${styles.selectToggleButton} ${group === "active" ? styles.selectToggleButtonActive : ""}`}
-            >
-              Active
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={group === "deleted"}
-              onClick={() => setGroup("deleted")}
-              className={`${styles.selectToggleButton} ${group === "deleted" ? styles.selectToggleButtonActive : ""}`}
-            >
-              Deleted
-            </button>
-          </div>
+          {showStatusFilter && (
+            <div className={styles.selectToggleRow} role="tablist" aria-label={`${entityLabel} status`}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={group === "active"}
+                onClick={() => setGroup("active")}
+                className={`${styles.selectToggleButton} ${group === "active" ? styles.selectToggleButtonActive : ""}`}
+              >
+                Active
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={group === "deleted"}
+                onClick={() => setGroup("deleted")}
+                className={`${styles.selectToggleButton} ${group === "deleted" ? styles.selectToggleButtonActive : ""}`}
+              >
+                Deleted
+              </button>
+            </div>
+          )}
 
           <div className={styles.selectList}>
-            {filteredOptions.length === 0 && <p className={styles.selectEmpty}>No {group} vendors match.</p>}
+            {filteredOptions.length === 0 && (
+              <p className={styles.selectEmpty}>
+                No {group} {entityLabel} match.
+              </p>
+            )}
             {filteredOptions.map((option) => (
               <div
                 key={option.value}

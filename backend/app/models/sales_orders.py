@@ -6,14 +6,13 @@ class SalesOrders(Document):
     id: int
     order_no: int
     order_status_id: int  # FK -> OrderStatusMaster.id
-    cust_id: int  # FK -> CustomerDetails.id (assumption, please confirm)
+    cust_id: int  # FK -> CustomerDetails.id
     total_amount_before_tax: float
-    sgst_amount: float | None = None
-    cgst_amount: float | None = None
-    igst_amount: float | None = None
+    total_tax_amount: float
     total_amount_after_tax: float
     description: str
-    related_purchase_order_ids: list[int]  # FK -> PurchaseOrders.id (array)
+    related_purchase_order_ids: list[int] = []  # FK -> PurchaseOrders.id (array)
+    is_deleted: bool = False
 
     class Settings:
         name = "sales_orders"

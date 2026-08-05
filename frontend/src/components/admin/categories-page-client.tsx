@@ -203,7 +203,8 @@ export function CategoriesPageClient() {
 
                     {hasChildren && isExpanded && (
                       <tr>
-                        <td colSpan={3} className={styles.tableDropdownCell}>
+                        <td className={`${styles.tableCell} ${styles.tableCellSerial} ${styles.tableDropdownCell}`} />
+                        <td colSpan={2} className={styles.tableDropdownCell}>
                           <ul className={styles.treeRoot}>
                             {category.children.map((child) => (
                               <CategoryTreeNode

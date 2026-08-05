@@ -55,3 +55,12 @@ class UpdateProductDetailsRequest(BaseModel):
 
 class UpdateProductDetailsResponse(BaseModel):
     message: str
+
+
+class DeleteProductImageRequest(BaseModel):
+    product_id: int
+    image_path: str
+
+
+class DeleteProductImageResponse(BaseModel):
+    message: str

@@ -163,6 +163,7 @@ export function CustomerFormModal({
             <div>
               <label htmlFor="mail" className={styles.formLabel}>
                 Email{isEdit && " (cannot be changed)"}
+                <span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="mail"
@@ -177,7 +178,8 @@ export function CustomerFormModal({
 
             <div>
               <label htmlFor="password" className={styles.formLabel}>
-                {isEdit ? "New password (leave blank to keep current)" : "Password"}
+                {isEdit ? "New password" : "Password"}
+                {!isEdit && <span className={styles.requiredMark}>*</span>}
               </label>
               <input
                 id="password"
@@ -188,11 +190,12 @@ export function CustomerFormModal({
                 onChange={(e) => setPassword(e.target.value)}
                 className={styles.formInput}
               />
+              {isEdit && <p className={styles.pageSubtext}>Leave blank to keep the current password.</p>}
             </div>
 
             <div>
               <label htmlFor="registeredName" className={styles.formLabel}>
-                Registered name
+                Registered name<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="registeredName"
@@ -206,7 +209,7 @@ export function CustomerFormModal({
 
             <div>
               <label htmlFor="companyOrDepartment" className={styles.formLabel}>
-                Company / department
+                Company / department<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="companyOrDepartment"
@@ -220,7 +223,7 @@ export function CustomerFormModal({
 
             <div>
               <label htmlFor="companyGst" className={styles.formLabel}>
-                GST number
+                GST number<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="companyGst"
@@ -234,7 +237,7 @@ export function CustomerFormModal({
 
             <div>
               <label htmlFor="points" className={styles.formLabel}>
-                Starting points
+                Starting points<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="points"
@@ -249,7 +252,7 @@ export function CustomerFormModal({
 
             <div className={styles.formGridFullSpan}>
               <label htmlFor="address" className={styles.formLabel}>
-                Address
+                Address<span className={styles.requiredMark}>*</span>
               </label>
               <textarea
                 id="address"
@@ -264,7 +267,9 @@ export function CustomerFormModal({
 
           <div className={styles.contactsSection}>
             <div className={styles.contactsHeader}>
-              <span className={styles.formLabel}>Points of contact</span>
+              <span className={styles.formLabel}>
+                Points of contact<span className={styles.requiredMark}>*</span>
+              </span>
               <button type="button" onClick={addContactRow} className={styles.addContactButton}>
                 + Add contact
               </button>

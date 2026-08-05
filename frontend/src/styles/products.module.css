@@ -143,6 +143,11 @@
   display: flex;
   height: 100%;
   flex-direction: column;
+  transition: transform 0.25s ease-out;
+}
+
+.cardArticle:hover {
+  transform: translateY(-4px);
 }
 
 .cardImageWrap {
@@ -156,16 +161,11 @@
 }
 
 .cardArticle:hover .cardImageWrap {
-  box-shadow: 0 4px 6px -1px color-mix(in srgb, var(--color-charcoal) 15%, transparent);
+  box-shadow: 0 8px 16px -4px color-mix(in srgb, var(--color-charcoal) 22%, transparent);
 }
 
 .cardImage {
   object-fit: cover;
-  transition: transform 0.5s ease-out;
-}
-
-.cardArticle:hover .cardImage {
-  transform: scale(1.05);
 }
 
 .cardBadge {
