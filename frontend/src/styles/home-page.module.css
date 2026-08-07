@@ -1,0 +1,932 @@
+/* =============================================================================
+   Homepage section styles (src/components/home_page/*)
+   =============================================================================
+   This is a CSS Module: every class below is imported in its component as
+   `styles.className` (see e.g. `import styles from "@/styles/home-page.
+   module.css"` at the top of hero.tsx) and Next.js rewrites each class name
+   to a unique hashed string at build time, so these never collide with
+   classes of the same name in products.module.css or shared.module.css.
+
+   Colors/fonts reference the same CSS variables defined in
+   src/app/globals.css (--color-charcoal, --font-display, etc.) rather than
+   repeating hex values here, so the whole site's palette still updates from
+   one place. `color-mix(in srgb, var(--color-x) N%, transparent)` is the
+   plain-CSS equivalent of Tailwind's `/N` opacity modifier (e.g. what used
+   to be `text-charcoal/80` is now `color-mix(in srgb, var(--color-charcoal)
+   80%, transparent)`).
+
+   Breakpoints match Tailwind's defaults, used throughout as real
+   `@media` queries: sm = 640px, md = 768px, lg = 1024px, xl = 1280px.
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------
+   Hero (hero.tsx)
+   ----------------------------------------------------------------------- */
+
+.heroSection {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+  .heroSection {
+    min-height: 100vh;
+    justify-content: center;
+  }
+}
+
+.heroInner {
+  position: relative;
+  margin-inline: auto;
+  display: grid;
+  max-width: 72rem;
+  align-items: center;
+  gap: 3.5rem;
+  padding-inline: 1.25rem;
+  padding-block: 2.5rem;
+}
+
+@media (min-width: 640px) {
+  .heroInner {
+    padding-inline: 2rem;
+    padding-block: 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .heroInner {
+    grid-template-columns: 1.05fr 0.95fr;
+  }
+}
+
+.heroBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background-color: color-mix(in srgb, var(--color-white) 70%, transparent);
+  padding: 0.375rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-charcoal) 80%, transparent);
+}
+
+.heroBadgeDot {
+  height: 0.375rem;
+  width: 0.375rem;
+  border-radius: 9999px;
+  background-color: var(--color-red);
+}
+
+.heroHeading {
+  margin-top: 1.5rem;
+  font-family: var(--font-display);
+  font-size: 2.25rem;
+  line-height: 1.08;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+@media (min-width: 640px) {
+  .heroHeading {
+    font-size: 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .heroHeading {
+    font-size: 3.5rem;
+  }
+}
+
+.heroParagraph {
+  margin-top: 1.5rem;
+  max-width: 32rem;
+  font-size: 1.125rem;
+  line-height: 1.75;
+  color: var(--color-ink);
+}
+
+.heroButtonRow {
+  margin-top: 2.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .heroButtonRow {
+    flex-direction: row;
+  }
+}
+
+.heroTrustLine {
+  margin-top: 2rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+}
+
+.heroCounterText {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.heroImageCol {
+  position: relative;
+}
+
+.heroImageBox {
+  position: relative;
+  aspect-ratio: 4 / 5;
+  width: 100%;
+  max-width: 28rem;
+  overflow: hidden;
+  border-radius: 2rem;
+  box-shadow:
+    0 20px 25px -5px color-mix(in srgb, var(--color-charcoal) 10%, transparent),
+    0 8px 10px -6px color-mix(in srgb, var(--color-charcoal) 10%, transparent);
+}
+
+@media (min-width: 640px) {
+  .heroImageBox {
+    margin-inline: auto;
+  }
+}
+
+@media (min-width: 1024px) {
+  .heroImageBox {
+    margin-inline: 0;
+    margin-left: auto;
+  }
+}
+
+.heroImageFill {
+  object-fit: cover;
+}
+
+.heroDecorSquare {
+  position: absolute;
+  bottom: -1.5rem;
+  left: -1.5rem;
+  display: none;
+  height: 7rem;
+  width: 7rem;
+  border-radius: 1rem;
+  border: 2px solid color-mix(in srgb, var(--color-charcoal) 15%, transparent);
+}
+
+@media (min-width: 640px) {
+  .heroDecorSquare {
+    display: block;
+  }
+}
+
+/* -----------------------------------------------------------------------
+   Who We Are (who-we-are.tsx)
+   ----------------------------------------------------------------------- */
+
+.whoSection {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-cream-deep);
+}
+
+@media (min-width: 1024px) {
+  .whoSection {
+    min-height: 100vh;
+    justify-content: center;
+  }
+}
+
+.whoInner {
+  margin-inline: auto;
+  display: grid;
+  max-width: 72rem;
+  align-items: center;
+  gap: 3.5rem;
+  padding-inline: 1.25rem;
+  padding-block: 2.5rem;
+}
+
+@media (min-width: 640px) {
+  .whoInner {
+    padding-inline: 2rem;
+    padding-block: 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .whoInner {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Photo appears above the text on mobile, to the right of it on desktop —
+   see the comment in who-we-are.tsx for why `order` is used here. */
+.whoTextCol {
+  order: 2;
+}
+.whoImageCol {
+  order: 1;
+}
+
+@media (min-width: 1024px) {
+  .whoTextCol {
+    order: 1;
+  }
+  .whoImageCol {
+    order: 2;
+  }
+}
+
+.whoHeading {
+  margin-top: 1rem;
+  font-family: var(--font-display);
+  font-size: 1.875rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+@media (min-width: 640px) {
+  .whoHeading {
+    font-size: 2.25rem;
+  }
+}
+
+.whoParagraph {
+  margin-top: 1.25rem;
+  line-height: 1.75;
+  color: var(--color-ink);
+}
+.whoParagraph + .whoParagraph {
+  margin-top: 1rem;
+}
+
+.whoStatsList {
+  margin-top: 2.25rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-charcoal) 15%, transparent);
+  padding-top: 2rem;
+}
+
+.whoStatValue {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-red);
+}
+
+@media (min-width: 640px) {
+  .whoStatValue {
+    font-size: 1.875rem;
+  }
+}
+
+.whoStatLabel {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.25;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+}
+
+.whoImageBox {
+  position: relative;
+  aspect-ratio: 5 / 4;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  box-shadow: 0 10px 15px -3px color-mix(in srgb, var(--color-charcoal) 10%, transparent);
+  will-change: transform;
+}
+
+.whoImageFill {
+  object-fit: cover;
+}
+
+/* -----------------------------------------------------------------------
+   Client Marquee (client-marquee.tsx)
+   ----------------------------------------------------------------------- */
+
+.marqueeSection {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  padding-block: 2rem;
+}
+
+@media (min-width: 1024px) {
+  .marqueeSection {
+    min-height: 100vh;
+  }
+}
+
+.marqueeHeader {
+  margin-inline: auto;
+  max-width: 72rem;
+  padding-inline: 1.25rem;
+  text-align: center;
+}
+
+@media (min-width: 640px) {
+  .marqueeHeader {
+    padding-inline: 2rem;
+  }
+}
+
+.marqueeHeading {
+  margin-top: 0.75rem;
+  font-family: var(--font-display);
+  font-size: 1.875rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+@media (min-width: 640px) {
+  .marqueeHeading {
+    font-size: 2.25rem;
+  }
+}
+
+.marqueeViewport {
+  position: relative;
+  margin-top: 3rem;
+  overflow: hidden;
+}
+
+.marqueeRow {
+  display: flex;
+  width: max-content;
+  align-items: center;
+  gap: 3.5rem;
+}
+
+.marqueeItem {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.marqueeLogo {
+  height: 2.25rem;
+  width: 2.25rem;
+}
+
+/* -----------------------------------------------------------------------
+   What We Offer (what-we-offer.tsx)
+   ----------------------------------------------------------------------- */
+
+.offerSection {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background-color: var(--color-cream-deep);
+  padding-block: 2.5rem;
+}
+
+@media (min-width: 640px) {
+  .offerSection {
+    padding-block: 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .offerSection {
+    min-height: 100vh;
+  }
+}
+
+.offerInner {
+  margin-inline: auto;
+  max-width: 72rem;
+  padding-inline: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .offerInner {
+    padding-inline: 2rem;
+  }
+}
+
+.offerHeader {
+  margin-inline: auto;
+  max-width: 42rem;
+  text-align: center;
+}
+
+.offerHeading {
+  margin-top: 0.75rem;
+  font-family: var(--font-display);
+  font-size: 1.875rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+@media (min-width: 640px) {
+  .offerHeading {
+    font-size: 2.25rem;
+  }
+}
+
+.offerParagraph {
+  margin-top: 1rem;
+  color: var(--color-ink);
+}
+
+.offerGrid {
+  margin-top: 3.5rem;
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .offerGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .offerGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.offerCard {
+  position: relative;
+  display: flex;
+  height: 20rem;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  border-radius: 1rem;
+}
+
+.offerImage {
+  object-fit: cover;
+  transition: transform 0.5s ease-out;
+}
+
+.offerCard:hover .offerImage {
+  transform: scale(1.05);
+}
+
+.offerOverlay {
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--color-charcoal) 90%, transparent),
+    color-mix(in srgb, var(--color-charcoal) 45%, transparent),
+    color-mix(in srgb, var(--color-charcoal) 10%, transparent)
+  );
+  transition: background-image 0.3s;
+}
+
+.offerCard:hover .offerOverlay {
+  background-image: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--color-charcoal) 95%, transparent),
+    color-mix(in srgb, var(--color-charcoal) 60%, transparent),
+    color-mix(in srgb, var(--color-charcoal) 10%, transparent)
+  );
+}
+
+.offerContent {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.5rem;
+}
+
+.offerIndex {
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: color-mix(in srgb, var(--color-cream) 50%, transparent);
+}
+
+.offerTitle {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-white);
+}
+
+.offerBlurb {
+  font-size: 0.875rem;
+  line-height: 1.625;
+  color: color-mix(in srgb, var(--color-white) 85%, transparent);
+}
+
+.offerLearnMore {
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-cream);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.offerCard:hover .offerLearnMore {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .offerLearnMore {
+    opacity: 1;
+  }
+}
+
+/* -----------------------------------------------------------------------
+   Testimonials (testimonials.tsx)
+   ----------------------------------------------------------------------- */
+
+.testimonialsSection {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-cream);
+}
+
+@media (min-width: 1024px) {
+  .testimonialsSection {
+    min-height: 100vh;
+    justify-content: center;
+  }
+}
+
+.testimonialsInner {
+  margin-inline: auto;
+  max-width: 72rem;
+  padding-inline: 1.25rem;
+  padding-block: 2.5rem;
+}
+
+@media (min-width: 640px) {
+  .testimonialsInner {
+    padding-inline: 2rem;
+    padding-block: 3rem;
+  }
+}
+
+.testimonialsHeader {
+  margin-inline: auto;
+  max-width: 42rem;
+  text-align: center;
+}
+
+.testimonialsHeading {
+  margin-top: 0.75rem;
+  font-family: var(--font-display);
+  font-size: 1.875rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+@media (min-width: 640px) {
+  .testimonialsHeading {
+    font-size: 2.25rem;
+  }
+}
+
+.testimonialsGrid {
+  margin-top: 3.5rem;
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .testimonialsGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.testimonialsCard {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  border-radius: 1rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-white);
+  padding: 1.75rem;
+  box-shadow: 0 10px 15px -3px color-mix(in srgb, var(--color-charcoal) 10%, transparent);
+  will-change: transform;
+}
+
+.testimonialsQuoteIcon {
+  height: 1.75rem;
+  width: 1.75rem;
+  color: color-mix(in srgb, var(--color-charcoal) 70%, transparent);
+}
+
+.testimonialsQuote {
+  margin-top: 1rem;
+  flex: 1 1 0%;
+  font-size: 0.95rem;
+  line-height: 1.75;
+  color: var(--color-ink);
+}
+
+.testimonialsFooter {
+  margin-top: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.testimonialsAvatar {
+  display: flex;
+  height: 2.75rem;
+  width: 2.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.avatarToneDark {
+  background-color: var(--color-charcoal);
+  color: var(--color-cream);
+}
+.avatarToneRed {
+  background-color: color-mix(in srgb, var(--color-red) 10%, transparent);
+  color: var(--color-red);
+}
+.avatarToneBeige {
+  background-color: var(--color-cream-deep);
+  color: var(--color-charcoal);
+}
+
+.testimonialsName {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.testimonialsTitle {
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+}
+
+/* -----------------------------------------------------------------------
+   Connect (connect.tsx)
+   ----------------------------------------------------------------------- */
+
+.connectSection {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-cream-deep);
+}
+
+@media (min-width: 1024px) {
+  .connectSection {
+    min-height: 100vh;
+    justify-content: center;
+  }
+}
+
+.connectInner {
+  margin-inline: auto;
+  display: grid;
+  max-width: 72rem;
+  gap: 3.5rem;
+  padding-inline: 1.25rem;
+  padding-block: 2.5rem;
+}
+
+@media (min-width: 640px) {
+  .connectInner {
+    padding-inline: 2rem;
+    padding-block: 3rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .connectInner {
+    grid-template-columns: 0.9fr 1.1fr;
+  }
+}
+
+.connectHeading {
+  margin-top: 1rem;
+  font-family: var(--font-display);
+  font-size: 1.875rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+@media (min-width: 640px) {
+  .connectHeading {
+    font-size: 2.25rem;
+  }
+}
+
+.connectParagraph {
+  margin-top: 1.25rem;
+  max-width: 28rem;
+  line-height: 1.75;
+  color: var(--color-ink);
+}
+
+.connectList {
+  margin-top: 2.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.connectListItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.connectIcon {
+  margin-top: 0.125rem;
+  height: 1.25rem;
+  width: 1.25rem;
+  flex-shrink: 0;
+  color: var(--color-charcoal);
+}
+
+.connectLink {
+  color: var(--color-ink);
+  transition: color 0.2s;
+}
+.connectLink:hover {
+  color: var(--color-charcoal);
+}
+
+.connectText {
+  color: var(--color-ink);
+}
+
+/* -----------------------------------------------------------------------
+   Contact form (contact-form.tsx)
+   ----------------------------------------------------------------------- */
+
+.formSuccessWrap {
+  display: flex;
+  height: 100%;
+  min-height: 20rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-charcoal) 10%, transparent);
+  background-color: var(--color-cream);
+  padding: 2.5rem;
+  text-align: center;
+  box-shadow: 0 10px 15px -3px color-mix(in srgb, var(--color-charcoal) 10%, transparent);
+}
+
+.formSuccessIcon {
+  display: flex;
+  height: 3rem;
+  width: 3rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, var(--color-charcoal) 10%, transparent);
+  color: var(--color-charcoal);
+}
+
+.formSuccessHeading {
+  margin-top: 1.25rem;
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.formSuccessText {
+  margin-top: 0.5rem;
+  max-width: 20rem;
+  font-size: 0.875rem;
+  color: var(--color-ink);
+}
+
+.formSuccessLink {
+  margin-top: 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+  text-underline-offset: 4px;
+}
+.formSuccessLink:hover {
+  text-decoration: underline;
+}
+
+.form {
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-charcoal) 10%, transparent);
+  background-color: var(--color-cream);
+  padding: 1.75rem;
+  box-shadow: 0 10px 15px -3px color-mix(in srgb, var(--color-charcoal) 10%, transparent);
+}
+
+@media (min-width: 640px) {
+  .form {
+    padding: 2rem;
+  }
+}
+
+.formGrid {
+  display: grid;
+  gap: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .formGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.formFieldFull {
+  grid-column: span 1 / span 1;
+}
+
+@media (min-width: 640px) {
+  .formFieldFull {
+    grid-column: span 2 / span 2;
+  }
+}
+
+.formLabel {
+  margin-bottom: 0.5rem;
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+  color: var(--color-ink);
+}
+
+.formOptionalText {
+  text-transform: none;
+  color: color-mix(in srgb, var(--color-ink) 50%, transparent);
+}
+
+.formInput {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: var(--color-charcoal);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.formInput::placeholder {
+  color: color-mix(in srgb, var(--color-ink) 40%, transparent);
+}
+
+.formInput:focus {
+  border-color: var(--color-charcoal);
+}
+
+.formTextarea {
+  resize: none;
+}
+
+.formError {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.formSubmit {
+  margin-top: 1.5rem;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .formSubmit {
+    width: auto;
+  }
+}

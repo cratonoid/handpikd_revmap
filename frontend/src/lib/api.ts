@@ -1,0 +1,52 @@
+// ---------------------------------------------------------------------------
+// Backend API base URL
+// ---------------------------------------------------------------------------
+// The FastAPI backend (see backend/README.md) runs at http://localhost:8000
+// in development, mounted under its api_v1_prefix ("/api/v1" — see
+// backend/app/core/config.py). NEXT_PUBLIC_API_BASE_URL lets a deployed
+// frontend point at a different backend host without a code change; the
+// "NEXT_PUBLIC_" prefix is what makes Next.js expose an env var to
+// browser-side code instead of keeping it server-only.
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+
+import { clearSession, getAccessToken } from "@/lib/auth";
+
+// ---------------------------------------------------------------------------
+// apiFetch — the one place every backend request should go through
+// ---------------------------------------------------------------------------
+// Attaches the stored JWT (see lib/auth.ts) as a Bearer token on every call,
+// so each request is validated by the backend's get_current_user dependency
+// (backend/app/api/deps.py) rather than only checking auth once at login.
+// If a call that carried a stored token comes back 401 (expired/invalid
+// token, or the user was deleted server-side), the whole session (token +
+// role) is cleared and the browser is sent to /login. Clearing sessionStorage
+// alone wouldn't be enough: DashboardShell (components/dashboard-shell.tsx)
+// only re-reads the stored role on mount, so an already-open page would
+// otherwise keep rendering as "authorized" while every further request
+// 401s with no way for the user to tell why (this is what "Not
+// authenticated" on an already-loaded page means — the session died
+// mid-visit, not a bug in whatever request happened to surface it first).
+//
+// Gated on `token` being non-null so this doesn't fire for requests that
+// were never authenticated to begin with — most notably login-form.tsx's
+// own call to /authentication/login_auth, which legitimately 401s on a
+// wrong password and needs to show that inline rather than get redirected
+// away from the login page it's already on.
+export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
+  const token = getAccessToken();
+  const headers = new Headers(options.headers);
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+
+  if (response.status === 401 && token) {
+    clearSession();
+    if (typeof window !== "undefined") {
+      window.location.assign("/login");
+    }
+  }
+
+  return response;
+}
