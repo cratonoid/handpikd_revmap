@@ -21,4 +21,12 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             docker compose up -d --build --remove-orphans
+            # nginx.conf is bind-mounted as a single file; git updates it by
+            # replacing the file (new inode), which an already-running
+            # container's mount stays pinned to the old one for — `up`
+            # above won't recreate nginx on its own since neither its image
+            # nor its volume *list* changed, only the mounted file's
+            # contents. Force it every deploy so nginx.conf edits actually
+            # take effect instead of silently no-op'ing.
+            docker compose up -d --force-recreate nginx
             docker image prune -f
