@@ -1,8 +1,10 @@
 # FastAPI application entrypoint: wires up middleware, routers, and the MongoDB lifespan hook.
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
 from app.core.config import settings
@@ -27,6 +29,11 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+# Serves uploaded product images (see app/services/storage.py) at the same
+# "/media" path storage.py bakes into stored image_path values.
+Path(settings.media_root).mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=settings.media_root), name="media")
 
 
 @app.get("/")

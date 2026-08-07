@@ -24,6 +24,7 @@ from app.schemas.products import (
     UploadProductImageResponse,
 )
 from app.services.counters import get_next_id
+from app.services.storage import delete_product_image as remove_stored_image
 from app.services.storage import upload_product_image as store_product_image
 
 router = APIRouter(prefix="/admin", tags=["products"])
@@ -42,7 +43,7 @@ async def upload_product_image(
     _: User | None = Depends(require_admin),
 ) -> UploadProductImageResponse:
     image_bytes = await file.read()
-    url = store_product_image(image_bytes, file.filename or "image", file.content_type)
+    url = store_product_image(image_bytes, file.filename or "image")
     return UploadProductImageResponse(url=url)
 
 
@@ -159,5 +160,6 @@ async def delete_product_image(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="image not found")
 
     await image.delete()
+    remove_stored_image(payload.image_path)
 
     return DeleteProductImageResponse(message="image deleted successfully")

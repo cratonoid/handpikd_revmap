@@ -10,7 +10,7 @@
 // Styling lives in src/styles/shared.module.css.
 import Link from "next/link";
 import { Logo } from "@/components/logo";
-import { MailIcon, PhoneIcon, MapPinIcon, LinkedInIcon, InstagramIcon } from "@/components/icons";
+import { MailIcon, PhoneIcon, MapPinIcon, WhatsAppIcon } from "@/components/icons";
 import { siteConfig } from "@/lib/brand";
 import styles from "@/styles/shared.module.css";
 
@@ -55,15 +55,7 @@ export function Footer() {
                   aria-label={s.label} // screen readers announce this instead of trying to read the icon
                   className={styles.footerSocialLink}
                 >
-                  {/* Ternary (condition ? A : B) picks which icon to render
-                      based on the label — a simple way to vary content
-                      per-item without a lookup table, since there are only
-                      two possible social platforms right now. */}
-                  {s.label === "LinkedIn" ? (
-                    <LinkedInIcon className="h-4 w-4" />
-                  ) : (
-                    <InstagramIcon className="h-4 w-4" />
-                  )}
+                  <WhatsAppIcon className="h-4 w-4" />
                 </a>
               ))}
             </div>
@@ -101,7 +93,7 @@ export function Footer() {
                   // parentheses, or dashes. `.replace(/[^0-9+]/g, "")`
                   // uses a regular expression to strip out every character
                   // that ISN'T a digit or a "+" sign, turning
-                  // "+1 (844) 555-0142" into "+18445550142".
+                  // "+91 74116 90399" into "+917411690399".
                   href={`tel:${siteConfig.contact.phone.replace(/[^0-9+]/g, "")}`}
                   className={styles.footerContactLink}
                 >

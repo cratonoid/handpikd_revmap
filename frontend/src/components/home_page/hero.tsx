@@ -14,7 +14,6 @@
 import Image from "next/image";
 import { Button } from "@/components/button";
 import { Reveal } from "@/components/reveal";
-import { Counter } from "@/components/counter";
 import styles from "@/styles/home-page.module.css";
 
 export function Hero() {
@@ -60,29 +59,20 @@ export function Hero() {
             <p className={styles.heroParagraph}>
               Handpikd builds corporate gifting programs for client
               appreciation, employee milestones, and company events —
-              sourced, personalized, and shipped nationwide by a dedicated
-              account team.
+              curated, personalized business gifting that leaves a lasting
+              impression, serving Bangalore and businesses across India.
             </p>
           </Reveal>
 
           <Reveal delayMs={360}>
             <div className={styles.heroButtonRow}>
               <Button href="#connect" variant="primary" showArrow>
-                Start Your Gifting Program
+                Plan My Gifting
               </Button>
-              <Button href="#what-we-offer" variant="tertiary">
-                See What We Offer
+              <Button href="/catalogue" variant="tertiary">
+                Catalogue
               </Button>
             </div>
-          </Reveal>
-
-          <Reveal delayMs={440}>
-            <p className={styles.heroTrustLine}>
-              {/* <Counter> renders "0" first, then animates up to 500 once
-                  it's visible — see counter.tsx. */}
-              <Counter value={500} suffix="+" className={styles.heroCounterText} />
-              gifting programs delivered — see who below.
-            </p>
           </Reveal>
         </div>
 

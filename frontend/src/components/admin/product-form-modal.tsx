@@ -20,13 +20,16 @@
 // categories are a multiselect (category_ids is an array on ProductDetails) —
 // see single-select-dropdown.tsx / multi-select-dropdown.tsx.
 //
-// Images: each row is either uploaded (handleImageFileChange -> R2 via
-// uploadProductImage, see lib/products.ts) or a manually pasted URL — either
-// way `imagePaths` is a growing list of URL strings, each expected to become
-// an `image_path` row in product_image_details once the form is saved.
+// Images: each row is either uploaded (handleImageFileChange -> local disk
+// via uploadProductImage, see lib/products.ts) or a manually pasted URL —
+// either way `imagePaths` is a growing list of path/URL strings, each
+// expected to become an `image_path` row in product_image_details once the
+// form is saved. Uploaded paths come back backend-relative (e.g.
+// "/media/<uuid>.jpg"); resolveMediaUrl (lib/api.ts) is what makes those
+// resolve to an actual image both locally and in production.
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/button";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, resolveMediaUrl } from "@/lib/api";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import { GST_PERCENT_OPTIONS } from "@/lib/gst";
 import { deleteProductImage, uploadProductImage, type Product } from "@/lib/products";
@@ -438,9 +441,9 @@ export function ProductFormModal({
               return (
                 <div key={index} className={styles.imageRow}>
                   {path.trim() ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- CDN/arbitrary external URL, not an optimizable local/remote asset
+                    // eslint-disable-next-line @next/next/no-img-element -- arbitrary/dynamic URL, not an optimizable local/remote asset
                     <img
-                      src={path.trim()}
+                      src={resolveMediaUrl(path.trim())}
                       alt=""
                       className={styles.imageThumb}
                       onError={(e) => {

@@ -23,6 +23,7 @@
 // new product" opens it in "add" mode.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
+import { resolveMediaUrl } from "@/lib/api";
 import { ProductFormModal } from "@/components/admin/product-form-modal";
 import { fetchProducts, type Product } from "@/lib/products";
 import { fetchVendors, fetchVendorsList, type Vendor, type VendorOption } from "@/lib/vendors";
@@ -175,8 +176,8 @@ export function ProductsPageClient() {
                   <td className={styles.tableCell}>{index + 1}</td>
                   <td className={styles.tableCell}>
                     {thumb ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- arbitrary external URL, not an optimizable local/remote asset
-                      <img src={thumb} alt="" className={styles.tableThumb} />
+                      // eslint-disable-next-line @next/next/no-img-element -- arbitrary/dynamic URL, not an optimizable local/remote asset
+                      <img src={resolveMediaUrl(thumb)} alt="" className={styles.tableThumb} />
                     ) : (
                       <div className={styles.tableThumbEmpty}>
                         <CubeIcon className="h-4 w-4" />

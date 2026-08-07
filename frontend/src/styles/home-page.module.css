@@ -125,22 +125,6 @@
   }
 }
 
-.heroTrustLine {
-  margin-top: 2rem;
-  display: flex;
-  align-items: baseline;
-  gap: 0.375rem;
-  font-size: 0.875rem;
-  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
-}
-
-.heroCounterText {
-  font-family: var(--font-display);
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--color-charcoal);
-}
-
 .heroImageCol {
   position: relative;
 }
@@ -270,35 +254,6 @@
 }
 .whoParagraph + .whoParagraph {
   margin-top: 1rem;
-}
-
-.whoStatsList {
-  margin-top: 2.25rem;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1.5rem;
-  border-top: 1px solid color-mix(in srgb, var(--color-charcoal) 15%, transparent);
-  padding-top: 2rem;
-}
-
-.whoStatValue {
-  font-family: var(--font-display);
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--color-red);
-}
-
-@media (min-width: 640px) {
-  .whoStatValue {
-    font-size: 1.875rem;
-  }
-}
-
-.whoStatLabel {
-  margin-top: 0.25rem;
-  font-size: 0.75rem;
-  line-height: 1.25;
-  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
 }
 
 .whoImageBox {

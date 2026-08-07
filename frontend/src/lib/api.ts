@@ -9,6 +9,22 @@
 // browser-side code instead of keeping it server-only.
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
 
+// ---------------------------------------------------------------------------
+// Product image URLs
+// ---------------------------------------------------------------------------
+// The backend stores/returns image_path as a path relative to itself (e.g.
+// "/media/<uuid>.jpg", see backend/app/services/storage.py), not a full URL
+// — unlike the old R2 setup, nothing here is publicly addressable on its
+// own. In production this resolves correctly as-is because nginx proxies
+// /media/ straight to the backend on the same origin as the frontend (see
+// deploy/nginx.conf). Locally there's no nginx in front, so
+// NEXT_PUBLIC_MEDIA_BASE_URL fills in the backend's own origin instead.
+const MEDIA_BASE_URL = process.env.NEXT_PUBLIC_MEDIA_BASE_URL ?? "http://localhost:8000";
+
+export function resolveMediaUrl(path: string): string {
+  return path.startsWith("http") ? path : `${MEDIA_BASE_URL}${path}`;
+}
+
 import { clearSession, getAccessToken } from "@/lib/auth";
 
 // ---------------------------------------------------------------------------

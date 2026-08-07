@@ -4,6 +4,12 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend/.env
+    environment:
+      MEDIA_ROOT: /media
+    volumes:
+      # Product images, kept outside the git-managed code directory so they
+      # survive `git reset --hard` deploys and rebuilds.
+      - /srv/handpikd-media:/media
     expose:
       - "8000"
 
@@ -12,6 +18,7 @@ services:
       context: ./frontend
       args:
         NEXT_PUBLIC_API_BASE_URL: /api/v1
+        NEXT_PUBLIC_MEDIA_BASE_URL: ""
     restart: unless-stopped
     expose:
       - "3000"
@@ -21,8 +28,26 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - certbot-etc:/etc/letsencrypt:ro
+      - certbot-webroot:/var/www/certbot
     depends_on:
       - backend
       - frontend
+
+  # Not a long-running service — issues/renews the TLS cert for
+  # mvp.handpikd.co via the webroot nginx shares above. Run on demand with
+  # `docker compose run --rm certbot certonly ...` (see deploy guide);
+  # exits immediately otherwise.
+  certbot:
+    image: certbot/certbot
+    entrypoint: "true"
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+
+volumes:
+  certbot-etc:
+  certbot-webroot:

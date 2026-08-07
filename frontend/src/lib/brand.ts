@@ -66,18 +66,19 @@ export const siteConfig = {
     { label: "Home", href: "/" },
     { label: "About", href: "/#who-we-are" },
     { label: "Products", href: "/products" },
+    { label: "Catalogue", href: "/catalogue" },
     { label: "Blogs", href: "/blogs" },
     { label: "Contact", href: "/#connect" },
   ],
 
   contact: {
-    email: "hello@handpikd.com",
-    phone: "+1 (844) 555-0142",
-    address: "148 Ribbon Row, Suite 400, Austin, TX 78701",
+    email: "info@handpikd.co",
+    phone: "+91 74116 90399",
+    address: "2nd Cross Rd, SGN Layout, Vinobha Nagar, Sudhama Nagar, Bengaluru, Karnataka 560027",
   },
 
-  social: [
-    { label: "LinkedIn", href: "https://linkedin.com" },
-    { label: "Instagram", href: "https://instagram.com" },
-  ],
+  // No real LinkedIn/Instagram profiles yet, so the footer links to
+  // WhatsApp instead (same number as `contact.phone` above) rather than
+  // linking out to generic, non-company homepages.
+  social: [{ label: "WhatsApp", href: "https://wa.me/917411690399" }],
 } as const;

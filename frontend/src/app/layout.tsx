@@ -96,16 +96,19 @@ const organizationJsonLd = {
   "@type": "Organization",
   name: "Handpikd",
   description,
-  email: "hello@handpikd.com",
+  email: "info@handpikd.co",
   address: {
     "@type": "PostalAddress",
-    streetAddress: "148 Ribbon Row, Suite 400",
-    addressLocality: "Austin",
-    addressRegion: "TX",
-    postalCode: "78701",
-    addressCountry: "US",
+    streetAddress: "2nd Cross Rd, SGN Layout, Vinobha Nagar, Sudhama Nagar",
+    addressLocality: "Bengaluru",
+    addressRegion: "Karnataka",
+    postalCode: "560027",
+    addressCountry: "IN",
   },
-  sameAs: ["https://linkedin.com", "https://instagram.com"],
+  // No real LinkedIn/Instagram profiles yet — WhatsApp (same number as the
+  // footer's contact link) is the one real, verifiable "elsewhere on the
+  // web" presence to list here.
+  sameAs: ["https://wa.me/917411690399"],
 };
 
 // Every layout/page component in the App Router receives a `children` prop

@@ -1,38 +1,32 @@
-# Uploads product images to Cloudflare R2 (S3-compatible object storage) and
-# returns their public CDN URL, to be stored as ProductImageDetails.image_path
-# (see routes/products.py's upload_product_image).
+# Saves product images to local disk and returns a path served by the
+# FastAPI StaticFiles mount (see app/main.py) at /media. Kept as a relative
+# path (not a full URL) so it resolves against whatever's fronting the API —
+# nginx proxies /media/ straight through to the backend in production (see
+# deploy/nginx.conf), and the frontend prefixes it with the backend's own
+# origin in local dev (see frontend/src/lib/api.ts's resolveMediaUrl).
 import uuid
-from functools import lru_cache
-
-import boto3
+from pathlib import Path
 
 from app.core.config import settings
 
-
-# Built lazily (not at import time) so the app can still start up — and other
-# routes/tests keep working — before R2 credentials are filled into .env;
-# only an actual upload attempt fails until then. Cached since building an
-# S3 client is not free and settings don't change at runtime.
-@lru_cache
-def _get_client():
-    return boto3.client(
-        "s3",
-        endpoint_url=f"https://{settings.r2_account_id}.r2.cloudflarestorage.com",
-        aws_access_key_id=settings.r2_access_key_id,
-        aws_secret_access_key=settings.r2_secret_access_key,
-        region_name="auto",
-    )
+MEDIA_URL_PREFIX = "/media"
 
 
-def upload_product_image(image_bytes: bytes, filename: str, content_type: str | None) -> str:
+def _media_root() -> Path:
+    return Path(settings.media_root)
+
+
+def upload_product_image(image_bytes: bytes, filename: str) -> str:
     extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
-    key = f"product-images/{uuid.uuid4().hex}.{extension}"
+    key = f"{uuid.uuid4().hex}.{extension}"
 
-    _get_client().put_object(
-        Bucket=settings.r2_bucket_name,
-        Key=key,
-        Body=image_bytes,
-        ContentType=content_type or "application/octet-stream",
-    )
+    media_root = _media_root()
+    media_root.mkdir(parents=True, exist_ok=True)
+    (media_root / key).write_bytes(image_bytes)
 
-    return f"{settings.r2_public_base_url.rstrip('/')}/{key}"
+    return f"{MEDIA_URL_PREFIX}/{key}"
+
+
+def delete_product_image(image_path: str) -> None:
+    filename = image_path.rsplit("/", 1)[-1]
+    (_media_root() / filename).unlink(missing_ok=True)

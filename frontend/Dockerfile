@@ -9,10 +9,12 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Baked into the client bundle at build time (NEXT_PUBLIC_ prefix) — see
-# frontend/src/lib/api.ts. Defaults to a same-origin relative path so it
-# works behind the nginx reverse proxy regardless of IP/domain.
+# frontend/src/lib/api.ts. Default to same-origin relative paths so both
+# work behind the nginx reverse proxy regardless of IP/domain.
 ARG NEXT_PUBLIC_API_BASE_URL=/api/v1
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+ARG NEXT_PUBLIC_MEDIA_BASE_URL=""
+ENV NEXT_PUBLIC_MEDIA_BASE_URL=$NEXT_PUBLIC_MEDIA_BASE_URL
 
 RUN npm run build
 
