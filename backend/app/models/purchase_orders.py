@@ -1,4 +1,6 @@
 # Schema for the #purchase_orders collection.
+from datetime import datetime
+
 from beanie import Document
 
 
@@ -6,6 +8,7 @@ class PurchaseOrders(Document):
     id: int
     purchase_order_no: str
     vendor_id: int  # FK -> VendorDetails.id
+    date: datetime  # Order date, set/edited by the admin via the form.
     total_amount_before_tax: float
     # Percentages (not rupee amounts) applied to total_amount_before_tax to
     # get total_amount_after_tax — see _compute_totals in routes/orders.py.

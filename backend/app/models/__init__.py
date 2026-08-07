@@ -6,6 +6,9 @@ from app.models.customer_id_counter import CustomerIdCounter
 from app.models.customer_poc_details import CustomerPocDetails
 from app.models.customer_poc_id_counter import CustomerPocIdCounter
 from app.models.inventory import Inventory
+from app.models.inventory_history import InventoryHistory
+from app.models.inventory_history_id_counter import InventoryHistoryIdCounter
+from app.models.inventory_id_counter import InventoryIdCounter
 from app.models.invoice_details import InvoiceDetails
 from app.models.invoice_no_counter_master import InvoiceNoCounterMaster
 from app.models.order_no_counter_master import OrderNoCounterMaster
@@ -37,6 +40,9 @@ __all__ = [
     "CustomerPocDetails",
     "CustomerPocIdCounter",
     "Inventory",
+    "InventoryHistory",
+    "InventoryHistoryIdCounter",
+    "InventoryIdCounter",
     "InvoiceDetails",
     "InvoiceNoCounterMaster",
     "OrderNoCounterMaster",

@@ -64,3 +64,10 @@ class DeleteProductImageRequest(BaseModel):
 
 class DeleteProductImageResponse(BaseModel):
     message: str
+
+
+class UploadProductImageResponse(BaseModel):
+    # Public CDN URL of the just-uploaded image (see services/storage.py) —
+    # the frontend adds this to its imagePaths list, which then gets
+    # persisted as a product_image_details row on the next add/update save.
+    url: str

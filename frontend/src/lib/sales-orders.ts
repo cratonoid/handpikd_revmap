@@ -2,10 +2,9 @@
 // Sales order data for the /admin/orders "Sales orders" tab
 // ---------------------------------------------------------------------------
 // Mirrors lib/purchase-orders.ts. Fetches from GET /admin/get_sales_order_details
-// (backend/app/api/routes/sales_orders.py), expected to return EVERY sales
-// order — active and soft-deleted alike (mirrors get_vendor_details/
-// get_customer_details) — so the tab can split them into Active/Deleted tabs
-// client-side.
+// (backend/app/api/routes/sales_orders.py), which only ever returns active
+// orders — soft-deleted ones are filtered out server-side so they can't be
+// viewed.
 //
 // SalesOrders itself has no line-item field — product/quantity/rate/tax rows
 // belong to the separate #sales_summary collection (backend/app/models/
@@ -17,7 +16,7 @@
 // create_new_sales_order/update_sales_order_details.
 //
 // order_no and order_status_id are backend-assigned on create (order_no via
-// OrderNoCounterMaster, order_status_id defaulted to the seeded "Pending"
+// OrderNoCounterMaster, order_status_id defaulted to the seeded "New"
 // row) — the create request has neither field; only update_sales_order_details
 // accepts order_status_id.
 import { apiFetch } from "@/lib/api";
@@ -27,6 +26,7 @@ export type SalesOrder = {
   orderNo: number;
   orderStatusId: number;
   custId: number;
+  date: string;
   productIds: number[];
   quantities: number[];
   rates: number[];
@@ -45,6 +45,7 @@ type SalesOrderDetailItem = {
   order_no: number;
   order_status_id: number;
   cust_id: number;
+  date: string;
   product_ids: number[];
   quantities: number[];
   rates: number[];
@@ -63,6 +64,7 @@ function toSalesOrder(item: SalesOrderDetailItem): SalesOrder {
     orderNo: item.order_no,
     orderStatusId: item.order_status_id,
     custId: item.cust_id,
+    date: item.date,
     productIds: item.product_ids,
     quantities: item.quantities,
     rates: item.rates,

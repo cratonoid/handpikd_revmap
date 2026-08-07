@@ -23,6 +23,7 @@ from app.schemas.purchase_orders import (
     UpdatePurchaseOrderDetailsResponse,
 )
 from app.services.counters import get_next_id
+from app.services.inventory import record_purchase_received
 
 router = APIRouter(prefix="/admin", tags=["orders"])
 
@@ -93,6 +94,7 @@ async def create_new_purchase_order(
         id=purchase_order_id,
         purchase_order_no=payload.purchase_order_no,
         vendor_id=payload.vendor_id,
+        date=payload.date,
         total_amount_before_tax=total_amount_before_tax,
         sgst_perc=payload.sgst_perc,
         cgst_perc=payload.cgst_perc,
@@ -103,6 +105,7 @@ async def create_new_purchase_order(
     await purchase_order.insert()
 
     await _insert_purchase_summary_rows(purchase_order_id, payload.product_ids, payload.quantities, payload.rates)
+    await record_purchase_received(purchase_order_id, payload.product_ids, payload.quantities)
 
     return CreateNewPurchaseOrderResponse(message="purchase order successfully created")
 
@@ -155,6 +158,7 @@ async def get_purchase_order_details(
                 id=order.id,
                 purchase_order_no=order.purchase_order_no,
                 vendor_id=order.vendor_id,
+                date=order.date,
                 product_ids=[item.product_id for item in line_items],
                 quantities=[item.quantity for item in line_items],
                 rates=[item.rate for item in line_items],
@@ -196,6 +200,7 @@ async def update_purchase_order_details(
 
     purchase_order.purchase_order_no = payload.purchase_order_no
     purchase_order.vendor_id = payload.vendor_id
+    purchase_order.date = payload.date
     purchase_order.total_amount_before_tax = total_amount_before_tax
     purchase_order.sgst_perc = payload.sgst_perc
     purchase_order.cgst_perc = payload.cgst_perc

@@ -1,9 +1,12 @@
 # Request/response bodies for the sales orders module's endpoints.
+from datetime import datetime
+
 from pydantic import BaseModel, model_validator
 
 
 class CreateNewSalesOrderRequest(BaseModel):
     cust_id: int
+    date: datetime
     # Parallel arrays, one entry per line item (mirrors
     # CreateNewPurchaseOrderRequest's product_ids/quantities/rates, plus
     # tax_percs since sales order tax is captured per line item rather than
@@ -35,6 +38,7 @@ class SalesOrderDetailItem(BaseModel):
     order_no: int
     order_status_id: int
     cust_id: int
+    date: datetime
     product_ids: list[int]
     quantities: list[int]
     rates: list[float]
@@ -50,10 +54,11 @@ class SalesOrderDetailItem(BaseModel):
 class UpdateSalesOrderDetailsRequest(BaseModel):
     id: int
     # order_status_id and is_deleted are only ever submitted on update — a
-    # new sales order is always created as "Pending" and not deleted.
+    # new sales order is always created as "New" and not deleted.
     order_status_id: int
     is_deleted: bool = False
     cust_id: int
+    date: datetime
     product_ids: list[int]
     quantities: list[int]
     rates: list[float]

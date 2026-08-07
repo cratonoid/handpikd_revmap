@@ -1,13 +1,8 @@
 import type { Metadata } from "next";
-import { DashboardModulePage } from "@/components/dashboard-placeholder";
+import { InventoryPageClient } from "@/components/admin/inventory-page-client";
 
 export const metadata: Metadata = { title: "Inventory" };
 
 export default function AdminInventoryPage() {
-  return (
-    <DashboardModulePage
-      title="Inventory"
-      description="Monitor stock levels across products and warehouses."
-    />
-  );
+  return <InventoryPageClient />;
 }

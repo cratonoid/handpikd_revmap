@@ -89,6 +89,22 @@ export function ProductsPageClient() {
     setModalState(null);
   }
 
+  // The modal deletes an already-saved image immediately (not gated behind
+  // Save) — if the admin then closes without saving, this local `products`
+  // list is left pointing at an image that's already gone server-side. Since
+  // the modal only reconstructs a full Product on Save, a real re-fetch
+  // (rather than trying to patch the stale entry's imagePaths by hand) is
+  // what actually reflects the truth.
+  function handleImagesChangedWithoutSave() {
+    setModalState(null);
+    fetchProducts()
+      .then(setProducts)
+      .catch(() => {
+        // Keep showing the previous list rather than clearing it on a
+        // transient refetch failure — the delete itself already succeeded.
+      });
+  }
+
   const categoryOptions = flatCategories.map((c) => ({
     value: c.id,
     label: c.name,
@@ -210,6 +226,7 @@ export function ProductsPageClient() {
           vendors={vendorOptions}
           categoryOptions={categoryOptions}
           onClose={() => setModalState(null)}
+          onImagesChangedWithoutSave={handleImagesChangedWithoutSave}
           onSaved={handleSaved}
         />
       )}

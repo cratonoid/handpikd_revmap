@@ -3,15 +3,19 @@
 // ---------------------------------------------------------------------------
 // <SalesOrdersTab> — "Sales orders" tab on /admin/orders
 // ---------------------------------------------------------------------------
-// Mirrors purchase-orders-tab.tsx, plus the Active/Deleted `view` toggle from
-// vendors-page-client.tsx — GET /admin/get_sales_order_details returns every
-// order (active and soft-deleted alike), and this tab splits them client-side
-// since SalesOrders has an is_deleted flag (unlike PurchaseOrders). "+ New
-// sales order" opens the popup in "add" mode; double-clicking an existing row
-// opens it in "edit" mode, pre-filled with that row's data. Both modes save
-// through the same popup (components/admin/sales-order-form-modal.tsx), which
-// POSTs to create_new_sales_order / update_sales_order_details
+// Mirrors purchase-orders-tab.tsx. GET /admin/get_sales_order_details only
+// ever returns active orders — soft-deleted ones (SalesOrders.is_deleted,
+// unlike PurchaseOrders) are excluded server-side so they can't be viewed.
+// "+ New sales order" opens the popup in "add" mode; double-clicking an
+// existing row opens it in "edit" mode, pre-filled with that row's data.
+// Both modes save through the same popup
+// (components/admin/sales-order-form-modal.tsx), which POSTs to
+// create_new_sales_order / update_sales_order_details
 // (backend/app/api/routes/sales_orders.py).
+//
+// The status tabs (All + one per OrderStatusMaster row) are built from
+// `orderStatuses` rather than a hardcoded list, so they always match
+// whatever statuses are seeded in backend/app/core/db.py.
 //
 // get_customer_list is used (rather than the heavier, email-keyed
 // get_customer_details) because it's the only endpoint exposing a numeric
@@ -30,7 +34,7 @@ import styles from "@/styles/dashboard.module.css";
 
 type ModalState = { mode: "add" } | { mode: "edit"; order: SalesOrder } | null;
 type LoadState = "loading" | "loaded";
-type View = "active" | "deleted";
+type StatusFilter = "all" | number;
 
 export function SalesOrdersTab() {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
@@ -40,11 +44,13 @@ export function SalesOrdersTab() {
   const [orderStatuses, setOrderStatuses] = useState<OrderStatus[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
-  const [view, setView] = useState<View>("active");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const customersById = new Map(customers.map((c) => [c.id, c]));
   const statusesById = new Map(orderStatuses.map((s) => [s.id, s]));
-  const visibleOrders = orders.filter((o) => (view === "deleted" ? o.isDeleted : !o.isDeleted));
+  const sortedStatuses = [...orderStatuses].sort((a, b) => a.id - b.id);
+  const visibleOrders =
+    statusFilter === "all" ? orders : orders.filter((order) => order.orderStatusId === statusFilter);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,21 +110,24 @@ export function SalesOrdersTab() {
         <button
           type="button"
           role="tab"
-          aria-selected={view === "active"}
-          onClick={() => setView("active")}
-          className={`${styles.viewToggleButton} ${view === "active" ? styles.viewToggleButtonActive : ""}`}
+          aria-selected={statusFilter === "all"}
+          onClick={() => setStatusFilter("all")}
+          className={`${styles.viewToggleButton} ${statusFilter === "all" ? styles.viewToggleButtonActive : ""}`}
         >
-          Active orders
+          All
         </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "deleted"}
-          onClick={() => setView("deleted")}
-          className={`${styles.viewToggleButton} ${view === "deleted" ? styles.viewToggleButtonActive : ""}`}
-        >
-          Deleted orders
-        </button>
+        {sortedStatuses.map((orderStatus) => (
+          <button
+            key={orderStatus.id}
+            type="button"
+            role="tab"
+            aria-selected={statusFilter === orderStatus.id}
+            onClick={() => setStatusFilter(orderStatus.id)}
+            className={`${styles.viewToggleButton} ${statusFilter === orderStatus.id ? styles.viewToggleButtonActive : ""}`}
+          >
+            {orderStatus.statusName}
+          </button>
+        ))}
       </div>
 
       <div className={styles.tableWrap}>
@@ -127,6 +136,7 @@ export function SalesOrdersTab() {
             <tr>
               <th className={styles.tableHeadCell}>S.No</th>
               <th className={styles.tableHeadCell}>Order no.</th>
+              <th className={styles.tableHeadCell}>Date</th>
               <th className={styles.tableHeadCell}>Customer</th>
               <th className={styles.tableHeadCell}>Status</th>
               <th className={styles.tableHeadCell}>Before tax</th>
@@ -144,6 +154,7 @@ export function SalesOrdersTab() {
               >
                 <td className={styles.tableCell}>{index + 1}</td>
                 <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{order.orderNo}</td>
+                <td className={styles.tableCell}>{new Date(order.date).toLocaleDateString()}</td>
                 <td className={styles.tableCell}>{customersById.get(order.custId)?.name ?? "—"}</td>
                 <td className={styles.tableCell}>{statusesById.get(order.orderStatusId)?.statusName ?? "—"}</td>
                 <td className={styles.tableCell}>₹{order.totalAmountBeforeTax.toFixed(2)}</td>
@@ -156,7 +167,10 @@ export function SalesOrdersTab() {
         </table>
         {loadState === "loading" && <p className={styles.pageSubtext}>Loading sales orders…</p>}
         {loadState === "loaded" && visibleOrders.length === 0 && (
-          <p className={styles.pageSubtext}>No {view} sales orders.</p>
+          <p className={styles.pageSubtext}>
+            No {statusFilter === "all" ? "" : `${statusesById.get(statusFilter)?.statusName.toLowerCase()} `}sales
+            orders.
+          </p>
         )}
       </div>
 

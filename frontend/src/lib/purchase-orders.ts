@@ -21,6 +21,7 @@ export type PurchaseOrder = {
   id: number;
   purchaseOrderNo: string;
   vendorId: number;
+  date: string;
   productIds: number[];
   quantities: number[];
   rates: number[];
@@ -39,6 +40,7 @@ type PurchaseOrderDetailItem = {
   id: number;
   purchase_order_no: string;
   vendor_id: number;
+  date: string;
   product_ids: number[];
   quantities: number[];
   rates: number[];
@@ -92,6 +94,7 @@ export async function fetchPurchaseOrders(): Promise<PurchaseOrder[]> {
     id: item.id,
     purchaseOrderNo: item.purchase_order_no,
     vendorId: item.vendor_id,
+    date: item.date,
     productIds: item.product_ids,
     quantities: item.quantities,
     rates: item.rates,

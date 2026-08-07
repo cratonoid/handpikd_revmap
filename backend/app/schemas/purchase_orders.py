@@ -1,4 +1,6 @@
 # Request/response bodies for the orders module's endpoints.
+from datetime import datetime
+
 from pydantic import BaseModel, model_validator
 
 
@@ -12,6 +14,7 @@ def _check_gst_combo(sgst_perc: float | None, cgst_perc: float | None, igst_perc
 class CreateNewPurchaseOrderRequest(BaseModel):
     purchase_order_no: str
     vendor_id: int
+    date: datetime
     # Parallel arrays, one entry per line item (mirrors AddVendorDetailsRequest's
     # contact_name/contact_phone pairing). product_ids must all belong to
     # vendor_id — a purchase order is placed with a single vendor.
@@ -47,6 +50,7 @@ class PurchaseOrderDetailItem(BaseModel):
     id: int
     purchase_order_no: str
     vendor_id: int
+    date: datetime
     product_ids: list[int]
     quantities: list[int]
     rates: list[float]
@@ -62,6 +66,7 @@ class UpdatePurchaseOrderDetailsRequest(BaseModel):
     id: int
     purchase_order_no: str
     vendor_id: int
+    date: datetime
     product_ids: list[int]
     quantities: list[int]
     rates: list[float]

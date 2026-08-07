@@ -20,19 +20,20 @@
 // categories are a multiselect (category_ids is an array on ProductDetails) —
 // see single-select-dropdown.tsx / multi-select-dropdown.tsx.
 //
-// Images: there's no uploader yet, so `imagePaths` is just a growing list of
-// pasted URLs (e.g. from an existing online source), each expected to become
-// an `image_path` row in product_image_details once the backend catches up.
-import { useState, type FormEvent } from "react";
+// Images: each row is either uploaded (handleImageFileChange -> R2 via
+// uploadProductImage, see lib/products.ts) or a manually pasted URL — either
+// way `imagePaths` is a growing list of URL strings, each expected to become
+// an `image_path` row in product_image_details once the form is saved.
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import { GST_PERCENT_OPTIONS } from "@/lib/gst";
-import { deleteProductImage, type Product } from "@/lib/products";
+import { deleteProductImage, uploadProductImage, type Product } from "@/lib/products";
 import type { VendorOption } from "@/lib/vendors";
 import { MultiSelectDropdown, type MultiSelectOption } from "@/components/admin/multi-select-dropdown";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
-import { CubeIcon, XMarkIcon } from "@/components/icons";
+import { ArrowUpTrayIcon, CubeIcon, XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
 type Status = "idle" | "saving";
@@ -43,6 +44,7 @@ export function ProductFormModal({
   vendors,
   categoryOptions,
   onClose,
+  onImagesChangedWithoutSave,
   onSaved,
 }: {
   mode: "add" | "edit";
@@ -51,6 +53,14 @@ export function ProductFormModal({
   vendors: VendorOption[];
   categoryOptions: MultiSelectOption[];
   onClose: () => void;
+  // Image removal deletes immediately (see removeImageRow) rather than
+  // waiting for Save, so closing the modal WITHOUT saving can still leave
+  // the parent's product list stale — its imagePaths (and, via
+  // initialProduct, any later re-open of this same product) would still
+  // include an image that's actually already gone server-side. Called
+  // instead of onClose when that happened, so the parent can re-fetch
+  // get_product_details rather than trusting its own cached list.
+  onImagesChangedWithoutSave: () => void;
   onSaved: (product: Product) => void;
 }) {
   const [productName, setProductName] = useState(initialProduct?.productName ?? "");
@@ -78,10 +88,30 @@ export function ProductFormModal({
   // an image happens immediately, independent of the Save button.
   const [deletingImageIndex, setDeletingImageIndex] = useState<number | null>(null);
   const [imageDeleteError, setImageDeleteError] = useState<string | null>(null);
+  // Which image row is mid-upload (disables its inputs) and any error from
+  // that upload — separate from the form's own error/status the same way
+  // deletingImageIndex/imageDeleteError are, since an upload also happens
+  // immediately rather than waiting for Save.
+  const [uploadingImageIndex, setUploadingImageIndex] = useState<number | null>(null);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+  // Set once any image is actually deleted server-side this session — see
+  // onImagesChangedWithoutSave above.
+  const [hasUnsavedImageDeletion, setHasUnsavedImageDeletion] = useState(false);
 
   const isEdit = mode === "edit";
   const wasHidden = initialProduct ? !initialProduct.isVisible : false;
   const title = isEdit ? "Edit product" : "Add new product";
+
+  // Closing (Cancel/X/backdrop) never runs onSaved, so if an image delete
+  // already went to the server this session, the parent's cached product
+  // list needs a real re-fetch instead of just being told "closed".
+  function handleClose() {
+    if (hasUnsavedImageDeletion) {
+      onImagesChangedWithoutSave();
+    } else {
+      onClose();
+    }
+  }
 
   // vendors comes from GET /admin/get_vendors_list, which only returns active
   // vendors — isDeleted is always false here (a since-deleted vendor on an
@@ -100,14 +130,33 @@ export function ProductFormModal({
     setImagePaths((prev) => [...prev, ""]);
   }
 
+  // Uploads the chosen file to R2 (see lib/products.ts) and, on success,
+  // fills this row's URL with the returned CDN link — replacing whatever was
+  // there before (a blank new row, or an existing pasted/uploaded URL).
+  async function handleImageFileChange(index: number, event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setUploadingImageIndex(index);
+    setImageUploadError(null);
+
+    try {
+      const url = await uploadProductImage(file);
+      updateImagePath(index, url);
+    } catch {
+      setImageUploadError("Couldn't upload image. Please try again.");
+    } finally {
+      setUploadingImageIndex(null);
+    }
+  }
+
   // If this row's path was already persisted (part of the product's saved
   // imagePaths when the form opened), delete it from the backend right away
   // via delete_product_image rather than waiting for a full form Save — a
   // brand-new, not-yet-saved row just comes out of local state, since
   // there's nothing to delete server-side yet.
   async function removeImageRow(index: number) {
-    if (imagePaths.length === 1) return;
-
     const path = imagePaths[index].trim();
     const wasPersisted = isEdit && initialProduct != null && initialProduct.imagePaths.includes(path);
 
@@ -122,6 +171,7 @@ export function ProductFormModal({
         return;
       }
       setDeletingImageIndex(null);
+      setHasUnsavedImageDeletion(true);
     }
 
     setImagePaths((prev) => prev.filter((_, i) => i !== index));
@@ -213,7 +263,7 @@ export function ProductFormModal({
   }
 
   return (
-    <div className={styles.modalBackdrop} onClick={onClose}>
+    <div className={styles.modalBackdrop} onClick={handleClose}>
       <div
         role="dialog"
         aria-modal="true"
@@ -225,7 +275,7 @@ export function ProductFormModal({
           <h2 id="product-modal-title" className={styles.modalTitle}>
             {title}
           </h2>
-          <button type="button" onClick={onClose} aria-label="Close" className={styles.modalCloseButton}>
+          <button type="button" onClick={handleClose} aria-label="Close" className={styles.modalCloseButton}>
             <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
@@ -377,52 +427,78 @@ export function ProductFormModal({
 
           <div className={styles.imagesSection}>
             <div className={styles.contactsHeader}>
-              <span className={styles.formLabel}>Product images (image URLs — uploader coming later)</span>
+              <span className={styles.formLabel}>Product images</span>
               <button type="button" onClick={addImageRow} className={styles.addContactButton}>
                 + Add image
               </button>
             </div>
 
-            {imagePaths.map((path, index) => (
-              <div key={index} className={styles.imageRow}>
-                {path.trim() ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- arbitrary external URL, not an optimizable local/remote asset
-                  <img
-                    src={path.trim()}
-                    alt=""
-                    className={styles.imageThumb}
-                    onError={(e) => {
-                      e.currentTarget.style.opacity = "0";
-                    }}
+            {imagePaths.map((path, index) => {
+              const isUploading = uploadingImageIndex === index;
+              return (
+                <div key={index} className={styles.imageRow}>
+                  {path.trim() ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- CDN/arbitrary external URL, not an optimizable local/remote asset
+                    <img
+                      src={path.trim()}
+                      alt=""
+                      className={styles.imageThumb}
+                      onError={(e) => {
+                        e.currentTarget.style.opacity = "0";
+                      }}
+                    />
+                  ) : (
+                    <div className={styles.imageThumbEmpty}>
+                      <CubeIcon className="h-8 w-8" />
+                    </div>
+                  )}
+                  <input
+                    type="url"
+                    placeholder="Upload a file, or paste an image URL"
+                    value={path}
+                    onChange={(e) => updateImagePath(index, e.target.value)}
+                    disabled={isUploading}
+                    className={styles.formInput}
+                    aria-label={`Image ${index + 1} URL`}
                   />
-                ) : (
-                  <div className={styles.imageThumbEmpty}>
-                    <CubeIcon className="h-8 w-8" />
-                  </div>
-                )}
-                <input
-                  type="url"
-                  placeholder="https://example.com/image.jpg"
-                  value={path}
-                  onChange={(e) => updateImagePath(index, e.target.value)}
-                  className={styles.formInput}
-                  aria-label={`Image ${index + 1} URL`}
-                />
-                <button
-                  type="button"
-                  onClick={() => void removeImageRow(index)}
-                  disabled={imagePaths.length === 1 || deletingImageIndex === index}
-                  aria-label={`Remove image ${index + 1}`}
-                  className={styles.removeContactButton}
-                >
-                  <XMarkIcon className="h-4 w-4" />
-                </button>
-              </div>
-            ))}
+                  <label
+                    htmlFor={`imageUpload-${index}`}
+                    className={`${styles.uploadImageButton} ${isUploading ? styles.uploadImageButtonDisabled : ""}`}
+                    aria-label={`Upload image ${index + 1}`}
+                  >
+                    <ArrowUpTrayIcon className="h-4 w-4" />
+                  </label>
+                  <input
+                    id={`imageUpload-${index}`}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => void handleImageFileChange(index, e)}
+                    disabled={isUploading}
+                    className="sr-only"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void removeImageRow(index)}
+                    disabled={deletingImageIndex === index || isUploading}
+                    aria-label={`Remove image ${index + 1}`}
+                    className={styles.removeContactButton}
+                  >
+                    <XMarkIcon className="h-4 w-4" />
+                  </button>
+                  {isUploading && <p className={styles.pageSubtext}>Uploading…</p>}
+                </div>
+              );
+            })}
 
             {imageDeleteError && (
               <p role="alert" aria-live="polite" className={styles.formError}>
                 {imageDeleteError}
+              </p>
+            )}
+
+            {imageUploadError && (
+              <p role="alert" aria-live="polite" className={styles.formError}>
+                {imageUploadError}
               </p>
             )}
           </div>
@@ -470,7 +546,7 @@ export function ProductFormModal({
 
             {!confirmingDelete && (
               <div className={styles.modalActionsRight}>
-                <Button type="button" variant="tertiary" onClick={onClose}>
+                <Button type="button" variant="tertiary" onClick={handleClose}>
                   Cancel
                 </Button>
                 <Button type="submit" variant="primary" disabled={status === "saving"}>

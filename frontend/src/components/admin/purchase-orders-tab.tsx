@@ -100,6 +100,7 @@ export function PurchaseOrdersTab() {
             <tr>
               <th className={styles.tableHeadCell}>S.No</th>
               <th className={styles.tableHeadCell}>PO no.</th>
+              <th className={styles.tableHeadCell}>Date</th>
               <th className={styles.tableHeadCell}>Vendor</th>
               <th className={styles.tableHeadCell}>Before tax</th>
               <th className={styles.tableHeadCell}>After tax</th>
@@ -115,6 +116,7 @@ export function PurchaseOrdersTab() {
               >
                 <td className={styles.tableCell}>{index + 1}</td>
                 <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{order.purchaseOrderNo}</td>
+                <td className={styles.tableCell}>{new Date(order.date).toLocaleDateString()}</td>
                 <td className={styles.tableCell}>{vendorsById.get(order.vendorId)?.registeredName ?? "—"}</td>
                 <td className={styles.tableCell}>₹{order.totalAmountBeforeTax.toFixed(2)}</td>
                 <td className={styles.tableCell}>₹{order.totalAmountAfterTax.toFixed(2)}</td>

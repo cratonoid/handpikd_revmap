@@ -26,10 +26,11 @@ from app.schemas.sales_orders import (
     UpdateSalesOrderDetailsResponse,
 )
 from app.services.counters import get_next_id
+from app.services.inventory import get_current_quantities, record_sale_fulfilled
 
 router = APIRouter(prefix="/admin", tags=["sales_orders"])
 
-_PENDING_STATUS_NAME = "Pending"
+_NEW_STATUS_NAME = "New"
 
 
 async def _validate_customer_exists(cust_id: int) -> None:
@@ -58,17 +59,38 @@ async def _validate_purchase_orders_exist(purchase_order_ids: list[int]) -> None
             )
 
 
+async def _validate_sufficient_stock(product_ids: list[int], quantities: list[int]) -> None:
+    # A product can appear more than once across a single order's line
+    # items — quantities are summed per product before comparing against
+    # what's on hand, rather than checking each line item in isolation.
+    requested_by_product_id: dict[int, int] = {}
+    for product_id, quantity in zip(product_ids, quantities):
+        requested_by_product_id[product_id] = requested_by_product_id.get(product_id, 0) + quantity
+
+    available_by_product_id = await get_current_quantities(list(requested_by_product_id))
+    shortages = [
+        f"product {product_id} (available {available_by_product_id.get(product_id, 0)}, requested {requested})"
+        for product_id, requested in requested_by_product_id.items()
+        if requested > available_by_product_id.get(product_id, 0)
+    ]
+    if shortages:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"insufficient stock for: {', '.join(shortages)}",
+        )
+
+
 async def _validate_order_status_exists(order_status_id: int) -> None:
     order_status = await OrderStatusMaster.get(order_status_id)
     if order_status is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="order status not found")
 
 
-async def _get_pending_status_id() -> int:
-    pending_status = await OrderStatusMaster.find_one(OrderStatusMaster.status_name == _PENDING_STATUS_NAME)
-    if pending_status is None:
+async def _get_new_status_id() -> int:
+    new_status = await OrderStatusMaster.find_one(OrderStatusMaster.status_name == _NEW_STATUS_NAME)
+    if new_status is None:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="order statuses not seeded")
-    return pending_status.id
+    return new_status.id
 
 
 def _compute_line_items_and_totals(
@@ -117,12 +139,13 @@ async def create_new_sales_order(
     await _validate_customer_exists(payload.cust_id)
     await _validate_products_exist(payload.product_ids)
     await _validate_purchase_orders_exist(payload.related_purchase_order_ids)
+    await _validate_sufficient_stock(payload.product_ids, payload.quantities)
 
     line_totals_before_tax, tax_amounts, total_before_tax, total_tax, total_after_tax = (
         _compute_line_items_and_totals(payload.quantities, payload.rates, payload.tax_percs)
     )
 
-    order_status_id = await _get_pending_status_id()
+    order_status_id = await _get_new_status_id()
     order_no = await get_next_id(OrderNoCounterMaster, "next_order_no", SalesOrders)
     sales_order_id = await get_next_id(SalesOrderIdCounter, "next_sales_order_id", SalesOrders)
 
@@ -131,6 +154,7 @@ async def create_new_sales_order(
         order_no=order_no,
         order_status_id=order_status_id,
         cust_id=payload.cust_id,
+        date=payload.date,
         total_amount_before_tax=total_before_tax,
         total_tax_amount=total_tax,
         total_amount_after_tax=total_after_tax,
@@ -148,6 +172,7 @@ async def create_new_sales_order(
         tax_amounts,
         line_totals_before_tax,
     )
+    await record_sale_fulfilled(sales_order_id, payload.product_ids, payload.quantities)
 
     return CreateNewSalesOrderResponse(message="sales order successfully created")
 
@@ -156,10 +181,10 @@ async def create_new_sales_order(
 async def get_sales_order_details(
     _: User | None = Depends(require_admin),
 ) -> list[SalesOrderDetailItem]:
-    # Returns every sales order — active and soft-deleted alike (mirrors
-    # get_vendor_details/get_customer_details) — so the frontend can split
-    # them into Active/Deleted tabs.
-    orders = await SalesOrders.find_all().to_list()
+    # Soft-deleted orders are excluded here so they can never be viewed —
+    # unlike get_vendor_details/get_customer_details, there is no
+    # Active/Deleted tab for sales orders to split them into.
+    orders = await SalesOrders.find(SalesOrders.is_deleted == False).to_list()
     if not orders:
         return []
 
@@ -178,6 +203,7 @@ async def get_sales_order_details(
                 order_no=order.order_no,
                 order_status_id=order.order_status_id,
                 cust_id=order.cust_id,
+                date=order.date,
                 product_ids=[item.product_id for item in line_items],
                 quantities=[item.quantity for item in line_items],
                 rates=[item.rate for item in line_items],
@@ -214,6 +240,7 @@ async def update_sales_order_details(
 
     sales_order.order_status_id = payload.order_status_id
     sales_order.cust_id = payload.cust_id
+    sales_order.date = payload.date
     sales_order.total_amount_before_tax = total_before_tax
     sales_order.total_tax_amount = total_tax
     sales_order.total_amount_after_tax = total_after_tax

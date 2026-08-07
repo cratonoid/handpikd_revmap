@@ -2,7 +2,7 @@
 # to admins (bypassed entirely when settings.auth_enabled is False, matching
 # require_admin in routes/admin.py).
 from beanie.operators import In
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.api.routes.admin import require_admin
 from app.models import (
@@ -21,8 +21,10 @@ from app.schemas.products import (
     ProductDetailItem,
     UpdateProductDetailsRequest,
     UpdateProductDetailsResponse,
+    UploadProductImageResponse,
 )
 from app.services.counters import get_next_id
+from app.services.storage import upload_product_image as store_product_image
 
 router = APIRouter(prefix="/admin", tags=["products"])
 
@@ -32,6 +34,16 @@ async def _replace_image_paths(product_id: int, image_paths: list[str]) -> None:
     for image_path in image_paths:
         image_id = await get_next_id(ProductImageIdCounter, "next_product_image_id", ProductImageDetails)
         await ProductImageDetails(id=image_id, product_id=product_id, image_path=image_path).insert()
+
+
+@router.post("/upload_product_image", response_model=UploadProductImageResponse)
+async def upload_product_image(
+    file: UploadFile = File(...),
+    _: User | None = Depends(require_admin),
+) -> UploadProductImageResponse:
+    image_bytes = await file.read()
+    url = store_product_image(image_bytes, file.filename or "image", file.content_type)
+    return UploadProductImageResponse(url=url)
 
 
 @router.post("/add_product_details", response_model=AddProductDetailsResponse)

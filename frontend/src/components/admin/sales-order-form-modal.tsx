@@ -22,7 +22,7 @@
 //   - order_no is backend-assigned (via OrderNoCounterMaster) and never
 //     submitted; shown read-only in edit mode.
 //   - order_status_id is only ever shown/submitted in edit mode — new orders
-//     are silently defaulted to "Pending" on the backend. Sourced from
+//     are silently defaulted to "New" on the backend. Sourced from
 //     GET /admin/get_order_status_list.
 //   - related_purchase_order_ids is an optional MultiSelectDropdown sourced
 //     from GET /admin/get_purchase_order_list.
@@ -30,6 +30,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
+import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue } from "@/lib/datetime-input";
 import type { SalesOrder } from "@/lib/sales-orders";
 import type { CustomerOption } from "@/lib/customers";
 import type { Product } from "@/lib/products";
@@ -93,6 +94,9 @@ export function SalesOrderFormModal({
   onSaved: () => void;
 }) {
   const [custId, setCustId] = useState<string | null>(initialOrder ? String(initialOrder.custId) : null);
+  const [date, setDate] = useState(
+    initialOrder ? toDatetimeLocalValue(initialOrder.date) : nowAsDatetimeLocalValue(),
+  );
   const [orderStatusId, setOrderStatusId] = useState<string | null>(
     initialOrder ? String(initialOrder.orderStatusId) : null,
   );
@@ -185,6 +189,7 @@ export function SalesOrderFormModal({
         ? { id: initialOrder?.id, order_status_id: Number(orderStatusId), is_deleted: isDeletedValue }
         : {}),
       cust_id: Number(custId),
+      date: fromDatetimeLocalValue(date),
       product_ids: productIds,
       quantities,
       rates,
@@ -285,6 +290,20 @@ export function SalesOrderFormModal({
               onChange={setCustId}
             />
 
+            <div>
+              <label htmlFor="date" className={styles.formLabel}>
+                Date<span className={styles.requiredMark}>*</span>
+              </label>
+              <input
+                id="date"
+                type="datetime-local"
+                required
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className={styles.formInput}
+              />
+            </div>
+
             {isEdit && (
               <SingleSelectDropdown
                 label="Order status"
@@ -331,6 +350,11 @@ export function SalesOrderFormModal({
                     placeholder="Select a product…"
                     entityLabel="products"
                     hideLabel
+                    // productOptions is already filtered to isVisible
+                    // products only (deleted products should never be
+                    // orderable), so the Active/Deleted toggle would just be
+                    // a permanently-empty "Deleted" tab.
+                    showStatusFilter={false}
                     options={productOptions}
                     selectedValue={item.productId}
                     onChange={(value) => handleProductChange(index, value)}

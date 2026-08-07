@@ -32,6 +32,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
+import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue } from "@/lib/datetime-input";
 import { GST_PERCENT_OPTIONS } from "@/lib/gst";
 import type { PurchaseOrder } from "@/lib/purchase-orders";
 import type { VendorOption } from "@/lib/vendors";
@@ -94,6 +95,9 @@ export function PurchaseOrderFormModal({
     initialOrder ? String(initialOrder.vendorId) : null,
   );
   const [purchaseOrderNo, setPurchaseOrderNo] = useState(initialOrder?.purchaseOrderNo ?? nextPurchaseOrderNo);
+  const [date, setDate] = useState(
+    initialOrder ? toDatetimeLocalValue(initialOrder.date) : nowAsDatetimeLocalValue(),
+  );
   const [lineItems, setLineItems] = useState<LineItem[]>(
     initialOrder ? lineItemsFromOrder(initialOrder) : [emptyLineItem()],
   );
@@ -200,6 +204,7 @@ export function PurchaseOrderFormModal({
       ...(isEdit ? { id: initialOrder?.id } : {}),
       purchase_order_no: purchaseOrderNo,
       vendor_id: Number(vendorId),
+      date: fromDatetimeLocalValue(date),
       product_ids: productIds,
       quantities,
       rates,
@@ -287,6 +292,20 @@ export function PurchaseOrderFormModal({
               selectedValue={vendorId}
               onChange={handleVendorChange}
             />
+
+            <div>
+              <label htmlFor="date" className={styles.formLabel}>
+                Date<span className={styles.requiredMark}>*</span>
+              </label>
+              <input
+                id="date"
+                type="datetime-local"
+                required
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className={styles.formInput}
+              />
+            </div>
           </div>
 
           <div className={styles.lineItemsSection}>
@@ -296,10 +315,6 @@ export function PurchaseOrderFormModal({
                 + Add line item
               </button>
             </div>
-
-            {vendorHasNoProducts && (
-              <p className={styles.pageSubtext}>This vendor has no products yet — add products for this vendor first.</p>
-            )}
 
             <div className={styles.lineItemsHeaderRow}>
               <span className={styles.formLabel}>
@@ -328,12 +343,16 @@ export function PurchaseOrderFormModal({
                     value={item.productId ?? ""}
                     onChange={(e) => handleProductChange(index, e.target.value)}
                     required
-                    disabled={!vendorId}
+                    disabled={!vendorId || vendorHasNoProducts}
                     aria-label={`Line ${index + 1} product`}
                     className={styles.formInput}
                   >
                     <option value="" disabled>
-                      {vendorId ? "Select a product…" : "Select a vendor first"}
+                      {!vendorId
+                        ? "Select a vendor first"
+                        : vendorHasNoProducts
+                          ? "No products available"
+                          : "Select a product…"}
                     </option>
                     {availableProducts.map((product) => (
                       <option key={product.id} value={String(product.id)}>
@@ -395,7 +414,7 @@ export function PurchaseOrderFormModal({
           <div className={styles.totalsGrid}>
             <div>
               <label htmlFor="sgstPerc" className={styles.formLabel}>
-                SGST %
+                SGST %<span className={styles.requiredMark}>*</span>
               </label>
               <select
                 id="sgstPerc"
@@ -415,7 +434,7 @@ export function PurchaseOrderFormModal({
 
             <div>
               <label htmlFor="cgstPerc" className={styles.formLabel}>
-                CGST %
+                CGST %<span className={styles.requiredMark}>*</span>
               </label>
               <select
                 id="cgstPerc"
@@ -434,7 +453,7 @@ export function PurchaseOrderFormModal({
 
             <div>
               <label htmlFor="igstPerc" className={styles.formLabel}>
-                IGST %
+                IGST %<span className={styles.requiredMark}>*</span>
               </label>
               <select
                 id="igstPerc"

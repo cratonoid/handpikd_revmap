@@ -1,11 +1,12 @@
 // ---------------------------------------------------------------------------
-// Order status master data for the sales order status picker
+// Order status master data for the sales order status picker/filter tabs
 // ---------------------------------------------------------------------------
 // Fetches from GET /admin/get_order_status_list (backend/app/api/routes/
 // sales_orders.py), which returns the fixed, seeded OrderStatusMaster rows
-// (Pending/Confirmed/Shipped/Delivered/Cancelled) unfiltered — this is just
-// the dropdown's source list, not a per-order active/deleted split (that's
-// handled by fetchSalesOrders/is_deleted on SalesOrders itself).
+// (New/Processing/Delivered/Completed) unfiltered — this is the edit form's
+// dropdown source list and the sales orders tab's status filter tabs, not a
+// per-order active/deleted split (that's handled by fetchSalesOrders/
+// is_deleted on SalesOrders itself).
 import { apiFetch } from "@/lib/api";
 
 export type OrderStatus = {

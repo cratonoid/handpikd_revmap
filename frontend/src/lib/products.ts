@@ -14,10 +14,10 @@
 // real removal.
 //
 // `imagePaths` stands in for product_image_details rows (one product has
-// many). Until a real image-uploader endpoint exists, the admin form just
-// lets you paste image URLs directly — each one is expected to end up as an
-// `image_path` row keyed by `product_id` once add/update_product_details is
-// implemented.
+// many). Each entry is either a pasted URL or, more commonly, the CDN URL
+// returned by uploadProductImage below — either way it ends up as an
+// `image_path` row keyed by `product_id` once add/update_product_details
+// saves the form.
 import { apiFetch } from "@/lib/api";
 
 export type Product = {
@@ -65,6 +65,27 @@ export async function deleteProductImage(productId: number, imagePath: string): 
   if (!response.ok) {
     throw new Error("Failed to delete image");
   }
+}
+
+// Uploads an image file to Cloudflare R2 via POST /admin/upload_product_image
+// (backend/app/services/storage.py) and returns its public CDN URL. Doesn't
+// touch product_image_details itself — the caller adds the returned URL to
+// its imagePaths, which is only persisted once the form is actually saved.
+export async function uploadProductImage(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await apiFetch("/admin/upload_product_image", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to upload image");
+  }
+
+  const { url }: { url: string } = await response.json();
+  return url;
 }
 
 export async function fetchProducts(): Promise<Product[]> {
