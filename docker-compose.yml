@@ -39,11 +39,14 @@ services:
 
   # Not a long-running service — issues/renews the TLS cert for
   # mvp.handpikd.co via the webroot nginx shares above. Run on demand with
-  # `docker compose run --rm certbot certonly ...` (see deploy guide);
-  # exits immediately otherwise.
+  # `docker compose run --rm certbot certonly ...` (see deploy guide). The
+  # image's own default (certbot --help) is already a harmless no-op if this
+  # ever gets started via `docker compose up`, so no entrypoint override is
+  # needed here — and one would actually break `docker compose run`, since
+  # any override replaces the whole command, not just the default no-args
+  # case.
   certbot:
     image: certbot/certbot
-    entrypoint: "true"
     volumes:
       - certbot-etc:/etc/letsencrypt
       - certbot-webroot:/var/www/certbot
