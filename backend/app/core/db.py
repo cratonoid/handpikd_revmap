@@ -19,9 +19,11 @@ from app.models import (
     InventoryHistoryIdCounter,
     InventoryIdCounter,
     InvoiceDetails,
+    InvoiceIdCounter,
     InvoiceNoCounterMaster,
     OrderNoCounterMaster,
     OrderStatusMaster,
+    PersonalDetails,
     ProductDetails,
     ProductIdCounter,
     ProductImageDetails,
@@ -55,6 +57,20 @@ _ORDER_STATUS_SEED = [
     (4, "Completed"),
 ]
 
+# Initial values for the #personal_details EAV table (see
+# app/services/personal_details.py for the attribute<->id mapping), taken
+# from Handpikd's own details as supplied by the admin. Bank details and
+# terms & conditions weren't provided yet, so those attributes seed to "" and
+# get filled in later via the personal details settings screen.
+_PERSONAL_DETAILS_SEED = {
+    "gstin": "29AAATC9128M1Z9",
+    "address": "PLOT NO. 20, GYAN VIHAR, SOGARIYA NEAR RAILWAY COLONY KOTA SUB POST OFFICE KOTA, Rajasthan - 324002",
+    "name": "Alvis Abreo",
+    "phone": "7411690399",
+    "email": "info@handpikd.co",
+    "website": "www.handpikd.co",
+}
+
 
 def get_db() -> AsyncDatabase:
     if client is None:
@@ -86,6 +102,21 @@ async def _seed_order_statuses() -> None:
         elif existing.status_name != status_name:
             existing.status_name = status_name
             await existing.save()
+
+
+async def _seed_personal_details() -> None:
+    # One row per app/services/personal_details.ATTRIBUTE_IDS entry,
+    # inserted only if missing — never overwrites a value the admin has
+    # already edited via the settings screen, same idempotent style as
+    # _seed_order_statuses.
+    from app.services.personal_details import ATTRIBUTE_IDS
+
+    for attribute, row_id in ATTRIBUTE_IDS.items():
+        existing = await PersonalDetails.get(row_id)
+        if existing is None:
+            await PersonalDetails(
+                id=row_id, attribute=attribute, value=_PERSONAL_DETAILS_SEED.get(attribute, "")
+            ).insert()
 
 
 async def _backfill_order_dates() -> None:
@@ -136,11 +167,14 @@ async def connect_to_mongo() -> None:
             SalesSummaryIdCounter,
             InvoiceNoCounterMaster,
             InvoiceDetails,
+            InvoiceIdCounter,
             Category,
             CategoryIdCounter,
+            PersonalDetails,
         ],
     )
     await _seed_order_statuses()
+    await _seed_personal_details()
     await _backfill_order_dates()
 
 
