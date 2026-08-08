@@ -21,8 +21,22 @@
 // Rendered by src/app/products/page.tsx (a Server Component) — this file is
 // the Client Component that takes over from there. Styling lives in
 // src/styles/products.module.css.
-import { useMemo, useState } from "react";
-import { categoryTree, products, priceBounds, collectIds, formatInr, type CategoryNode } from "@/lib/products-data";
+//
+// Unlike the old mock-data version, the category tree and product list now
+// come from the real backend (GET /products/get_public_categories and GET
+// /products/get_public_products — see lib/public-products.ts) via a
+// fetch-on-mount effect, mirroring components/brand-catalogues/
+// brand-catalogues-page-client.tsx's loading/error/loaded pattern.
+import { useEffect, useMemo, useState } from "react";
+import {
+  buildDescendantIndex,
+  collectIds,
+  fetchPublicCategories,
+  fetchPublicProducts,
+  formatInr,
+  type CategoryNode,
+  type Product,
+} from "@/lib/public-products";
 import { CategoryFilter } from "@/components/products/category-filter";
 import { PriceFilter } from "@/components/products/price-filter";
 import { ProductCard } from "@/components/products/product-card";
@@ -30,14 +44,7 @@ import { Eyebrow } from "@/components/eyebrow";
 import { SlidersIcon, XMarkIcon, ArrowRightIcon } from "@/components/icons";
 import styles from "@/styles/products.module.css";
 
-// `priceBounds` (from products-data.ts) is the exact min/max price across
-// every real product, which could be a fractional-looking number depending
-// on the data. `Math.floor`/`Math.ceil` round it OUT to whole numbers so the
-// slider's ends are clean round values. These are computed once, at module
-// load time (not inside the component), since they never change while the
-// app is running.
-const PRICE_MIN = Math.floor(priceBounds.min);
-const PRICE_MAX = Math.ceil(priceBounds.max);
+type LoadState = "loading" | "loaded" | "error";
 
 // How many products to show per page of the grid.
 const PAGE_SIZE = 12;
@@ -56,6 +63,12 @@ function setsAreEqual(a: Set<string>, b: Set<string>): boolean {
 }
 
 export function ProductsPageClient() {
+  // The real category tree + product list, fetched once on mount from the
+  // backend's public endpoints. Empty until `loadState` becomes "loaded".
+  const [categoryTree, setCategoryTree] = useState<CategoryNode[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+
   // Category checkboxes: PENDING is what's currently ticked on screen;
   // APPLIED is what's actually filtering the grid. Same split as price,
   // below.
@@ -63,9 +76,44 @@ export function ProductsPageClient() {
   const [appliedCheckedIds, setAppliedCheckedIds] = useState<Set<string>>(new Set());
 
   // The slider/inputs move `pendingPriceRange` immediately; the grid only
-  // re-filters once "Apply Filters" commits it to `appliedPriceRange`.
-  const [pendingPriceRange, setPendingPriceRange] = useState<[number, number]>([PRICE_MIN, PRICE_MAX]);
-  const [appliedPriceRange, setAppliedPriceRange] = useState<[number, number]>([PRICE_MIN, PRICE_MAX]);
+  // re-filters once "Apply Filters" commits it to `appliedPriceRange`. Both
+  // start at [0, 0] and get set to the real min/max (see priceBoundsForProducts
+  // below) once the fetch below resolves — see the effect's `.then()`.
+  const [pendingPriceRange, setPendingPriceRange] = useState<[number, number]>([0, 0]);
+  const [appliedPriceRange, setAppliedPriceRange] = useState<[number, number]>([0, 0]);
+
+  // The exact min/max price across a product list, rounded OUT to whole
+  // numbers (`Math.floor`/`Math.ceil`) so the slider's ends are clean round
+  // values. Falls back to [0, 0] for an empty list.
+  function priceBoundsForProducts(list: Product[]): [number, number] {
+    const bounds = list.reduce(
+      (acc, p) => ({ min: Math.min(acc.min, p.price), max: Math.max(acc.max, p.price) }),
+      { min: Infinity, max: 0 },
+    );
+    return Number.isFinite(bounds.min) ? [Math.floor(bounds.min), Math.ceil(bounds.max)] : [0, 0];
+  }
+
+  useEffect(() => {
+    Promise.all([fetchPublicProducts(), fetchPublicCategories()])
+      .then(([productsData, categories]) => {
+        setProducts(productsData);
+        setCategoryTree(categories);
+        const bounds = priceBoundsForProducts(productsData);
+        setPendingPriceRange(bounds);
+        setAppliedPriceRange(bounds);
+        setLoadState("loaded");
+      })
+      .catch(() => setLoadState("error"));
+  }, []);
+
+  const [PRICE_MIN, PRICE_MAX] = useMemo(() => priceBoundsForProducts(products), [products]);
+
+  // Every category id's own id + all descendant ids, built from the fetched
+  // tree — see buildDescendantIndex in lib/public-products.ts for why this
+  // is needed (a product is tagged with specific category ids, not a full
+  // ancestor path, so checking a parent category needs to expand out to its
+  // whole subtree to match anything).
+  const descendantIndex = useMemo(() => buildDescendantIndex(categoryTree), [categoryTree]);
 
   // Whether the mobile slide-in filter drawer is currently open (only
   // relevant on small screens — see the JSX further down).
@@ -85,16 +133,20 @@ export function ProductsPageClient() {
 
   // Passed down to <CategoryFilter> as its `onToggle` prop — updates the
   // PENDING selection only; the grid doesn't change until Apply is pressed.
+  // Mirrors the admin product form's category picker (multi-select-dropdown.tsx's
+  // toggleValue): checking OR unchecking a node always carries its whole
+  // subtree with it, symmetrically — so checking "Mugs" also checks
+  // "Stainless Steel", "Ceramic", etc., not just "Mugs" itself.
   function handleToggle(node: CategoryNode) {
     setPendingCheckedIds((prev) => {
       const next = new Set(prev);
+      // collectIds returns the node's own id plus all descendant ids — see
+      // lib/public-products.ts.
+      const group = collectIds(node);
       if (next.has(node.id)) {
-        // Already checked -> uncheck it, AND every category nested inside
-        // it (collectIds returns the node's own id plus all descendant
-        // ids — see products-data.ts).
-        collectIds(node).forEach((id) => next.delete(id));
+        group.forEach((id) => next.delete(id));
       } else {
-        next.add(node.id);
+        group.forEach((id) => next.add(id));
       }
       return next;
     });
@@ -123,6 +175,17 @@ export function ProductsPageClient() {
     setPage(1);
   }
 
+  // The applied category selection, expanded out to every id it should
+  // match against (each checked id's own id + all of its descendants) —
+  // computed once here rather than per-product inside the filter below.
+  const expandedAppliedCategoryIds = useMemo(() => {
+    const expanded = new Set<string>();
+    appliedCheckedIds.forEach((id) => {
+      (descendantIndex.get(id) ?? [id]).forEach((matchId) => expanded.add(matchId));
+    });
+    return expanded;
+  }, [appliedCheckedIds, descendantIndex]);
+
   // The full filtered list (before pagination), based on the APPLIED
   // selections only. `useMemo` recomputes this only when the applied
   // filters actually change, not on every render.
@@ -130,10 +193,10 @@ export function ProductsPageClient() {
     return products.filter((p) => {
       const inPrice = p.price >= appliedPriceRange[0] && p.price <= appliedPriceRange[1];
       const inCategory =
-        appliedCheckedIds.size === 0 || p.categoryPath.some((id) => appliedCheckedIds.has(id));
+        appliedCheckedIds.size === 0 || p.categoryIds.some((id) => expandedAppliedCategoryIds.has(id));
       return inPrice && inCategory;
     });
-  }, [appliedCheckedIds, appliedPriceRange]);
+  }, [products, appliedCheckedIds, appliedPriceRange, expandedAppliedCategoryIds]);
 
   // How many pages the current filtered list needs, and which slice of it
   // belongs on the current page. `Math.max(1, ...)` guarantees there's
@@ -210,6 +273,22 @@ export function ProductsPageClient() {
     </>
   );
 
+  if (loadState === "loading") {
+    return (
+      <div className={styles.pageLayout}>
+        <p className={styles.emptyState}>Loading products…</p>
+      </div>
+    );
+  }
+
+  if (loadState === "error") {
+    return (
+      <div className={styles.pageLayout}>
+        <p className={styles.emptyState}>Failed to load products.</p>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.pageLayout}>
       {/* Mobile filter trigger + result count — only visible below `lg`. */}
@@ -226,7 +305,10 @@ export function ProductsPageClient() {
           grid, with a beige gradient fading out on the right to visually
           separate it from the product grid. Hidden entirely below `lg` —
           the mobile drawer below takes over there instead. */}
-      <aside className={styles.sidebar}>{filterPanel}</aside>
+      <aside className={styles.sidebar}>
+        <p className={styles.sidebarHeading}>Filters</p>
+        {filterPanel}
+      </aside>
 
       {/* Mobile filter drawer — only rendered at all while
           `mobileFiltersOpen` is true. The shared `filterPanel` above

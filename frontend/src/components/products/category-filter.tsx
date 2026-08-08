@@ -21,7 +21,7 @@
 // grid, not just to control this sidebar.
 //
 // Styling lives in src/styles/products.module.css.
-import type { CategoryNode } from "@/lib/products-data";
+import type { CategoryNode } from "@/lib/public-products";
 import { CheckIcon } from "@/components/icons";
 import styles from "@/styles/products.module.css";
 

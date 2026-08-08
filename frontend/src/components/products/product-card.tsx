@@ -2,14 +2,14 @@
 // <ProductCard> — one item in the product grid
 // ---------------------------------------------------------------------------
 // A plain Server Component (no interactivity of its own) — the only
-// interactive piece, the "Add to Gift List" button, is broken out into its
-// own small Client Component (see add-to-gift-list-button.tsx) so this file
-// and the grid around it don't need "use client" just because of one button.
+// interactive piece, the "Get It Now" button (which opens a popup enquiry
+// form), is broken out into its own small Client Component (see
+// get-it-now-button.tsx) so this file and the grid around it don't need
+// "use client" just because of one button.
 //
 // Styling lives in src/styles/products.module.css.
-import Image from "next/image";
-import { formatInr, type Product } from "@/lib/products-data";
-import { AddToGiftListButton } from "@/components/products/add-to-gift-list-button";
+import { formatInr, type Product } from "@/lib/public-products";
+import { GetItNowButton } from "@/components/products/get-it-now-button";
 import styles from "@/styles/products.module.css";
 
 export function ProductCard({ product }: { product: Product }) {
@@ -25,18 +25,15 @@ export function ProductCard({ product }: { product: Product }) {
     // of Tailwind's "group" pattern used elsewhere in the app.
     <article className={styles.cardArticle}>
       <div className={styles.cardImageWrap}>
-        <Image
-          src={product.image}
-          alt={product.alt}
-          fill
-          // Tells Next.js roughly how wide this image will actually render
-          // at different screen sizes (it changes because the grid has a
-          // different number of columns at different breakpoints — see
-          // products-page-client.tsx), so it can serve an appropriately
-          // sized file instead of always the largest one.
-          sizes="(min-width: 1280px) 22vw, (min-width: 1024px) 28vw, (min-width: 640px) 45vw, 90vw"
-          className={styles.cardImage}
-        />
+        {/* Plain <img>, not next/image: product images are admin-controlled
+            arbitrary URLs (own /media uploads OR any externally pasted URL —
+            see product-form-modal.tsx's identical choice/comment for the
+            admin thumbnail preview), so there's no fixed remote-host
+            whitelist that could cover them all. next/image throws an
+            uncaught, page-crashing error for any host not listed in
+            next.config.js's images.remotePatterns. */}
+        {/* eslint-disable-next-line @next/next/no-img-element -- arbitrary/dynamic URL, not an optimizable local/remote asset */}
+        <img src={product.image} alt={product.alt} loading="lazy" className={styles.cardImage} />
         {/* Only render the discount badge if there actually IS a
             discount — `discountPct > 0 && (...)` renders nothing at all
             when the condition is false. */}
@@ -62,7 +59,7 @@ export function ProductCard({ product }: { product: Product }) {
             <span className={styles.cardOriginalPrice}>{formatInr(product.originalPrice)}</span>
           )}
         </div>
-        <AddToGiftListButton productName={product.name} />
+        <GetItNowButton productName={product.name} />
       </div>
     </article>
   );

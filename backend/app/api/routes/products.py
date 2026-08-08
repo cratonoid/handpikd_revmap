@@ -1,11 +1,15 @@
 # Products module: endpoints for managing the product catalogue, restricted
 # to admins (bypassed entirely when settings.auth_enabled is False, matching
-# require_admin in routes/admin.py).
+# require_admin in routes/admin.py). `public_router` (get_public_products /
+# get_public_categories, for the storefront's /products page) is intentionally
+# unauthenticated and separate from every admin endpoint above it, mirroring
+# routes/catalogues.py's router/public_router split.
 from beanie.operators import In, NE
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.api.routes.admin import require_admin
 from app.models import (
+    Category,
     ProductDetails,
     ProductIdCounter,
     ProductImageDetails,
@@ -19,6 +23,8 @@ from app.schemas.products import (
     DeleteProductImageRequest,
     DeleteProductImageResponse,
     ProductDetailItem,
+    PublicCategoryNode,
+    PublicProductItem,
     UpdateProductDetailsRequest,
     UpdateProductDetailsResponse,
     UploadProductImageResponse,
@@ -28,6 +34,10 @@ from app.services.storage import delete_product_image as remove_stored_image
 from app.services.storage import upload_product_image as store_product_image
 
 router = APIRouter(prefix="/admin", tags=["products"])
+
+# Public/unauthenticated read endpoints for the storefront's /products page —
+# unlike the rest of this file, nothing here sits behind require_admin.
+public_router = APIRouter(prefix="/products", tags=["products-public"])
 
 
 async def _validate_hsn_code_product_name(hsn_code: str, product_name: str, exclude_id: int | None = None) -> None:
@@ -180,3 +190,48 @@ async def delete_product_image(
     remove_stored_image(payload.image_path)
 
     return DeleteProductImageResponse(message="image deleted successfully")
+
+
+def _build_public_category_tree(categories: list[Category]) -> list[PublicCategoryNode]:
+    nodes_by_id = {
+        category.id: PublicCategoryNode(id=category.id, name=category.category_name) for category in categories
+    }
+
+    roots: list[PublicCategoryNode] = []
+    for category in categories:
+        node = nodes_by_id[category.id]
+        parent = nodes_by_id.get(category.parent_id) if category.parent_id is not None else None
+        (parent.children if parent is not None else roots).append(node)
+
+    return roots
+
+
+@public_router.get("/get_public_categories", response_model=list[PublicCategoryNode])
+async def get_public_categories() -> list[PublicCategoryNode]:
+    categories = await Category.find_all().to_list()
+    return _build_public_category_tree(categories)
+
+
+@public_router.get("/get_public_products", response_model=list[PublicProductItem])
+async def get_public_products() -> list[PublicProductItem]:
+    products = await ProductDetails.find(ProductDetails.is_visible == True).to_list()
+    if not products:
+        return []
+
+    product_ids = [product.id for product in products]
+    images = await ProductImageDetails.find(In(ProductImageDetails.product_id, product_ids)).to_list()
+    images_by_product_id: dict[int, list[str]] = {}
+    for image in images:
+        images_by_product_id.setdefault(image.product_id, []).append(image.image_path)
+
+    return [
+        PublicProductItem(
+            id=product.id,
+            product_name=product.product_name,
+            price=product.discounted_price,
+            original_price=product.actual_price,
+            category_ids=product.category_ids,
+            image_paths=images_by_product_id.get(product.id, []),
+        )
+        for product in products
+    ]
