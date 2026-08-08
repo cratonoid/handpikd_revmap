@@ -8,6 +8,10 @@ from pymongo.asynchronous.database import AsyncDatabase
 
 from app.core.config import settings
 from app.models import (
+    CatalogueDetails,
+    CatalogueIdCounter,
+    CatalogueImageDetails,
+    CatalogueImageIdCounter,
     Category,
     CategoryIdCounter,
     CustomerDetails,
@@ -216,6 +220,10 @@ async def connect_to_mongo() -> None:
             Category,
             CategoryIdCounter,
             PersonalDetails,
+            CatalogueDetails,
+            CatalogueIdCounter,
+            CatalogueImageDetails,
+            CatalogueImageIdCounter,
             QuotationNoCounterMaster,
             QuotationDetails,
             QuotationIdCounter,

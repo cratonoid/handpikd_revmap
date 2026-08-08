@@ -10,5 +10,4 @@ python-multipart
 opencv-python-headless
 reportlab
 qrcode
-jinja2
-playwright
+pymupdf

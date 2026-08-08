@@ -18,51 +18,51 @@ import styles from "@/styles/home-page.module.css";
 const offers = [
   {
     index: "01",
-    title: "Client & Prospect Gifting",
-    blurb: "Relationship-building gifts timed to deals, renewals, and referrals.",
-    image:
-      "https://images.unsplash.com/photo-1513151233558-d860c5398176?auto=format&fit=crop&w=1000&q=80",
-    alt: "Wrapped corporate client gift box with ribbon",
+    title: "Custom Gift Curation",
+    blurb:
+      "Personalized corporate gift selections tailored to your brand identity and recipient preferences.",
+    image: "/site/service-curation.jpg",
+    alt: "Custom corporate gift curation and personalized business gifts",
   },
   {
     index: "02",
-    title: "Employee Milestone Kits",
-    blurb: "Onboarding, work anniversaries, and promotions — automated and on-brand.",
-    image:
-      "https://images.unsplash.com/photo-1608755728617-aefab37d2edd?auto=format&fit=crop&w=1000&q=80",
-    alt: "Employee onboarding gift kit with branded ribbon",
+    title: "Luxury Corporate Hampers",
+    blurb:
+      "Exquisite gift hampers featuring premium products, perfect for festive seasons and client appreciation.",
+    image: "/site/service-hampers.jpg",
+    alt: "Luxury corporate gift hamper with premium products",
   },
   {
     index: "03",
-    title: "Event & Conference Gifting",
-    blurb: "Booth swag, speaker gifts, and VIP send-offs delivered on schedule.",
-    image:
-      "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1000&q=80",
-    alt: "Team preparing gifts for a corporate event",
+    title: "Branded Merchandise",
+    blurb:
+      "Custom-branded corporate gifts and promotional merchandise that showcase your company's identity.",
+    image: "/site/service-merchandise.jpg",
+    alt: "Custom branded corporate merchandise and business gifts",
   },
   {
     index: "04",
-    title: "Festive & Seasonal Campaigns",
-    blurb: "Holiday and year-end programs planned months ahead, packed on time.",
-    image:
-      "https://images.unsplash.com/photo-1607083206968-13611e3d76db?auto=format&fit=crop&w=1000&q=80",
-    alt: "Seasonal corporate gift box wrapped in red ribbon",
+    title: "Corporate Event Gifting",
+    blurb:
+      "Comprehensive gifting for conferences, seminars, and business occasions — bulk orders and customization available.",
+    image: "/site/service-events.jpg",
+    alt: "Corporate event gifting solutions and conference gifts",
   },
   {
     index: "05",
-    title: "Custom Branded Merchandise",
-    blurb: "Logo apparel and keepsakes sourced, sampled, and quality-checked.",
-    image:
-      "https://images.unsplash.com/photo-1600880292203-757bb62b4baf?auto=format&fit=crop&w=1000&q=80",
-    alt: "Flat lay of custom branded corporate merchandise",
+    title: "Employee Recognition Gifts",
+    blurb:
+      "Thoughtful gifts to celebrate milestones, achievements, and work anniversaries that boost employee morale.",
+    image: "/site/service-recognition.jpg",
+    alt: "Employee recognition awards and appreciation gifts",
   },
   {
     index: "06",
-    title: "Bulk & Enterprise Programs",
-    blurb: "Thousands of recipients, one dashboard, individual tracking numbers.",
-    image:
-      "https://images.unsplash.com/photo-1512909006721-3d6018887383?auto=format&fit=crop&w=1000&q=80",
-    alt: "Bulk corporate gift boxes ready for nationwide shipping",
+    title: "Guest Felicitation",
+    blurb:
+      "Elegant, thoughtful gifts to honor distinguished guests, dignitaries, and VIP business partners.",
+    image: "/site/service-guest.jpg",
+    alt: "Guest felicitation gifts and VIP welcome presents",
   },
 ];
 

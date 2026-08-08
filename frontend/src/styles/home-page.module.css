@@ -32,7 +32,19 @@
 
 @media (min-width: 1024px) {
   .heroSection {
-    min-height: 100vh;
+    /* Exactly fills the screen below the sticky header on first load — see
+       the --header-height comment in globals.css — so the hero's own
+       bottom edge lines up with the very next scroll tick, instead of
+       leaving leftover hero space the user has to scroll through first.
+       `100dvh` (rather than `100vh`) tracks the browser's actual visible
+       area — which can be well short of the screen's full resolution once
+       tab/bookmarks bars and a taskbar are factored in, which is exactly
+       why the content below is sized in `dvh`-aware `clamp()`s rather than
+       fixed rem values: on a tall, chrome-free window it settles at its
+       generous upper bound, and on a short, chrome-heavy one it shrinks
+       to fit — so this `min-height` is met by content that actually fits
+       it, instead of the min-height being a floor content overflows. */
+    min-height: calc(100dvh - var(--header-height));
     justify-content: center;
   }
 }
@@ -58,6 +70,9 @@
 @media (min-width: 1024px) {
   .heroInner {
     grid-template-columns: 1.05fr 0.95fr;
+    /* Overrides the fixed 3rem above with one that shrinks on short
+       viewports instead of pushing the section taller than the screen. */
+    padding-block: clamp(1rem, 4dvh, 3rem);
   }
 }
 
@@ -100,7 +115,11 @@
 
 @media (min-width: 1024px) {
   .heroHeading {
-    font-size: 3.5rem;
+    /* Fluid between the sm size (2nd rule above) and 3.5rem, based on
+       available viewport HEIGHT rather than width — so on a short window
+       it settles smaller instead of forcing the section to scroll. */
+    font-size: clamp(2.25rem, 4.2dvh, 3.5rem);
+    margin-top: clamp(0.75rem, 2dvh, 1.5rem);
   }
 }
 
@@ -112,11 +131,23 @@
   color: var(--color-ink);
 }
 
+@media (min-width: 1024px) {
+  .heroParagraph {
+    margin-top: clamp(0.75rem, 2dvh, 1.5rem);
+  }
+}
+
 .heroButtonRow {
   margin-top: 2.25rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+@media (min-width: 1024px) {
+  .heroButtonRow {
+    margin-top: clamp(1rem, 3dvh, 2.25rem);
+  }
 }
 
 @media (min-width: 640px) {
@@ -151,6 +182,11 @@
   .heroImageBox {
     margin-inline: 0;
     margin-left: auto;
+    /* Keeps the image from being the tallest thing in the row and forcing
+       the hero past one screen on short viewports — `aspect-ratio` above
+       then shrinks its width to match, so it just scales down as a whole
+       rather than getting cropped differently. */
+    max-height: 62dvh;
   }
 }
 
@@ -270,6 +306,40 @@
   object-fit: cover;
 }
 
+/* Stat row (50+ Happy Clients / 500+ Gifts Delivered / 100% Satisfaction) */
+.whoStats {
+  margin-top: 2.5rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.5rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 2rem;
+}
+
+.whoStatItem {
+  display: flex;
+  flex-direction: column;
+}
+
+.whoStatNumber {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+@media (min-width: 640px) {
+  .whoStatNumber {
+    font-size: 2.5rem;
+  }
+}
+
+.whoStatLabel {
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--color-ink);
+}
+
 /* -----------------------------------------------------------------------
    Client Marquee (client-marquee.tsx)
    ----------------------------------------------------------------------- */
@@ -281,12 +351,12 @@
   border-top: 1px solid var(--color-border);
   border-bottom: 1px solid var(--color-border);
   background-color: var(--color-cream);
-  padding-block: 2rem;
+  padding-block: 3.5rem;
 }
 
 @media (min-width: 1024px) {
   .marqueeSection {
-    min-height: 100vh;
+    padding-block: 5rem;
   }
 }
 
@@ -335,11 +405,6 @@
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-}
-
-.marqueeLogo {
-  height: 2.25rem;
-  width: 2.25rem;
 }
 
 /* -----------------------------------------------------------------------

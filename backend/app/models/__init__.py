@@ -1,4 +1,8 @@
 # Models package: database document/schema models, one per MongoDB collection.
+from app.models.catalogue_details import CatalogueDetails
+from app.models.catalogue_id_counter import CatalogueIdCounter
+from app.models.catalogue_image_details import CatalogueImageDetails
+from app.models.catalogue_image_id_counter import CatalogueImageIdCounter
 from app.models.category import Category
 from app.models.category_id_counter import CategoryIdCounter
 from app.models.customer_details import CustomerDetails
@@ -40,6 +44,10 @@ from app.models.vendor_poc_details import VendorPocDetails
 from app.models.vendor_poc_id_counter import VendorPocIdCounter
 
 __all__ = [
+    "CatalogueDetails",
+    "CatalogueIdCounter",
+    "CatalogueImageDetails",
+    "CatalogueImageIdCounter",
     "Category",
     "CategoryIdCounter",
     "CustomerDetails",

@@ -17,24 +17,24 @@ import styles from "@/styles/home-page.module.css";
 const testimonials = [
   {
     quote:
-      "Handpikd took our entire client-gifting program off our plate. Sourcing, packing, tracking — all handled, and every recipient loved what showed up.",
-    name: "Priya Shah",
-    title: "Director of Client Success, Vertex Industries",
-    initials: "PS",
+      "Handpikd transformed our corporate gifting strategy. Their attention to detail and understanding of our brand is exceptional.",
+    name: "Vishaka Reddy",
+    title: "CEO, Flox Tech.",
+    initials: "VR",
   },
   {
     quote:
-      "Onboarding kits used to be a scramble every time we hired. Now new employees get a Handpikd box on day one, automatically, every time.",
-    name: "Marcus Lee",
-    title: "Head of People Ops, Solace Group",
-    initials: "ML",
+      "The quality and presentation of gifts from Handpikd consistently exceed our expectations. Our clients are always impressed.",
+    name: "Rachel Dias",
+    title: "Admin, Biz Consulting",
+    initials: "RD",
   },
   {
     quote:
-      "We ran a 2,000-recipient holiday campaign with individual tracking for every box. Handpikd's dashboard made it painless to manage.",
-    name: "Elena Torres",
-    title: "VP Marketing, Continental Traders",
-    initials: "ET",
+      "Professional, reliable, and creative. Handpikd has become our trusted partner for all corporate gifting needs.",
+    name: "Himanshi Rai",
+    title: "HR Manager, Marque Enterprises",
+    initials: "HR",
   },
 ];
 

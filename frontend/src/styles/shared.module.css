@@ -25,9 +25,12 @@
   position: sticky;
   top: 0;
   z-index: 50;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
-  background-color: color-mix(in srgb, var(--color-cream) 90%, transparent);
-  backdrop-filter: blur(4px);
+  border-bottom: 1px solid var(--color-border);
+  /* Solid white (rather than a translucent cream tint) so the header reads
+     as a clearly separate bar sitting on top of the cream hero background
+     underneath it, instead of blending into it. */
+  background-color: var(--color-white);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--color-charcoal) 8%, transparent);
   transition: transform 0.3s ease-out;
 }
 
@@ -521,7 +524,33 @@
    CompanyLogo (company-logos.tsx)
    ----------------------------------------------------------------------- */
 
-.companyLogoMark {
-  display: inline-flex;
-  color: color-mix(in srgb, var(--color-charcoal) 55%, transparent);
+/* Shaped like an actual logo image slot (bordered card, fixed size) so
+   swapping the text for a real <Image> later doesn't require any layout
+   changes — see the comment at the top of company-logos.tsx. */
+.companyLogoTile {
+  display: flex;
+  height: 4.5rem;
+  width: 11rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-white);
+  padding: 0.75rem 1.25rem;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--color-charcoal);
+  box-shadow: 0 4px 6px -4px color-mix(in srgb, var(--color-charcoal) 8%, transparent);
+  transition:
+    transform 0.2s ease-out,
+    box-shadow 0.2s ease-out;
+}
+
+.companyLogoTile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px color-mix(in srgb, var(--color-charcoal) 12%, transparent);
 }

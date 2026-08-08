@@ -35,3 +35,28 @@ async def update_personal_details_route(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
     return UpdatePersonalDetailsResponse(message="personal details updated successfully")
+
+
+# get_profile_details / edit_profile_details: same #personal_details table and
+# service functions as above, exposed under the names used by the admin
+# "Profile" page (app/admin/profile) so it's not coupled to the invoices tab's
+# "Company details" modal naming.
+@router.get("/get_profile_details", response_model=list[PersonalDetailsItem])
+async def get_profile_details_route(
+    _: User | None = Depends(require_admin),
+) -> list[PersonalDetailsItem]:
+    values = await get_personal_details()
+    return [PersonalDetailsItem(attribute=attribute, value=value) for attribute, value in values.items()]
+
+
+@router.post("/edit_profile_details", response_model=UpdatePersonalDetailsResponse)
+async def edit_profile_details_route(
+    payload: UpdatePersonalDetailsRequest,
+    _: User | None = Depends(require_admin),
+) -> UpdatePersonalDetailsResponse:
+    try:
+        await update_personal_details(payload.values)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    return UpdatePersonalDetailsResponse(message="profile details updated successfully")

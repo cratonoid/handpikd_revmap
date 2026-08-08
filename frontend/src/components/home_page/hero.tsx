@@ -35,7 +35,7 @@ export function Hero() {
           <Reveal>
             <span className={styles.heroBadge}>
               <span className={styles.heroBadgeDot} />
-              B2B Corporate Gifting, Done Differently
+              Bangalore&apos;s Premier Corporate Gifting Company
             </span>
           </Reveal>
 
@@ -57,10 +57,10 @@ export function Hero() {
               appearing simultaneously. */}
           <Reveal delayMs={280}>
             <p className={styles.heroParagraph}>
-              Handpikd builds corporate gifting programs for client
-              appreciation, employee milestones, and company events —
-              curated, personalized business gifting that leaves a lasting
-              impression, serving Bangalore and businesses across India.
+              Premium corporate gifting solutions in Bangalore — curated
+              luxury hampers, custom gift curation, and branded merchandise
+              that leave lasting impressions on clients and employees across
+              India.
             </p>
           </Reveal>
 
@@ -93,8 +93,8 @@ export function Hero() {
                 pick an appropriately-sized file instead of always serving
                 the biggest version. */}
             <Image
-              src="https://images.unsplash.com/photo-1573164713988-8665fc963095?auto=format&fit=crop&w=900&q=80"
-              alt="A curated Handpikd corporate gift box being wrapped with ribbon"
+              src="/site/service-hampers.jpg"
+              alt="Premium curated corporate gift hamper from Handpikd, Bangalore's leading corporate gifting company"
               fill
               priority
               sizes="(min-width: 1024px) 420px, (min-width: 640px) 60vw, 90vw"

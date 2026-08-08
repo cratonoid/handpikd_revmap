@@ -41,9 +41,9 @@ const manrope = Manrope({
 // Shared between the <title>/<meta description> tags below AND the
 // JSON-LD structured data further down, so the wording only has to be
 // written once.
-const title = "Handpikd | B2B Corporate Gifting Programs, Fully Managed";
+const title = "Corporate Gifting in Bangalore | Premium Business Gifts | Handpikd";
 const description =
-  "Handpikd builds corporate gifting programs — client gifts, employee milestones, and event gifting — sourced and shipped nationwide.";
+  "Leading corporate gifting company in Bangalore. Premium corporate gifts, custom gift hampers, and branded merchandise for businesses — sourced and shipped nationwide.";
 
 // Exporting a constant named exactly `metadata` from a layout or page file
 // is special Next.js App Router convention — Next.js automatically reads it
@@ -61,13 +61,17 @@ export const metadata: Metadata = {
   },
   description,
   keywords: [
+    "corporate gifting bangalore",
+    "corporate gifts bangalore",
+    "corporate gifting in bangalore",
+    "corporate gift company bangalore",
     "corporate gifting",
     "corporate gifts",
-    "B2B gifting programs",
-    "employee gifting",
-    "client gifting",
-    "event gifting",
-    "branded corporate merchandise",
+    "business gifts india",
+    "custom corporate gifting",
+    "luxury gift hampers",
+    "branded merchandise",
+    "employee recognition gifts",
   ],
   // Open Graph tags control how the page looks when shared/linked on social
   // platforms (Facebook, LinkedIn, iMessage previews, etc.).

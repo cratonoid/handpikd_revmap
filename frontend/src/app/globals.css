@@ -31,21 +31,30 @@
    plain CSS (for Tailwind + browser rendering). If you change a color, you
    must edit BOTH places.WHY!!! */
 :root {
-  --color-cream: #fafaf8; /* off-white — main background */
-  --color-cream-deep: #e3ce9e; /* beige — alternate section fill */
-  --color-charcoal: #0b0a08; /* near-black — headers, icons, accents */
-  --color-ink: #38332c; /* dark warm gray — body copy */
-  --color-white: #e6e4dc; /* "white" surfaces — warm off-white, not stark */
+  --color-cream: #f5f1ed; /* off-white — main background */
+  --color-cream-deep: #f9e9c1; /* beige — alternate section fill */
+  --color-charcoal: #000000; /* pure black — headers, icons, accents */
+  --color-ink: #1a1a1a; /* near-black — body copy */
+  --color-white: #ffffff; /* "white" surfaces — pure white */
   --color-red: #9c2b2b; /* sparing accent only — small dots, badges, underlines */
 
-  --color-button-primary: #0b0a08;
-  --color-button-primary-hover: #211d16;
-  --color-button-secondary: #0b0a08;
-  --color-button-secondary-hover: #211d16;
-  --color-button-tertiary: #f1e9d2;
-  --color-button-tertiary-hover: #e6dab8;
+  --color-button-primary: #000000;
+  --color-button-primary-hover: #262626;
+  --color-button-secondary: #000000;
+  --color-button-secondary-hover: #262626;
+  --color-button-tertiary: #f9e9c1;
+  --color-button-tertiary-hover: #f0d998;
 
-  --color-border: #a68c57;
+  --color-border: #d8c6a4;
+
+  /* The header's own rendered height in its normal (non-compact, non-
+     scrolled) state: 1.25rem of padding-block + the 2.25rem logo mark +
+     the 1px bottom border. Kept as a variable so the Hero section (see
+     home-page.module.css) can size itself to exactly "the rest of the
+     screen below the header" instead of guessing. It only needs to match
+     the header's INITIAL size — by the time the header shrinks to its
+     compact state the user has already scrolled the hero out of the way. */
+  --header-height: 3.5625rem;
 
   /* `--background` / `--foreground` are a level of indirection so the `body`
      rule below (and dark-mode overrides, if this project ever adds them)

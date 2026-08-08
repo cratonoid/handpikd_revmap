@@ -19,12 +19,12 @@
 // `string`. With `as const`, it becomes the literal type `"#FAFAF8"`. This
 // matters below for `BrandColor`, which reads the exact key names.
 export const colors = {
-  // --- Core brand palette: bright off-white, beige, and black accents only.
-  cream: "#FAFAF8", // off-white — main page background (whiter than eggshell)
-  creamDeep: "#E3CE9E", // beige — used to alternate section backgrounds and on card accents
-  charcoal: "#0B0A08", // near-black — headings, icons, and primary accents
-  ink: "#38332C", // dark warm gray — regular paragraph/body text
-  white: "#E6E4DC", // "white" surfaces (cards/chips) — a warm off-white, not stark #FFFFFF
+  // --- Core brand palette: off-white, beige, and pure black/white only.
+  cream: "#F5F1ED", // off-white — main page background
+  creamDeep: "#F9E9C1", // beige — used to alternate section backgrounds and on card accents
+  charcoal: "#000000", // pure black — headings, icons, and primary accents
+  ink: "#1A1A1A", // near-black — regular paragraph/body text (softer than pure black on long copy)
+  white: "#FFFFFF", // pure white — card/chip surfaces
   red: "#9C2B2B", // sparing accent color — small dots, badges, underlines
 
   // --- Button tiers. Primary and secondary are both black (same resting
@@ -32,14 +32,14 @@ export const colors = {
   // stays a lighter "ghost" style so there's still a visual difference
   // between a loud action and a quiet one. See src/components/button.tsx
   // for how these are applied per `variant`.
-  buttonPrimary: "#0B0A08", // black — main call-to-action button
-  buttonPrimaryHover: "#211D16", // lighter black shown on :hover
-  buttonSecondary: "#0B0A08", // black — secondary actions
-  buttonSecondaryHover: "#211D16", // lighter black shown on :hover
-  buttonTertiary: "#F1E9D2", // light beige — softest "ghost" button style
-  buttonTertiaryHover: "#E6DAB8", // slightly deeper beige shown on :hover
+  buttonPrimary: "#000000", // black — main call-to-action button
+  buttonPrimaryHover: "#262626", // lighter black shown on :hover
+  buttonSecondary: "#000000", // black — secondary actions
+  buttonSecondaryHover: "#262626", // lighter black shown on :hover
+  buttonTertiary: "#F9E9C1", // beige — softest "ghost" button style
+  buttonTertiaryHover: "#F0D998", // slightly deeper beige shown on :hover
 
-  border: "#A68C57", // shared border/divider color used across cards, inputs, and hairlines
+  border: "#D8C6A4", // muted tan — shared border/divider color used across cards, inputs, and hairlines
 } as const;
 
 // `keyof typeof colors` produces a union type of every key name in `colors`,
@@ -67,6 +67,7 @@ export const siteConfig = {
     { label: "About", href: "/#who-we-are" },
     { label: "Products", href: "/products" },
     { label: "Catalogue", href: "/catalogue" },
+    { label: "Brand Catalogues", href: "/brand-catalogues" },
     { label: "Blogs", href: "/blogs" },
     { label: "Contact", href: "/#connect" },
   ],
