@@ -133,9 +133,9 @@ export function ProductFormModal({
     setImagePaths((prev) => [...prev, ""]);
   }
 
-  // Uploads the chosen file to R2 (see lib/products.ts) and, on success,
-  // fills this row's URL with the returned CDN link — replacing whatever was
-  // there before (a blank new row, or an existing pasted/uploaded URL).
+  // Uploads the chosen file to the backend (see lib/products.ts) and, on
+  // success, fills this row's URL with the returned /media link — replacing
+  // whatever was there before (a blank new row, or an existing pasted/uploaded URL).
   async function handleImageFileChange(index: number, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";

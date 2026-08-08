@@ -161,11 +161,9 @@ async def get_invoice_pdf(
 
     pdf_bytes = generate_invoice_pdf(
         invoice_no=invoice.invoice_no,
-        invoice_type=invoice.type.value,
         invoice_date=invoice.date,
         due_date=invoice.due_date,
         transport=invoice.transport,
-        order_no=sales_order.order_no,
         line_items=line_items,
         total_amount_before_tax=invoice.total_amount_before_tax,
         total_tax_amount=invoice.total_tax_amount,

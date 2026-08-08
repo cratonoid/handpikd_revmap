@@ -67,8 +67,8 @@ export async function deleteProductImage(productId: number, imagePath: string): 
   }
 }
 
-// Uploads an image file to Cloudflare R2 via POST /admin/upload_product_image
-// (backend/app/services/storage.py) and returns its public CDN URL. Doesn't
+// Uploads an image file via POST /admin/upload_product_image
+// (backend/app/services/storage.py) and returns its served /media URL. Doesn't
 // touch product_image_details itself — the caller adds the returned URL to
 // its imagePaths, which is only persisted once the form is actually saved.
 export async function uploadProductImage(file: File): Promise<string> {

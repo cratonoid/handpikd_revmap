@@ -21,6 +21,11 @@ ATTRIBUTE_IDS: dict[str, int] = {
     "quotation_tnc": 13,
     "quotation_notes": 14,
     "qr_value": 15,
+    # "name" is the invoice's contact person (top-right "Name" line); this is
+    # the business name shown in the letterhead and the "For {company_name}"
+    # signature line — kept separate since they're different values in
+    # practice (e.g. "Handpikd" vs. "Alvis Abreo").
+    "company_name": 16,
 }
 
 

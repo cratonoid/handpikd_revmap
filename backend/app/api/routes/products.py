@@ -1,7 +1,7 @@
 # Products module: endpoints for managing the product catalogue, restricted
 # to admins (bypassed entirely when settings.auth_enabled is False, matching
 # require_admin in routes/admin.py).
-from beanie.operators import In
+from beanie.operators import In, NE
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.api.routes.admin import require_admin
@@ -30,6 +30,19 @@ from app.services.storage import upload_product_image as store_product_image
 router = APIRouter(prefix="/admin", tags=["products"])
 
 
+async def _validate_hsn_code_product_name(hsn_code: str, product_name: str, exclude_id: int | None = None) -> None:
+    query = [ProductDetails.hsn_code == hsn_code, NE(ProductDetails.product_name, product_name)]
+    if exclude_id is not None:
+        query.append(NE(ProductDetails.id, exclude_id))
+
+    conflicting_product = await ProductDetails.find_one(*query)
+    if conflicting_product is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this hsn code is already used by a product with a different name",
+        )
+
+
 async def _replace_image_paths(product_id: int, image_paths: list[str]) -> None:
     await ProductImageDetails.find(ProductImageDetails.product_id == product_id).delete()
     for image_path in image_paths:
@@ -55,6 +68,8 @@ async def add_product_details(
     vendor = await VendorDetails.get(payload.vendor_id)
     if vendor is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="vendor not found")
+
+    await _validate_hsn_code_product_name(payload.hsn_code, payload.product_name)
 
     product_id = await get_next_id(ProductIdCounter, "next_product_id", ProductDetails)
     product = ProductDetails(
@@ -124,6 +139,8 @@ async def update_product_details(
     vendor = await VendorDetails.get(payload.vendor_id)
     if vendor is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="vendor not found")
+
+    await _validate_hsn_code_product_name(payload.hsn_code, payload.product_name, exclude_id=product.id)
 
     product.product_name = payload.product_name
     product.hsn_code = payload.hsn_code

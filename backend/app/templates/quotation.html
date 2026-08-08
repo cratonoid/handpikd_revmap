@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Quotation {{ quotation_no }}</title>
+<style>
+  :root {
+    --hp-yellow: #f4c430;
+    --hp-navy: #16294f;
+    --hp-ink: #1a1a1a;
+  }
+
+  /* Page size/margins and the "Page X of Y" footer are supplied by
+     Chromium's print-to-PDF options instead of CSS @page here — see
+     app/services/pdf_renderer.py's render_html_to_pdf (margin) and
+     quotation_pdf.py's _FOOTER_TEMPLATE (page numbers). */
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Helvetica", "Arial", sans-serif;
+    font-size: 9pt;
+    color: var(--hp-ink);
+    margin: 0;
+  }
+  table { border-collapse: collapse; width: 100%; }
+  p { margin: 0; }
+
+  /* Corner accent, mirroring the brand's diagonal-cut motif — kept as a
+     small corner flourish rather than the large dominant triangles in the
+     hand-made sample, so it reads as an accent, not the whole page.
+     position:fixed here is relative to the page's own content box (the
+     margins are applied by Chromium's print pipeline, outside this
+     document's own coordinate space — see pdf_renderer.py), which is the
+     same top-right corner .contact-block's text sits flush against. Content
+     near either corner reserves clearance equal to ACCENT_SIZE below
+     (.contact-block's padding-right) rather than relying on z-index to
+     paint over it, since fixed-position stacking order for repeated
+     print-page decoration isn't consistently honored across renderers. */
+  .corner-accent {
+    position: fixed;
+    width: 18mm;
+    height: 18mm;
+    z-index: -1;
+  }
+  .corner-accent.top-right {
+    top: 0;
+    right: 0;
+  }
+  .corner-accent.top-right .tri-black {
+    position: absolute; inset: 0;
+    background: var(--hp-ink);
+    clip-path: polygon(100% 0, 0 0, 100% 100%);
+  }
+  .corner-accent.top-right .tri-yellow {
+    position: absolute; top: 0; right: 0; width: 68%; height: 68%;
+    background: var(--hp-yellow);
+    clip-path: polygon(100% 0, 0 0, 100% 100%);
+  }
+  .corner-accent.bottom-left {
+    bottom: 0;
+    left: 0;
+  }
+  .corner-accent.bottom-left .tri-black {
+    position: absolute; inset: 0;
+    background: var(--hp-ink);
+    clip-path: polygon(0 100%, 0 0, 100% 100%);
+  }
+  .corner-accent.bottom-left .tri-yellow {
+    position: absolute; bottom: 0; left: 0; width: 68%; height: 68%;
+    background: var(--hp-yellow);
+    clip-path: polygon(0 100%, 0 0, 100% 100%);
+  }
+
+  .letterhead {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .logo-block { display: flex; align-items: center; gap: 3mm; }
+  .logo-block img { height: 16mm; width: auto; }
+  .logo-tagline {
+    font-size: 6.5pt;
+    letter-spacing: 1.5px;
+    color: var(--hp-navy);
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-top: 1mm;
+  }
+  /* padding-right clears the top-right corner-accent's 18mm footprint so
+     its text never sits under/behind the triangle (see corner-accent
+     above). */
+  .contact-block { text-align: right; font-size: 8pt; color: var(--hp-navy); padding-right: 21mm; }
+  .contact-block p { margin: 1px 0; }
+
+  .title-row {
+    margin-top: 6mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 1.5pt solid var(--hp-navy);
+    padding-bottom: 2mm;
+  }
+  .title-row .title {
+    font-size: 17pt;
+    font-weight: bold;
+    color: var(--hp-navy);
+    letter-spacing: 1px;
+  }
+  .title-row .status-pill {
+    font-size: 8pt;
+    font-weight: bold;
+    color: var(--hp-navy);
+    background: var(--hp-yellow);
+    padding: 2px 8px;
+    border-radius: 3px;
+  }
+
+  .detail-row { display: flex; margin-top: 4mm; gap: 6mm; font-size: 8.5pt; }
+  .detail-col { flex: 1; }
+  .detail-col .heading {
+    font-weight: bold;
+    color: var(--hp-navy);
+    text-transform: uppercase;
+    font-size: 7.5pt;
+    letter-spacing: 0.5px;
+    margin-bottom: 1.5mm;
+  }
+  .detail-col p { margin: 0.5px 0; color: #333; }
+  .meta-col { text-align: right; }
+  .meta-col table { width: auto; margin-left: auto; }
+  .meta-col td { padding: 1px 0 1px 6mm; text-align: right; }
+  .meta-col td:first-child { color: #666; padding-left: 0; }
+  .meta-col .meta-value { font-weight: bold; color: var(--hp-navy); }
+
+  .line-items { margin-top: 5mm; }
+  .line-items th {
+    background: var(--hp-navy);
+    color: #fff;
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 2.5mm 2mm;
+    text-align: center;
+  }
+  .line-items td {
+    border-bottom: 0.5pt solid #e7d488;
+    padding: 2.5mm 2mm;
+    font-size: 8.5pt;
+    text-align: center;
+    vertical-align: middle;
+  }
+  .line-items tbody tr:nth-child(odd) { background: #fdf6e0; }
+  .line-items td.desc { text-align: left; }
+  .desc-cell { display: flex; align-items: center; gap: 3mm; }
+  .desc-cell img { width: 12mm; height: 12mm; object-fit: cover; border-radius: 2px; border: 0.5pt solid #ddd; }
+  .desc-cell .name { font-weight: bold; color: var(--hp-navy); }
+  .line-items tfoot td {
+    background: var(--hp-yellow);
+    color: var(--hp-navy);
+    font-weight: bold;
+    border-bottom: none;
+  }
+
+  .summary-row { display: flex; justify-content: flex-end; margin-top: 4mm; }
+  .totals-box { width: 75mm; font-size: 8.5pt; }
+  .totals-box td { padding: 1.5mm 1mm; }
+  .totals-box td:last-child { text-align: right; }
+  .totals-box tr.grand-total td {
+    border-top: 1pt solid var(--hp-navy);
+    font-weight: bold;
+    font-size: 10pt;
+    color: var(--hp-navy);
+    padding-top: 2.5mm;
+  }
+  .words-line { margin-top: 2mm; font-size: 8pt; color: #555; font-style: italic; }
+
+  .scope-box { margin-top: 5mm; font-size: 8.5pt; }
+  .scope-box .heading { font-weight: bold; color: var(--hp-navy); margin-bottom: 1mm; }
+
+  .notes-section { margin-top: 6mm; font-size: 8.5pt; }
+  .notes-section .heading { font-weight: bold; margin-bottom: 1.5mm; }
+  .notes-section p { margin: 0.5px 0; }
+
+  .tnc-section {
+    margin-top: 6mm;
+    text-align: center;
+    font-size: 8pt;
+    color: #444;
+    padding-top: 3mm;
+    border-top: 0.5pt solid #ddd;
+  }
+  .tnc-section .heading {
+    font-weight: bold;
+    color: var(--hp-navy);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 8.5pt;
+    margin-bottom: 2mm;
+  }
+  .tnc-section p { line-height: 1.5; }
+
+  .signoff {
+    margin-top: 8mm;
+    text-align: right;
+    font-size: 8.5pt;
+    color: var(--hp-navy);
+  }
+  .signoff .company { font-weight: bold; margin-top: 10mm; }
+  .signoff .role { color: #777; font-size: 7.5pt; }
+</style>
+</head>
+<body>
+
+  <div class="corner-accent top-right">
+    <div class="tri-black"></div>
+    <div class="tri-yellow"></div>
+  </div>
+  <div class="corner-accent bottom-left">
+    <div class="tri-black"></div>
+    <div class="tri-yellow"></div>
+  </div>
+
+  <div class="letterhead">
+    <div class="logo-block">
+      {% if logo_data_uri %}
+      <img src="{{ logo_data_uri }}" alt="{{ company_name }}" />
+      {% else %}
+      <span style="font-size: 16pt; font-weight: bold; color: var(--hp-navy);">{{ company_name }}</span>
+      {% endif %}
+    </div>
+    <div class="contact-block">
+      <p><b>{{ personal.name }}</b></p>
+      <p>{{ personal.phone }}</p>
+      <p>{{ personal.email }}</p>
+      <p>{{ personal.website }}</p>
+    </div>
+  </div>
+
+  <div class="title-row">
+    <span class="title">QUOTATION</span>
+    <span class="status-pill">{{ status }}</span>
+  </div>
+
+  <div class="detail-row">
+    <div class="detail-col">
+      <p class="heading">Quoted to</p>
+      <p><b>{{ customer_name }}</b></p>
+      <p>{{ customer_address }}</p>
+      {% if customer_phone and customer_phone != "-" %}<p>{{ customer_phone }}</p>{% endif %}
+      {% if customer_gstin %}<p>GSTIN: {{ customer_gstin }}</p>{% endif %}
+    </div>
+    <div class="detail-col">
+      <p class="heading">From</p>
+      <p>{{ personal.address }}</p>
+    </div>
+    <div class="detail-col meta-col">
+      <table>
+        <tr><td>Quotation No.</td><td class="meta-value">{{ quotation_no }}</td></tr>
+        <tr><td>Issue Date</td><td class="meta-value">{{ quotation_date }}</td></tr>
+        <tr><td>Valid Till</td><td class="meta-value">{{ valid_till }}</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <table class="line-items">
+    <thead>
+      <tr>
+        <th>No.</th>
+        <th style="text-align: left;">Description</th>
+        <th>Unit Price</th>
+        <th>Disc.</th>
+        <th>Qty</th>
+        <th>GST</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in line_items %}
+      <tr>
+        <td>{{ item.sr_no }}</td>
+        <td class="desc">
+          <div class="desc-cell">
+            {% if item.image_data_uri %}
+            <img src="{{ item.image_data_uri }}" alt="" />
+            {% endif %}
+            <span class="name">{{ item.product_name }}</span>
+          </div>
+        </td>
+        <td>{{ money(item.unit_price) }}</td>
+        <td>{{ "%.0f"|format(item.discount_perc) }}%</td>
+        <td>{{ item.quantity }}</td>
+        <td>{{ "%.0f"|format(item.tax_perc) }}%</td>
+        <td>{{ money(item.total) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td></td>
+        <td style="text-align: left;">Total</td>
+        <td></td>
+        <td></td>
+        <td>{{ total_quantity }}</td>
+        <td></td>
+        <td>{{ money(total_amount_after_tax) }}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="summary-row">
+    <table class="totals-box">
+      <tr><td>Subtotal</td><td>{{ money(total_amount_before_tax) }}</td></tr>
+      <tr><td>GST</td><td>{{ money(total_tax_amount) }}</td></tr>
+      <tr class="grand-total"><td>Total</td><td>{{ money(total_amount_after_tax) }}</td></tr>
+    </table>
+  </div>
+  <p class="words-line" style="text-align: right;">{{ total_in_words }}</p>
+
+  {% if description %}
+  <div class="scope-box">
+    <p class="heading">Scope / Description</p>
+    <p>{{ description }}</p>
+  </div>
+  {% endif %}
+
+  {% if quotation_notes %}
+  <div class="notes-section">
+    <p class="heading">Please Note</p>
+    {% for line in quotation_notes %}
+    <p>{{ line }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if quotation_tnc %}
+  <div class="tnc-section">
+    <p class="heading">Terms and Conditions</p>
+    <p>{{ quotation_tnc }}</p>
+  </div>
+  {% endif %}
+
+  <div class="signoff">
+    <p class="company">For {{ company_name }}</p>
+    <p class="role">Authorised Signatory</p>
+  </div>
+
+</body>
+</html>
