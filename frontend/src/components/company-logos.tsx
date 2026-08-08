@@ -1,27 +1,32 @@
 // ---------------------------------------------------------------------------
-// Placeholder "client logo" tiles
+// <CompanyLogo> — one tile in the scrolling client marquee
 // ---------------------------------------------------------------------------
-// Used by the scrolling client marquee (src/components/home_page/client-
-// marquee.tsx) to represent the companies Handpikd has worked with. There are
-// no real client logo files yet, so each company renders as a plain wordmark
-// tile — a bordered card shaped exactly like a logo image slot would be —
-// instead of a hand-drawn icon. This makes swapping in a real logo trivial
-// later: replace the text inside <CompanyLogo> with an <Image src="..." />
-// once a logo file exists for that client, without touching the marquee or
-// its layout at all.
+// Renders a client's actual logo image (from public/client-logos/) inside
+// the fixed-size (but background-less/borderless) slot defined by
+// `.companyLogoTile` in shared.module.css. `fill` + `object-fit: contain`
+// (see `.companyLogoImage`) lets each logo — whatever its own aspect ratio —
+// scale to fit the slot without being stretched or cropped.
+import Image from "next/image";
 import styles from "@/styles/shared.module.css";
 
-/** Placeholder logo tile — swap for a real <Image> once a client's logo file is available. */
 export function CompanyLogo({
-  name, // the company's name, rendered as the tile's wordmark
+  name, // the company's name, used as the image's accessible alt text
+  src, // path to the logo file under public/
   className = "",
 }: {
   name: string;
+  src: string;
   className?: string;
 }) {
   return (
     <span className={`${styles.companyLogoTile} ${className}`}>
-      {name}
+      <Image
+        src={src}
+        alt={name}
+        fill
+        sizes="192px"
+        className={styles.companyLogoImage}
+      />
     </span>
   );
 }

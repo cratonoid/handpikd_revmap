@@ -860,6 +860,27 @@
   color: var(--color-ink);
 }
 
+/* Inline annotation next to an inquiry-form tree node's label (e.g. "min
+   600") and the badge marking a node hidden from the public form - see
+   components/admin/inquiry-form-tree-node.tsx. */
+.treeNodeNote {
+  margin-left: 0.35rem;
+  font-weight: 400;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+}
+
+.inactiveBadge {
+  margin-left: 0.5rem;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, var(--color-red) 12%, transparent);
+  padding: 0.1rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-red);
+}
+
 .treeAddButton {
   display: flex;
   height: 1.5rem;

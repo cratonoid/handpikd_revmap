@@ -7,6 +7,7 @@ from app.api.routes import (
     authentication,
     catalogues,
     categories,
+    inquiry_form,
     inventory,
     invoices,
     orders,
@@ -27,6 +28,8 @@ api_router.include_router(vendors.router)
 api_router.include_router(products.router)
 api_router.include_router(catalogues.router)
 api_router.include_router(catalogues.public_router)
+api_router.include_router(inquiry_form.router)
+api_router.include_router(inquiry_form.public_router)
 api_router.include_router(orders.router)
 api_router.include_router(sales_orders.router)
 api_router.include_router(inventory.router)

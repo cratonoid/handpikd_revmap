@@ -4,6 +4,7 @@
 // Footer, handing off the interactive form to <LoginForm> — a Client
 // Component — same split as app/products/page.tsx.
 import type { Metadata } from "next";
+import Image from "next/image";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { LoginForm } from "@/components/login-form";
@@ -21,6 +22,16 @@ export default function LoginPage() {
       <Header />
       <main className={shared.pageMain}>
         <div className={styles.loginMain}>
+          <Image
+            src="/site/service-hampers.jpg"
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className={styles.loginBackgroundImage}
+          />
+          <div className={styles.loginBackgroundOverlay} />
+
           <div className={styles.loginCard}>
             <h1 className={styles.loginHeading}>Log in</h1>
             <p className={styles.loginSubtext}>Enter your email and password to access your account.</p>

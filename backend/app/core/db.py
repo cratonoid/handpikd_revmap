@@ -18,6 +18,10 @@ from app.models import (
     CustomerIdCounter,
     CustomerPocDetails,
     CustomerPocIdCounter,
+    InquiryFormNode,
+    InquiryFormNodeIdCounter,
+    InquiryFormSubmission,
+    InquiryFormSubmissionIdCounter,
     Inventory,
     InventoryHistory,
     InventoryHistoryIdCounter,
@@ -179,6 +183,10 @@ async def connect_to_mongo() -> None:
             CatalogueIdCounter,
             CatalogueImageDetails,
             CatalogueImageIdCounter,
+            InquiryFormNode,
+            InquiryFormNodeIdCounter,
+            InquiryFormSubmission,
+            InquiryFormSubmissionIdCounter,
         ],
     )
     await _seed_order_statuses()

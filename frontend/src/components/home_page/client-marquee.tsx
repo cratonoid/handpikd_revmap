@@ -13,17 +13,16 @@ import { Eyebrow } from "@/components/eyebrow";
 import { CompanyLogo } from "@/components/company-logos";
 import styles from "@/styles/home-page.module.css";
 
-// Placeholder client roster — swap each name for a real <Image> logo in
-// company-logos.tsx once client logo files are available.
-const clients: { name: string }[] = [
-  { name: "Flox Tech" },
-  { name: "Biz Consulting" },
-  { name: "Marque Enterprises" },
-  { name: "Northwind Corp" },
-  { name: "Vertex Industries" },
-  { name: "Solace Group" },
-  { name: "Continental Traders" },
-  { name: "Everline Co." },
+// Client roster — logo files live in public/client-logos/.
+const clients: { name: string; src: string }[] = [
+  { name: "Unnati", src: "/client-logos/unnati.png" },
+  { name: "CHRIST (Deemed to be University)", src: "/client-logos/christ-university.png" },
+  { name: "Evolve", src: "/client-logos/evolve.png" },
+  { name: "Rotary Club of Mapusa — Elegance", src: "/client-logos/rotary-club-mapusa-elegance.png" },
+  { name: "St Joseph's University", src: "/client-logos/st-josephs-university.png" },
+  { name: "IMA Bangalore Chapter", src: "/client-logos/ima-bangalore-chapter.png" },
+  { name: "Wall St Society", src: "/client-logos/wall-street-society.png" },
+  { name: "Shree Vedic Enterprises", src: "/client-logos/shree-vedic-enterprises.png" },
 ];
 
 // Renders one full pass of all 8 logos. Used TWICE in <ClientMarquee> below
@@ -35,7 +34,7 @@ function ClientRow({ ariaHidden = false }: { ariaHidden?: boolean }) {
     <ul className={styles.marqueeRow} aria-hidden={ariaHidden || undefined}>
       {clients.map((client, i) => (
         <li key={`${client.name}-${i}`} className={styles.marqueeItem}>
-          <CompanyLogo name={client.name} />
+          <CompanyLogo name={client.name} src={client.src} />
         </li>
       ))}
     </ul>

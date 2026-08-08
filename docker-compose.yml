@@ -38,7 +38,8 @@ services:
       - frontend
 
   # Not a long-running service — issues/renews the TLS cert for
-  # mvp.handpikd.co via the webroot nginx shares above. Run on demand with
+  # handpikd.co and www.handpikd.co via the webroot nginx shares above.
+  # Run on demand with
   # `docker compose run --rm certbot certonly ...` (see deploy guide). The
   # image's own default (certbot --help) is already a harmless no-op if this
   # ever gets started via `docker compose up`, so no entrypoint override is
