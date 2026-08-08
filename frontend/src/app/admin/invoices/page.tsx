@@ -1,13 +1,8 @@
 import type { Metadata } from "next";
-import { DashboardModulePage } from "@/components/dashboard-placeholder";
+import { InvoicesTab } from "@/components/admin/invoices-tab";
 
 export const metadata: Metadata = { title: "Invoices" };
 
 export default function AdminInvoicesPage() {
-  return (
-    <DashboardModulePage
-      title="Invoices"
-      description="Generate, send, and track payment status of invoices."
-    />
-  );
+  return <InvoicesTab />;
 }
