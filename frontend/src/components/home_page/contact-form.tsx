@@ -3,30 +3,32 @@
 // ---------------------------------------------------------------------------
 // <ContactForm> — the "Connect With Us" form
 // ---------------------------------------------------------------------------
-// FRONTEND-ONLY for now: submitting this form validates the fields and shows
-// a success message, but does NOT actually send an email anywhere yet (see
-// the TODO comment inside handleSubmit below). Needs "use client" because it
-// uses React state (useState) and a submit event handler — both require
-// running in the browser.
+// Submits to the same Google Apps Script endpoint (Google Sheet + email
+// notification) the old Handpikd site's "Get Started" form used — see
+// src/lib/lead-form.ts for that URL and the request itself. Needs
+// "use client" because it uses React state (useState) and a submit event
+// handler — both require running in the browser.
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { CheckIcon } from "@/components/icons";
+import { submitLead } from "@/lib/lead-form";
 import styles from "@/styles/home-page.module.css";
 
-// A small custom type restricting `status` to exactly these two string
-// values, instead of allowing any arbitrary string — TypeScript will flag
-// an error if the code ever tries to set it to something else by mistake.
-type Status = "idle" | "success";
+// A small custom type restricting `status` to exactly these string values,
+// instead of allowing any arbitrary string — TypeScript will flag an error
+// if the code ever tries to set it to something else by mistake.
+type Status = "idle" | "submitting" | "success";
 
 export function ContactForm() {
-  // `status` tracks whether we're still showing the form ("idle") or the
-  // "thanks, we'll be in touch" confirmation ("success").
+  // `status` tracks whether we're still showing the form ("idle"), waiting
+  // on the request ("submitting"), or showing the "thanks, we'll be in
+  // touch" confirmation ("success").
   const [status, setStatus] = useState<Status>("idle");
-  // `error` holds a validation error message to display, or `null` when
-  // there isn't one.
+  // `error` holds a validation or submission error message to display, or
+  // `null` when there isn't one.
   const [error, setError] = useState<string | null>(null);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     // Stops the browser's default behavior of reloading the page on form
     // submit — necessary any time you want to handle a submit with
     // JavaScript instead.
@@ -45,12 +47,24 @@ export function ContactForm() {
       return;
     }
 
-    // Frontend-only for now — no request is sent yet.
-    // TODO: POST to a backend endpoint (e.g. /api/v1/contact) that sends this
-    // through SMTP once that service exists.
     setError(null);
-    setStatus("success");
-    form.reset(); // clears every field back to empty, so if the user clicks "Send another message" they get a blank form
+    setStatus("submitting");
+
+    const data = new FormData(form);
+    try {
+      await submitLead({
+        name: String(data.get("name") ?? ""),
+        email: String(data.get("email") ?? ""),
+        company: String(data.get("company") ?? ""),
+        phone: String(data.get("phone") ?? ""),
+        message: String(data.get("message") ?? ""),
+      });
+      setStatus("success");
+      form.reset(); // clears every field back to empty, so if the user clicks "Send another message" they get a blank form
+    } catch {
+      setStatus("idle");
+      setError("Something went wrong sending your message. Please try again or reach us on WhatsApp.");
+    }
   }
 
   // Early return: if the form has already been successfully "submitted",
@@ -154,8 +168,14 @@ export function ContactForm() {
         </p>
       )}
 
-      <Button type="submit" variant="primary" className={styles.formSubmit} showArrow>
-        Send message
+      <Button
+        type="submit"
+        variant="primary"
+        className={styles.formSubmit}
+        showArrow
+        disabled={status === "submitting"}
+      >
+        {status === "submitting" ? "Sending…" : "Send message"}
       </Button>
     </form>
   );

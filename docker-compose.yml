@@ -1,0 +1,56 @@
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      MEDIA_ROOT: /media
+    volumes:
+      # Product images, kept outside the git-managed code directory so they
+      # survive `git reset --hard` deploys and rebuilds.
+      - /srv/handpikd-media:/media
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_BASE_URL: /api/v1
+        NEXT_PUBLIC_MEDIA_BASE_URL: ""
+    restart: unless-stopped
+    expose:
+      - "3000"
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - certbot-etc:/etc/letsencrypt:ro
+      - certbot-webroot:/var/www/certbot
+    depends_on:
+      - backend
+      - frontend
+
+  # Not a long-running service — issues/renews the TLS cert for
+  # mvp.handpikd.co via the webroot nginx shares above. Run on demand with
+  # `docker compose run --rm certbot certonly ...` (see deploy guide). The
+  # image's own default (certbot --help) is already a harmless no-op if this
+  # ever gets started via `docker compose up`, so no entrypoint override is
+  # needed here — and one would actually break `docker compose run`, since
+  # any override replaces the whole command, not just the default no-args
+  # case.
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+
+volumes:
+  certbot-etc:
+  certbot-webroot:

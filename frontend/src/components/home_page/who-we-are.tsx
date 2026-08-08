@@ -16,17 +16,7 @@ import { useGSAP } from "@gsap/react";
 import { gsap } from "@/lib/gsap";
 import { Reveal } from "@/components/reveal";
 import { Eyebrow } from "@/components/eyebrow";
-import { Counter } from "@/components/counter";
 import styles from "@/styles/home-page.module.css";
-
-// Plain data array driving the three stat callouts below. Keeping this as
-// data (rather than three copy-pasted blocks of JSX) means adding/removing/
-// reordering a stat only requires editing this list.
-const stats = [
-  { value: 500, suffix: "+", label: "Gifting programs delivered" },
-  { value: 50, suffix: "", label: "US states shipped to" },
-  { value: 12, suffix: "hr", label: "Avg. account manager response" },
-];
 
 export function WhoWeAre() {
   const imageWrapRef = useRef<HTMLDivElement>(null);
@@ -104,25 +94,6 @@ export function WhoWeAre() {
             multi-thousand-recipient rollout, every order is handpikd,
             packed, and tracked by a dedicated account team.
           </p>
-
-          {/* `<dl>` (description list) is the semantically correct HTML
-              element for a set of terms + their values — here, each stat's
-              LABEL is the term (`<dt>`) and its NUMBER is the value
-              (`<dd>`). `sr-only` (a plain global utility class defined in
-              globals.css) visually hides the label since the number +
-              smaller caption below already show it visually; the `<dt>`
-              exists mainly for a11y/semantic correctness. */}
-          <dl className={styles.whoStatsList}>
-            {stats.map((stat) => (
-              <div key={stat.label}>
-                <dt className="sr-only">{stat.label}</dt>
-                <dd className={styles.whoStatValue}>
-                  <Counter value={stat.value} suffix={stat.suffix} />
-                </dd>
-                <p className={styles.whoStatLabel}>{stat.label}</p>
-              </div>
-            ))}
-          </dl>
         </Reveal>
 
         <div className={styles.whoImageCol}>
