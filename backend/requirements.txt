@@ -12,3 +12,4 @@ reportlab
 qrcode
 pymupdf
 playwright
+jinja2
