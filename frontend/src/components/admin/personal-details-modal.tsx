@@ -6,9 +6,10 @@
 // Edit-only (no add/delete — personal_details is a fixed, always-seeded set
 // of rows, see backend/app/services/personal_details.py). Renders one input
 // per attribute this app actually uses today (letterhead + bank + invoice
-// terms); quotation_tnc/quotation_notes belong to the not-yet-built
-// quotations module and aren't shown here, but updatePersonalDetails only
-// touches the keys it's given so they're left untouched.
+// terms + quotation terms/notes, shared between invoices-tab.tsx and
+// quotations-tab.tsx's "Company details" buttons) — updatePersonalDetails
+// only touches the keys it's given, so opening this from either tab still
+// round-trips every field shown here.
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { updatePersonalDetails } from "@/lib/personal-details";
@@ -27,6 +28,7 @@ export function PersonalDetailsModal({
   onSaved: () => void;
 }) {
   const [values, setValues] = useState({
+    company_name: initialValues.company_name ?? "",
     name: initialValues.name ?? "",
     address: initialValues.address ?? "",
     gstin: initialValues.gstin ?? "",
@@ -39,6 +41,8 @@ export function PersonalDetailsModal({
     bank_account_no: initialValues.bank_account_no ?? "",
     bank_ifsc: initialValues.bank_ifsc ?? "",
     invoice_tnc: initialValues.invoice_tnc ?? "",
+    quotation_tnc: initialValues.quotation_tnc ?? "",
+    quotation_notes: initialValues.quotation_notes ?? "",
     qr_value: initialValues.qr_value ?? "",
   });
   const [status, setStatus] = useState<Status>("idle");
@@ -91,11 +95,26 @@ export function PersonalDetailsModal({
           <div className={styles.formGrid}>
             <div>
               <label htmlFor="companyName" className={styles.formLabel}>
-                Name
+                Company name
               </label>
               <input
                 id="companyName"
                 type="text"
+                placeholder="Handpikd"
+                value={values.company_name}
+                onChange={(e) => set("company_name", e.target.value)}
+                className={styles.formInput}
+              />
+            </div>
+
+            <div>
+              <label htmlFor="contactName" className={styles.formLabel}>
+                Contact name
+              </label>
+              <input
+                id="contactName"
+                type="text"
+                placeholder="Person named on the invoice as the contact"
                 value={values.name}
                 onChange={(e) => set("name", e.target.value)}
                 className={styles.formInput}
@@ -258,6 +277,32 @@ export function PersonalDetailsModal({
               rows={4}
               value={values.invoice_tnc}
               onChange={(e) => set("invoice_tnc", e.target.value)}
+              className={styles.formTextarea}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="quotationTnc" className={styles.formLabel}>
+              Quotation terms &amp; conditions (one per line)
+            </label>
+            <textarea
+              id="quotationTnc"
+              rows={4}
+              value={values.quotation_tnc}
+              onChange={(e) => set("quotation_tnc", e.target.value)}
+              className={styles.formTextarea}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="quotationNotes" className={styles.formLabel}>
+              Quotation notes (one per line)
+            </label>
+            <textarea
+              id="quotationNotes"
+              rows={3}
+              value={values.quotation_notes}
+              onChange={(e) => set("quotation_notes", e.target.value)}
               className={styles.formTextarea}
             />
           </div>

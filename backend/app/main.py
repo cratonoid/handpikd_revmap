@@ -9,12 +9,18 @@ from fastapi.staticfiles import StaticFiles
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.db import close_mongo_connection, connect_to_mongo
+from app.services.pdf_renderer import start_browser, stop_browser
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_to_mongo()
+    # Started once here rather than per-request (see pdf_renderer.py) — a
+    # headless Chromium launch takes ~1-2s, so every quotation PDF reuses
+    # this one already-running browser instead of paying that cost each time.
+    await start_browser()
     yield
+    await stop_browser()
     await close_mongo_connection()
 
 

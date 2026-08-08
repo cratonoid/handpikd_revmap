@@ -8,7 +8,6 @@ pyjwt
 bcrypt
 python-multipart
 opencv-python-headless
-boto3
 reportlab
 qrcode
 pymupdf

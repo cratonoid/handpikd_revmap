@@ -40,6 +40,11 @@ from app.models import (
     PurchaseOrders,
     PurchaseSummary,
     PurchaseSummaryIdCounter,
+    QuotationDetails,
+    QuotationIdCounter,
+    QuotationNoCounterMaster,
+    QuotationSummary,
+    QuotationSummaryIdCounter,
     SalesOrderIdCounter,
     SalesOrders,
     SalesSummary,
@@ -67,16 +72,44 @@ _ORDER_STATUS_SEED = [
 
 # Initial values for the #personal_details EAV table (see
 # app/services/personal_details.py for the attribute<->id mapping), taken
-# from Handpikd's own details as supplied by the admin. Bank details and
-# terms & conditions weren't provided yet, so those attributes seed to "" and
-# get filled in later via the personal details settings screen.
+# from Handpikd's own details as supplied by the admin, cross-checked against
+# a real invoice sample (invoice #20, Christ University, 04-Aug-2026).
 _PERSONAL_DETAILS_SEED = {
-    "gstin": "29AAATC9128M1Z9",
+    "gstin": "08DINPA7100K1ZA",
     "address": "PLOT NO. 20, GYAN VIHAR, SOGARIYA NEAR RAILWAY COLONY KOTA SUB POST OFFICE KOTA, Rajasthan - 324002",
     "name": "Alvis Abreo",
+    "company_name": "Handpikd",
     "phone": "7411690399",
     "email": "info@handpikd.co",
-    "website": "www.handpikd.co",
+    "website": "https://handpikd.co/",
+    "bank_name": "HDFC Bank",
+    "bank_branch": "HDFC GUMANPURA",
+    "bank_account_name": "ALVIN DARYL ABREO",
+    "bank_account_no": "50200113723422",
+    "bank_ifsc": "HDFC0000167",
+    "invoice_tnc": "\n".join(
+        [
+            "Goods once sold will not be taken back or exchanged.",
+            "Any damage, shortage, or discrepancy must be reported within 48 hours of delivery.",
+            "Risk passes to the buyer upon delivery; ownership remains with the seller until full payment is received.",
+            "Orders once confirmed cannot be cancelled without seller approval and may attract cancellation charges.",
+            "Products are supplied as per manufacturer specifications; no warranty unless explicitly stated.",
+            "Seller's liability is limited to the invoice value of the goods supplied. All disputes are subject to Bangalore jurisdiction only.",
+        ]
+    ),
+}
+
+# `_seed_personal_details` only inserts rows that don't exist yet, so it never
+# clobbers a value the admin has since edited by hand — but that also means
+# it can't fix a value that was already seeded wrong. `gstin` was originally
+# seeded with the *customer's* GSTIN from that same sample invoice instead of
+# Handpikd's own (Handpikd's is Rajasthan-coded "08...", not Karnataka-coded
+# "29..."), and `website` was missing the scheme/slash the sample uses.
+# Corrected here, but only while the row still holds exactly that known-wrong
+# value, so an admin's manual edit is never overwritten.
+_PERSONAL_DETAILS_CORRECTIONS = {
+    "gstin": ("29AAATC9128M1Z9", "08DINPA7100K1ZA"),
+    "website": ("www.handpikd.co", "https://handpikd.co/"),
 }
 
 
@@ -125,6 +158,18 @@ async def _seed_personal_details() -> None:
             await PersonalDetails(
                 id=row_id, attribute=attribute, value=_PERSONAL_DETAILS_SEED.get(attribute, "")
             ).insert()
+        elif existing.value == "" and _PERSONAL_DETAILS_SEED.get(attribute):
+            # Bank details/T&C were seeded blank before real values existed
+            # (see _PERSONAL_DETAILS_SEED's history) — fill them in now that
+            # they're known, but only while still untouched/blank.
+            existing.value = _PERSONAL_DETAILS_SEED[attribute]
+            await existing.save()
+
+    for attribute, (wrong, correct) in _PERSONAL_DETAILS_CORRECTIONS.items():
+        row = await PersonalDetails.get(ATTRIBUTE_IDS[attribute])
+        if row is not None and row.value == wrong:
+            row.value = correct
+            await row.save()
 
 
 async def _backfill_order_dates() -> None:
@@ -187,6 +232,11 @@ async def connect_to_mongo() -> None:
             InquiryFormNodeIdCounter,
             InquiryFormSubmission,
             InquiryFormSubmissionIdCounter,
+            QuotationNoCounterMaster,
+            QuotationDetails,
+            QuotationIdCounter,
+            QuotationSummary,
+            QuotationSummaryIdCounter,
         ],
     )
     await _seed_order_statuses()

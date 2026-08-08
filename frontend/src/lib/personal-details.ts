@@ -23,8 +23,8 @@ export async function fetchPersonalDetails(): Promise<Record<string, string>> {
 
 // Partial update — only the keys present in `values` are changed, so a form
 // editing invoice-related attributes doesn't need to round-trip
-// quotation_tnc/quotation_notes (owned by the not-yet-built quotations
-// module).
+// quotation_tnc/quotation_notes (owned by the quotations module) and vice
+// versa.
 export async function updatePersonalDetails(values: Record<string, string>): Promise<Response> {
   return apiFetch("/admin/update_personal_details", {
     method: "POST",

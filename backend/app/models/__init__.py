@@ -31,6 +31,11 @@ from app.models.purchase_order_id_counter import PurchaseOrderIdCounter
 from app.models.purchase_orders import PurchaseOrders
 from app.models.purchase_summary import PurchaseSummary
 from app.models.purchase_summary_id_counter import PurchaseSummaryIdCounter
+from app.models.quotation_details import QuotationDetails, QuotationStatus
+from app.models.quotation_id_counter import QuotationIdCounter
+from app.models.quotation_no_counter_master import QuotationNoCounterMaster
+from app.models.quotation_summary import QuotationSummary
+from app.models.quotation_summary_id_counter import QuotationSummaryIdCounter
 from app.models.sales_order_id_counter import SalesOrderIdCounter
 from app.models.sales_orders import SalesOrders
 from app.models.sales_summary import SalesSummary
@@ -78,6 +83,12 @@ __all__ = [
     "PurchaseOrders",
     "PurchaseSummary",
     "PurchaseSummaryIdCounter",
+    "QuotationDetails",
+    "QuotationStatus",
+    "QuotationIdCounter",
+    "QuotationNoCounterMaster",
+    "QuotationSummary",
+    "QuotationSummaryIdCounter",
     "SalesOrderIdCounter",
     "SalesOrders",
     "SalesSummary",

@@ -24,3 +24,14 @@ export function toDatetimeLocalValue(isoDate: string): string {
 export function fromDatetimeLocalValue(value: string): string {
   return value.length === 16 ? `${value}:00` : value;
 }
+
+// Adds `days` to a datetime-local input value, formatted the same way as
+// nowAsDatetimeLocalValue. Used to default a quotation's "valid till" field
+// to its issue date + 10 days (quotation-form-modal.tsx) — the result stays
+// a plain editable input value, not a derived/computed one.
+export function addDaysToDatetimeLocalValue(value: string, days: number): string {
+  const date = new Date(fromDatetimeLocalValue(value));
+  date.setDate(date.getDate() + days);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
