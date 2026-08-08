@@ -11,3 +11,4 @@ opencv-python-headless
 reportlab
 qrcode
 pymupdf
+playwright
