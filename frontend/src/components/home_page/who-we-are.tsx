@@ -16,7 +16,17 @@ import { useGSAP } from "@gsap/react";
 import { gsap } from "@/lib/gsap";
 import { Reveal } from "@/components/reveal";
 import { Eyebrow } from "@/components/eyebrow";
+import { Counter } from "@/components/counter";
 import styles from "@/styles/home-page.module.css";
+
+// Headline stats from Handpikd's track record — each counts up from 0 once
+// scrolled into view (see counter.tsx). Update these numbers as the business
+// grows.
+const stats = [
+  { value: 50, suffix: "+", label: "Happy Clients" },
+  { value: 500, suffix: "+", label: "Gifts Delivered" },
+  { value: 100, suffix: "%", label: "Satisfaction Rate" },
+];
 
 export function WhoWeAre() {
   const imageWrapRef = useRef<HTMLDivElement>(null);
@@ -79,21 +89,32 @@ export function WhoWeAre() {
             markup. */}
         <Reveal className={styles.whoTextCol}>
           <Eyebrow>Who We Are</Eyebrow>
-          <h2 className={styles.whoHeading}>
-            Corporate gifting, run like a program — not a scramble.
-          </h2>
+          <h2 className={styles.whoHeading}>Crafting memorable experiences.</h2>
           <p className={styles.whoParagraph}>
-            Handpikd is a B2B corporate gifting company. We partner with
-            procurement, HR, and marketing teams to design gifting programs
-            that reflect their brand — then handle sourcing, personalization,
-            warehousing, and nationwide fulfillment so nothing lands back on
-            your plate.
+            At Handpikd, we understand that every corporate gift tells a
+            story. Based in Bangalore, our mission is to help businesses
+            across Karnataka and India forge stronger relationships through
+            thoughtfully curated, premium business gifts that resonate with
+            recipients and reflect your brand identity.
           </p>
           <p className={styles.whoParagraph}>
-            Whether it&apos;s a single high-touch executive gift or a
-            multi-thousand-recipient rollout, every order is handpikd,
-            packed, and tracked by a dedicated account team.
+            With years of expertise in corporate gifting, we specialize in
+            bespoke gift packages for employee recognition, client
+            appreciation, and business events. Serving companies throughout
+            Bangalore with same-day delivery options, every order is
+            handpikd, packed, and tracked by a dedicated account team.
           </p>
+
+          <dl className={styles.whoStats}>
+            {stats.map((stat) => (
+              <div key={stat.label} className={styles.whoStatItem}>
+                <dd className={styles.whoStatNumber}>
+                  <Counter value={stat.value} suffix={stat.suffix} />
+                </dd>
+                <dt className={styles.whoStatLabel}>{stat.label}</dt>
+              </div>
+            ))}
+          </dl>
         </Reveal>
 
         <div className={styles.whoImageCol}>
@@ -102,8 +123,8 @@ export function WhoWeAre() {
             className={styles.whoImageBox}
           >
             <Image
-              src="https://images.unsplash.com/photo-1573167243872-43c6433b9d40?auto=format&fit=crop&w=1000&q=80"
-              alt="Handpikd account team reviewing a corporate gifting program"
+              src="https://images.unsplash.com/photo-1513885535751-8b9238bd345a?auto=format&fit=crop&w=1000&q=80"
+              alt="Premium luxury corporate gift box with custom wrapping and branded merchandise"
               fill
               sizes="(min-width: 1024px) 520px, 90vw"
               className={styles.whoImageFill}

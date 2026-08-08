@@ -13,23 +13,17 @@ import { Eyebrow } from "@/components/eyebrow";
 import { CompanyLogo } from "@/components/company-logos";
 import styles from "@/styles/home-page.module.css";
 
-// Placeholder client roster — swap for real logo files when available.
-// `Parameters<typeof CompanyLogo>[0]["icon"]` is a slightly advanced
-// TypeScript trick: rather than retyping the exact list of valid icon names
-// here, it reaches into the <CompanyLogo> component's own prop types
-// (Parameters<...>[0] = "the type of its first argument", i.e. its props
-// object, then `["icon"]` = "just the `icon` field of that"). This means if
-// company-logos.tsx ever adds/renames an icon, this array's type-checking
-// updates automatically without needing to be kept in sync by hand.
-const clients: { name: string; icon: Parameters<typeof CompanyLogo>[0]["icon"] }[] = [
-  { name: "Northwind Corp", icon: "compass" },
-  { name: "Anchor & Co.", icon: "anchor" },
-  { name: "Vertex Industries", icon: "peak" },
-  { name: "Solace Group", icon: "sun" },
-  { name: "Marigold Partners", icon: "bloom" },
-  { name: "Halcyon Labs", icon: "wave" },
-  { name: "Continental Traders", icon: "globe" },
-  { name: "Everline Co.", icon: "infinity" },
+// Placeholder client roster — swap each name for a real <Image> logo in
+// company-logos.tsx once client logo files are available.
+const clients: { name: string }[] = [
+  { name: "Flox Tech" },
+  { name: "Biz Consulting" },
+  { name: "Marque Enterprises" },
+  { name: "Northwind Corp" },
+  { name: "Vertex Industries" },
+  { name: "Solace Group" },
+  { name: "Continental Traders" },
+  { name: "Everline Co." },
 ];
 
 // Renders one full pass of all 8 logos. Used TWICE in <ClientMarquee> below
@@ -41,7 +35,7 @@ function ClientRow({ ariaHidden = false }: { ariaHidden?: boolean }) {
     <ul className={styles.marqueeRow} aria-hidden={ariaHidden || undefined}>
       {clients.map((client, i) => (
         <li key={`${client.name}-${i}`} className={styles.marqueeItem}>
-          <CompanyLogo name={client.name} icon={client.icon} className={styles.marqueeLogo} />
+          <CompanyLogo name={client.name} />
         </li>
       ))}
     </ul>

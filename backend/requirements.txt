@@ -11,3 +11,4 @@ opencv-python-headless
 boto3
 reportlab
 qrcode
+pymupdf

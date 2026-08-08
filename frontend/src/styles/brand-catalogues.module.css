@@ -1,0 +1,227 @@
+/* =============================================================================
+   /brand-catalogues page styles (src/app/brand-catalogues/page.tsx,
+   src/components/brand-catalogues/*)
+   =============================================================================
+   Same CSS Module approach as catalogue.module.css — see the big comment at
+   the top of home-page.module.css for how this works and why colors
+   reference `var(--color-*)` / `color-mix(...)` instead of hex values.
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------
+   Banner (brand-catalogues-page-client.tsx's server-rendered wrapper)
+   ----------------------------------------------------------------------- */
+
+.banner {
+  background-color: var(--color-charcoal);
+  padding-block: 3.5rem;
+  text-align: center;
+}
+
+@media (min-width: 640px) {
+  .banner {
+    padding-block: 4.5rem;
+  }
+}
+
+.bannerInner {
+  margin-inline: auto;
+  max-width: 46rem;
+  padding-inline: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .bannerInner {
+    padding-inline: 2rem;
+  }
+}
+
+.bannerHeading {
+  font-family: var(--font-display);
+  font-size: 1.875rem;
+  font-weight: 600;
+  color: var(--color-cream);
+}
+
+@media (min-width: 640px) {
+  .bannerHeading {
+    font-size: 2.5rem;
+  }
+}
+
+.bannerParagraph {
+  margin-top: 1rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: color-mix(in srgb, var(--color-cream) 75%, transparent);
+}
+
+/* -----------------------------------------------------------------------
+   Page shell + tab bar
+   ----------------------------------------------------------------------- */
+
+.pageInner {
+  margin-inline: auto;
+  max-width: 72rem;
+  padding-inline: 1.25rem;
+  padding-block: 3rem;
+}
+
+@media (min-width: 640px) {
+  .pageInner {
+    padding-inline: 2rem;
+  }
+}
+
+.tabBar {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tabButton {
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  padding-block: 0.875rem;
+  padding-inline: 0.25rem;
+  margin-right: 1.5rem;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+
+@media (min-width: 640px) {
+  .tabButton {
+    font-size: 1.125rem;
+  }
+}
+
+.tabButton:hover {
+  color: var(--color-charcoal);
+}
+
+.tabButtonActive {
+  border-bottom-color: var(--color-charcoal);
+  color: var(--color-charcoal);
+}
+
+/* -----------------------------------------------------------------------
+   Category subheader groups within the active tab
+   ----------------------------------------------------------------------- */
+
+.categoryBlock {
+  margin-top: 2.75rem;
+}
+
+.categoryBlock:first-child {
+  margin-top: 2.5rem;
+}
+
+.categoryTitle {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.categoryGrid {
+  margin-top: 1.5rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .categoryGrid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .categoryGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.emptyState {
+  margin-top: 2.5rem;
+  color: var(--color-ink);
+}
+
+/* -----------------------------------------------------------------------
+   Catalogue card (brand-catalogue-card.tsx)
+   ----------------------------------------------------------------------- */
+
+.card {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-charcoal) 12%, transparent);
+  background-color: var(--color-cream-deep);
+  box-shadow: 0 4px 6px -2px color-mix(in srgb, var(--color-charcoal) 10%, transparent);
+  transition:
+    transform 0.25s ease-out,
+    box-shadow 0.3s;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px -4px color-mix(in srgb, var(--color-charcoal) 22%, transparent);
+}
+
+.cardThumbWrap {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--color-cream);
+}
+
+.cardThumbImage {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
+.cardThumbPlaceholder {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--color-ink) 45%, transparent);
+  font-size: 0.75rem;
+}
+
+.cardBody {
+  padding: 0.875rem 1rem 1rem;
+}
+
+.cardTitle {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.cardVendor {
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+}
+
+.cardViewGallery {
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+}

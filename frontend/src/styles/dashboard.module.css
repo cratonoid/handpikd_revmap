@@ -245,6 +245,48 @@
 }
 
 /* -----------------------------------------------------------------------
+   Profile page card (components/admin/profile-page-client.tsx) — same
+   bordered-card look as .statCard, sized for a form instead of a stat
+   -----------------------------------------------------------------------
+*/
+
+.profileCard {
+  margin-top: 1.5rem;
+  max-width: 42rem;
+  border-radius: 1rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+}
+
+.profileCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+}
+
+/* Denser field chrome than the shared .formLabel/.formInput/.formTextarea
+   (those are sized for a ~40rem modal popup; at .profileCard's narrower
+   width the default padding/gaps read as oversized), scoped to this page
+   only via the .profileCard ancestor so other forms sharing those classes
+   are unaffected. */
+.profileCard .formGrid {
+  gap: 0.85rem;
+}
+
+.profileCard .formLabel {
+  margin-bottom: 0.3rem;
+  font-size: 0.6875rem;
+}
+
+.profileCard .formInput,
+.profileCard .formTextarea {
+  padding: 0.5rem 0.7rem;
+  font-size: 0.8125rem;
+  border-radius: 0.5rem;
+}
+
+/* -----------------------------------------------------------------------
    Active/Deleted view toggle (components/admin/clients-page-client.tsx)
    ----------------------------------------------------------------------- */
 
@@ -1277,6 +1319,78 @@
   border-radius: 0.5rem;
   border: 1px dashed var(--color-border);
   color: var(--color-ink);
+}
+
+/* -----------------------------------------------------------------------
+   Catalogue page thumbnails (components/admin/catalogue-form-modal.tsx)
+   ----------------------------------------------------------------------- */
+/* Pages come from converting one PDF (see lib/catalogues.ts's
+   uploadCataloguePdf) rather than individual uploads/pasted URLs, so each
+   entry is just a thumbnail + page number + a remove button, laid out as a
+   wrapping grid rather than product-form-modal's one-row-per-image list. */
+.uploadPdfTrigger {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+  text-decoration: underline;
+  text-underline-offset: 0.15rem;
+  cursor: pointer;
+}
+
+.uploadPdfTriggerDisabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.catalogueImageGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 6rem);
+  gap: 1.25rem;
+}
+
+.catalogueImageCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.catalogueImageThumbWrap {
+  position: relative;
+}
+
+.catalogueImageRemoveButton {
+  position: absolute;
+  top: -0.5rem;
+  right: -0.5rem;
+  display: flex;
+  height: 1.75rem;
+  width: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+}
+
+.catalogueImageRemoveButton:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--color-red) 15%, transparent);
+  color: var(--color-red);
+}
+
+.catalogueImageRemoveButton:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.cataloguePageLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
 }
 
 /* -----------------------------------------------------------------------

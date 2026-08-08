@@ -5,6 +5,7 @@ from app.api.routes import (
     admin,
     auth,
     authentication,
+    catalogues,
     categories,
     inventory,
     invoices,
@@ -24,6 +25,8 @@ api_router.include_router(admin.router)
 api_router.include_router(categories.router)
 api_router.include_router(vendors.router)
 api_router.include_router(products.router)
+api_router.include_router(catalogues.router)
+api_router.include_router(catalogues.public_router)
 api_router.include_router(orders.router)
 api_router.include_router(sales_orders.router)
 api_router.include_router(inventory.router)
