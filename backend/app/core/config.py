@@ -36,5 +36,20 @@ class Settings(BaseSettings):
     # MONGODB_URI at a non-shared database for this session.
     allow_local_media_uploads: bool = False
 
+    # Local disk directory generated quotation PDFs are cached to, see
+    # app/services/quotation_storage.py. Deliberately separate from
+    # media_root: quotations carry customer PII/pricing and are never served
+    # publicly (no StaticFiles/nginx mount), unlike product images. Relative
+    # in local dev, overridden to the mounted volume path in production — see
+    # docker-compose.yml.
+    quotation_root: str = "quotations"
+
+    # Local disk directory uploaded vendor purchase-invoice PDFs are stored
+    # to, see app/services/purchase_invoice_storage.py. Same private
+    # convention as quotation_root — never served publicly, since vendor
+    # documents may carry pricing/GSTIN info. Relative in local dev,
+    # overridden to the mounted volume path in production — see
+    # docker-compose.yml.
+    purchase_invoice_root: str = "purchase_invoices"
 
 settings = Settings()

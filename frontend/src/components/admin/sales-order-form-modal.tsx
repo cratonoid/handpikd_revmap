@@ -285,6 +285,12 @@ export function SalesOrderFormModal({
               placeholder="Select a customer"
               entityLabel="customers"
               required
+              // Active/Deleted toggle removed — only active customers are
+              // browsable here. A deleted customer already assigned to this
+              // order still resolves and displays correctly (customerOptions
+              // includes deleted rows), it's just not selectable going
+              // forward.
+              showStatusFilter={false}
               options={customerOptions}
               selectedValue={custId}
               onChange={setCustId}
@@ -310,6 +316,10 @@ export function SalesOrderFormModal({
                 placeholder="Select a status"
                 entityLabel="statuses"
                 required
+                // orderStatusOptions is never marked deleted (it's the fixed
+                // seeded status list), so the Active/Deleted toggle would
+                // just be a permanently-empty "Deleted" tab.
+                showStatusFilter={false}
                 options={orderStatusOptions}
                 selectedValue={orderStatusId}
                 onChange={setOrderStatusId}

@@ -54,7 +54,7 @@ def _money(value: float) -> str:
 
 def generate_invoice_pdf(
     *,
-    invoice_no: int,
+    invoice_no: int | str,
     invoice_date: datetime,
     due_date: datetime,
     transport: str,
@@ -67,6 +67,8 @@ def generate_invoice_pdf(
     customer_phone: str,
     customer_gstin: str,
     personal: dict[str, str],
+    title_text: str = "TAX INVOICE",
+    party_label: str = "Customer",
 ) -> bytes:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -116,7 +118,7 @@ def generate_invoice_pdf(
         [
             [
                 Paragraph(f"<b>GSTIN</b> : {personal.get('gstin', '')}", small),
-                Paragraph("TAX INVOICE", title_style),
+                Paragraph(title_text, title_style),
                 Paragraph("ORIGINAL FOR RECIPIENT", small_right),
             ]
         ],
@@ -145,7 +147,7 @@ def generate_invoice_pdf(
     place_of_supply_text = f"{place_of_supply} ( {place_of_supply_code} )" if place_of_supply else "-"
 
     customer_rows = [
-        [Paragraph("<b>Customer Detail</b>", label), ""],
+        [Paragraph(f"<b>{party_label} Detail</b>", label), ""],
         [Paragraph("M/S", small), Paragraph(customer_name, small)],
         [Paragraph("Address", small), Paragraph(customer_address, small)],
         [Paragraph("Phone", small), Paragraph(customer_phone or "-", small)],

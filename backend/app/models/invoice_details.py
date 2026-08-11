@@ -19,10 +19,16 @@ class InvoiceDetails(Document):
     id: int
     invoice_no: int
     date: datetime
-    sales_id: int  # FK -> SalesOrders.id
-    # Snapshotted from the linked SalesOrders at create/update time, same
-    # convention as SalesOrders/PurchaseOrders storing their own totals
-    # rather than always recomputing from line items.
+    # Exactly one of sales_id/quotation_id is set, matching `type`:
+    # standard invoices ride on a SalesOrders row (sales_id), proforma
+    # invoices are auto-generated straight from an accepted QuotationDetails
+    # row (quotation_id) since no sales order exists yet at that point.
+    sales_id: int | None = None  # FK -> SalesOrders.id
+    quotation_id: int | None = None  # FK -> QuotationDetails.id
+    # Snapshotted from the linked SalesOrders/QuotationDetails at
+    # create/update time, same convention as SalesOrders/PurchaseOrders
+    # storing their own totals rather than always recomputing from line
+    # items.
     total_amount_before_tax: float
     total_tax_amount: float
     total_amount_after_tax: float

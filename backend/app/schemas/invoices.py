@@ -7,9 +7,12 @@ from app.models.invoice_details import InvoiceType, OnlineOrOffline
 
 
 class CreateNewInvoiceRequest(BaseModel):
+    # Manual creation is standard-only — proforma invoices are generated
+    # automatically when a quotation is marked accepted (see
+    # routes/quotations.py), so sales_id is the only linkage accepted here;
+    # type is implied and validated server-side as InvoiceType.standard.
     sales_id: int
     date: datetime
-    type: InvoiceType
     due_date: datetime
     online_or_offline: OnlineOrOffline
     transport: str = ""
@@ -22,8 +25,10 @@ class CreateNewInvoiceResponse(BaseModel):
 class InvoiceDetailItem(BaseModel):
     id: int
     invoice_no: int
+    invoice_no_display: str
     date: datetime
-    sales_id: int
+    sales_id: int | None
+    quotation_id: int | None
     type: InvoiceType
     due_date: datetime
     online_or_offline: OnlineOrOffline
@@ -36,10 +41,10 @@ class InvoiceDetailItem(BaseModel):
 
 class UpdateInvoiceDetailsRequest(BaseModel):
     id: int
-    # sales_id is intentionally not editable — an invoice always stays tied
-    # to the sales order it was raised against.
+    # sales_id/quotation_id/type are intentionally not editable — an
+    # invoice always stays tied to whatever it was raised against, and its
+    # type determines which of those two FKs is populated.
     date: datetime
-    type: InvoiceType
     due_date: datetime
     online_or_offline: OnlineOrOffline
     transport: str = ""

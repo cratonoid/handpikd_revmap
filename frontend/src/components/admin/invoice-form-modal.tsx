@@ -1,22 +1,25 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// <InvoiceFormModal> — add/edit popup on the Invoices tab
+// <InvoiceFormModal> — add/edit popup on the Sales Invoices tab
 // ---------------------------------------------------------------------------
-// An invoice always raises against an existing sales order — there's no
-// line-item entry here (unlike sales-order-form-modal.tsx); totals are just
-// read from the selected sales order (lib/sales-orders.ts) and previewed
-// live. Mirrors sales-order-form-modal.tsx's add/edit split:
-//   - mode "add"  -> POST /admin/create_new_invoice
-//   - mode "edit" -> POST /admin/update_invoice_details (sales order is
-//                    immutable once raised — shown read-only)
+// Manual creation is standard-only — an invoice always raises against an
+// existing sales order — there's no line-item entry here (unlike
+// sales-order-form-modal.tsx); totals are just read from the selected sales
+// order (lib/sales-orders.ts) and previewed live.
+//   - mode "add"  -> POST /admin/create_new_invoice (always type=standard)
+//   - mode "edit" -> POST /admin/update_invoice_details (sales_id/
+//                    quotation_id/type are immutable once raised — shown
+//                    read-only; a proforma row shows its source quotation
+//                    instead of a sales-order picker)
 // Both live in backend/app/api/routes/invoices.py.
 import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue } from "@/lib/datetime-input";
-import type { Invoice, InvoiceType, OnlineOrOffline } from "@/lib/invoices";
+import type { Invoice, OnlineOrOffline } from "@/lib/invoices";
 import { createInvoice, updateInvoice } from "@/lib/invoices";
 import type { SalesOrder } from "@/lib/sales-orders";
+import type { Quotation } from "@/lib/quotations";
 import type { CustomerOption } from "@/lib/customers";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
 import { XMarkIcon } from "@/components/icons";
@@ -28,6 +31,7 @@ export function InvoiceFormModal({
   mode,
   initialInvoice,
   salesOrders,
+  quotations,
   customers,
   onClose,
   onSaved,
@@ -35,17 +39,17 @@ export function InvoiceFormModal({
   mode: "add" | "edit";
   initialInvoice?: Invoice;
   salesOrders: SalesOrder[];
+  quotations: Quotation[];
   customers: CustomerOption[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [salesId, setSalesId] = useState<string | null>(
-    initialInvoice ? String(initialInvoice.salesId) : null,
+    initialInvoice?.salesId ? String(initialInvoice.salesId) : null,
   );
   const [date, setDate] = useState(
     initialInvoice ? toDatetimeLocalValue(initialInvoice.date) : nowAsDatetimeLocalValue(),
   );
-  const [type, setType] = useState<InvoiceType>(initialInvoice?.type ?? "standard");
   const [dueDate, setDueDate] = useState(
     initialInvoice ? toDatetimeLocalValue(initialInvoice.dueDate) : nowAsDatetimeLocalValue(),
   );
@@ -58,6 +62,7 @@ export function InvoiceFormModal({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const isEdit = mode === "edit";
+  const isProforma = initialInvoice?.type === "proforma";
   const wasDeleted = initialInvoice?.isDeleted ?? false;
   const title = isEdit ? "Edit invoice" : "New invoice";
 
@@ -74,24 +79,29 @@ export function InvoiceFormModal({
     [salesOrders, customersById],
   );
   const selectedSalesOrder = salesOrders.find((order) => String(order.id) === salesId) ?? null;
+  const linkedQuotation = quotations.find((quotation) => quotation.id === initialInvoice?.quotationId) ?? null;
 
   async function submitPayload(isDeletedValue: boolean) {
     setStatus("saving");
     setError(null);
 
-    const payload = {
-      id: initialInvoice?.id,
-      salesId: Number(salesId),
-      date: fromDatetimeLocalValue(date),
-      type,
-      dueDate: fromDatetimeLocalValue(dueDate),
-      onlineOrOffline,
-      transport,
-      isDeleted: isDeletedValue,
-    };
-
     try {
-      const response = isEdit ? await updateInvoice(payload) : await createInvoice(payload);
+      const response = isEdit
+        ? await updateInvoice({
+            id: initialInvoice!.id,
+            date: fromDatetimeLocalValue(date),
+            dueDate: fromDatetimeLocalValue(dueDate),
+            onlineOrOffline,
+            transport,
+            isDeleted: isDeletedValue,
+          })
+        : await createInvoice({
+            salesId: Number(salesId),
+            date: fromDatetimeLocalValue(date),
+            dueDate: fromDatetimeLocalValue(dueDate),
+            onlineOrOffline,
+            transport,
+          });
 
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
@@ -111,7 +121,7 @@ export function InvoiceFormModal({
     event.preventDefault();
     const form = event.currentTarget;
 
-    if (!salesId) {
+    if (!isEdit && !salesId) {
       setError("Please select a sales order.");
       return;
     }
@@ -152,7 +162,7 @@ export function InvoiceFormModal({
             {isEdit ? (
               <div>
                 <span className={styles.formLabel}>Invoice no.</span>
-                <p className={styles.pageSubtext}>{initialInvoice?.invoiceNo}</p>
+                <p className={styles.pageSubtext}>{initialInvoice?.invoiceNoDisplay}</p>
               </div>
             ) : (
               <div>
@@ -161,7 +171,16 @@ export function InvoiceFormModal({
               </div>
             )}
 
-            {isEdit ? (
+            {isProforma ? (
+              <div>
+                <span className={styles.formLabel}>Source quotation</span>
+                <p className={styles.pageSubtext}>
+                  {linkedQuotation
+                    ? `Quotation #${linkedQuotation.quotationNo} · ${customersById.get(linkedQuotation.custId)?.name ?? "Unknown customer"}`
+                    : "—"}
+                </p>
+              </div>
+            ) : isEdit ? (
               <div>
                 <span className={styles.formLabel}>Sales order</span>
                 <p className={styles.pageSubtext}>
@@ -210,19 +229,8 @@ export function InvoiceFormModal({
             </div>
 
             <div>
-              <label htmlFor="invoiceType" className={styles.formLabel}>
-                Type<span className={styles.requiredMark}>*</span>
-              </label>
-              <select
-                id="invoiceType"
-                required
-                value={type}
-                onChange={(e) => setType(e.target.value as InvoiceType)}
-                className={styles.formInput}
-              >
-                <option value="standard">Standard</option>
-                <option value="proforma">Proforma</option>
-              </select>
+              <span className={styles.formLabel}>Type</span>
+              <p className={styles.pageSubtext}>{isProforma ? "Proforma" : "Standard"}</p>
             </div>
 
             <div>
@@ -255,7 +263,7 @@ export function InvoiceFormModal({
             </div>
           </div>
 
-          {selectedSalesOrder && (
+          {!isEdit && selectedSalesOrder && (
             <div className={styles.totalsRow}>
               <div className={styles.totalsRowItem}>
                 <p className={styles.totalsRowLabel}>Total before tax</p>
@@ -268,6 +276,23 @@ export function InvoiceFormModal({
               <div className={styles.totalsRowItem}>
                 <p className={styles.totalsRowLabel}>Total after tax</p>
                 <p className={styles.totalsRowValue}>₹{selectedSalesOrder.totalAmountAfterTax.toFixed(2)}</p>
+              </div>
+            </div>
+          )}
+
+          {isEdit && (
+            <div className={styles.totalsRow}>
+              <div className={styles.totalsRowItem}>
+                <p className={styles.totalsRowLabel}>Total before tax</p>
+                <p className={styles.totalsRowValue}>₹{initialInvoice!.totalAmountBeforeTax.toFixed(2)}</p>
+              </div>
+              <div className={styles.totalsRowItem}>
+                <p className={styles.totalsRowLabel}>Total tax</p>
+                <p className={styles.totalsRowValue}>₹{initialInvoice!.totalTaxAmount.toFixed(2)}</p>
+              </div>
+              <div className={styles.totalsRowItem}>
+                <p className={styles.totalsRowLabel}>Total after tax</p>
+                <p className={styles.totalsRowValue}>₹{initialInvoice!.totalAmountAfterTax.toFixed(2)}</p>
               </div>
             </div>
           )}

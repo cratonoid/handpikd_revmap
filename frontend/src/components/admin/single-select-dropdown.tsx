@@ -53,8 +53,12 @@ export function SingleSelectDropdown({
   const [search, setSearch] = useState("");
   // Defaults to whichever group the currently selected option belongs to, so
   // opening the picker on an already-deleted vendor doesn't land on an empty
-  // "Active" list.
+  // "Active" list. When the toggle itself is hidden, there's no way to reach
+  // the "deleted" group, so stay on "active" regardless of the current
+  // selection — the selected option's label still resolves fine since
+  // `selectedOption` below reads from the full (unfiltered) `options` list.
   const [group, setGroup] = useState<"active" | "deleted">(() => {
+    if (!showStatusFilter) return "active";
     const current = options.find((o) => o.value === selectedValue);
     return current?.isDeleted ? "deleted" : "active";
   });
