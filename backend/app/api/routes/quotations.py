@@ -36,7 +36,6 @@ from app.schemas.quotations import (
 from app.services.counters import get_next_id
 from app.services.personal_details import get_personal_details
 from app.services.quotation_pdf import QuotationLineItem, generate_quotation_pdf
-from app.services.quotation_storage import delete_quotation_pdf, save_quotation_pdf
 
 router = APIRouter(prefix="/admin", tags=["quotations"])
 
@@ -240,11 +239,6 @@ async def update_quotation_details(
     quotation.is_deleted = payload.is_deleted
     await quotation.save()
 
-    # Invalidate any previously cached PDF (see quotation_storage.py) — its
-    # contents no longer match the quotation now that the underlying data
-    # has changed. The next get_quotation_pdf call regenerates it fresh.
-    delete_quotation_pdf(quotation.id)
-
     await QuotationSummary.find(QuotationSummary.quotation_id == quotation.id).delete()
     await _insert_quotation_summary_rows(
         quotation.id,
@@ -329,12 +323,6 @@ async def get_quotation_pdf(
         customer_gstin=customer.company_gst,
         personal=personal,
     )
-
-    # Cache the rendered PDF to disk (see quotation_storage.py) on every
-    # download, keeping the on-disk copy in sync with whatever was just
-    # served — cheap relative to the render itself, and update_quotation_details
-    # already invalidates it whenever the underlying data changes.
-    save_quotation_pdf(quotation.id, pdf_bytes)
 
     return Response(
         content=pdf_bytes,

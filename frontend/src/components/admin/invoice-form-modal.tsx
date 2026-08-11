@@ -16,7 +16,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue } from "@/lib/datetime-input";
-import type { Invoice, OnlineOrOffline } from "@/lib/invoices";
+import type { Invoice, InvoiceStatus, OnlineOrOffline } from "@/lib/invoices";
 import { createInvoice, updateInvoice } from "@/lib/invoices";
 import type { SalesOrder } from "@/lib/sales-orders";
 import type { Quotation } from "@/lib/quotations";
@@ -26,6 +26,12 @@ import { XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
 type Status = "idle" | "saving";
+
+const INVOICE_STATUS_OPTIONS: SingleSelectOption[] = [
+  { value: "new", label: "New", isDeleted: false },
+  { value: "submitted", label: "Submitted", isDeleted: false },
+  { value: "paid", label: "Paid", isDeleted: false },
+];
 
 export function InvoiceFormModal({
   mode,
@@ -57,6 +63,7 @@ export function InvoiceFormModal({
     initialInvoice?.onlineOrOffline ?? "offline",
   );
   const [transport, setTransport] = useState(initialInvoice?.transport ?? "Hand Delivery");
+  const [invoiceStatus, setInvoiceStatus] = useState<InvoiceStatus>(initialInvoice?.status ?? "new");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -93,6 +100,7 @@ export function InvoiceFormModal({
             dueDate: fromDatetimeLocalValue(dueDate),
             onlineOrOffline,
             transport,
+            status: invoiceStatus,
             isDeleted: isDeletedValue,
           })
         : await createInvoice({
@@ -232,6 +240,19 @@ export function InvoiceFormModal({
               <span className={styles.formLabel}>Type</span>
               <p className={styles.pageSubtext}>{isProforma ? "Proforma" : "Standard"}</p>
             </div>
+
+            {isEdit && (
+              <SingleSelectDropdown
+                label="Status"
+                placeholder="Select a status"
+                entityLabel="statuses"
+                required
+                showStatusFilter={false}
+                options={INVOICE_STATUS_OPTIONS}
+                selectedValue={invoiceStatus}
+                onChange={(value) => setInvoiceStatus(value as InvoiceStatus)}
+              />
+            )}
 
             <div>
               <label htmlFor="onlineOrOffline" className={styles.formLabel}>

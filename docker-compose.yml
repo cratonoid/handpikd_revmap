@@ -6,19 +6,15 @@ services:
       - ./backend/.env
     environment:
       MEDIA_ROOT: /media
-      QUOTATION_ROOT: /quotations
       PURCHASE_INVOICE_ROOT: /purchase_invoices
     volumes:
       # Product images, kept outside the git-managed code directory so they
       # survive `git reset --hard` deploys and rebuilds.
       - /srv/handpikd-media:/media
-      # Cached quotation PDFs (see backend/app/services/quotation_storage.py)
-      # — also outside the code directory, but a separate volume from /media
-      # since these are never served publicly (customer PII/pricing).
-      - /srv/handpikd-quotations:/quotations
       # Uploaded vendor purchase-invoice PDFs (see
-      # backend/app/services/purchase_invoice_storage.py) — same reasoning
-      # as /quotations, a separate private volume.
+      # backend/app/services/purchase_invoice_storage.py) — also outside the
+      # code directory, but a separate volume from /media since these are
+      # never served publicly (pricing/GSTIN info).
       - /srv/handpikd-purchase-invoices:/purchase_invoices
     expose:
       - "8000"

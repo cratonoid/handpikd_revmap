@@ -1,9 +1,9 @@
 # Stores uploaded vendor purchase-invoice PDFs (the original source
 # document, not a regenerable render) to local disk under
-# settings.purchase_invoice_root. Deliberately private, same reasoning as
-# quotation_storage.py: never mounted as public static files, since vendor
-# documents may carry pricing/GSTIN info, so they're only reachable through
-# the authenticated routes/purchase_invoices.py endpoints. Keyed by a
+# settings.purchase_invoice_root. Deliberately private: never mounted as
+# public static files, since vendor documents may carry pricing/GSTIN info,
+# so they're only reachable through the authenticated
+# routes/purchase_invoices.py endpoints. Keyed by a
 # generated uuid (see storage.py's _store_image) rather than the owning
 # PurchaseInvoiceDetails.id, since the upload happens before that row
 # exists (see POST /admin/parse_purchase_invoice_pdf).

@@ -21,7 +21,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { InvoiceFormModal } from "@/components/admin/invoice-form-modal";
 import { PersonalDetailsModal } from "@/components/admin/personal-details-modal";
-import { downloadInvoicePdf, fetchInvoices, type Invoice, type InvoiceType } from "@/lib/invoices";
+import { downloadInvoicePdf, fetchInvoices, type Invoice, type InvoiceStatus, type InvoiceType } from "@/lib/invoices";
 import { fetchPersonalDetails } from "@/lib/personal-details";
 import { fetchSalesOrders, type SalesOrder } from "@/lib/sales-orders";
 import { fetchQuotations, type Quotation } from "@/lib/quotations";
@@ -30,6 +30,12 @@ import styles from "@/styles/dashboard.module.css";
 
 type ModalState = { mode: "add" } | { mode: "edit"; invoice: Invoice } | null;
 type LoadState = "loading" | "loaded";
+
+const STATUS_LABEL: Record<InvoiceStatus, string> = {
+  new: "New",
+  submitted: "Submitted",
+  paid: "Paid",
+};
 
 export function InvoicesTab() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -174,6 +180,7 @@ export function InvoicesTab() {
               <th className={styles.tableHeadCell}>Customer</th>
               <th className={styles.tableHeadCell}>Due date</th>
               <th className={styles.tableHeadCell}>Payment</th>
+              <th className={styles.tableHeadCell}>Status</th>
               <th className={styles.tableHeadCell}>Amount</th>
               <th className={styles.tableHeadCell}>PDF</th>
             </tr>
@@ -202,6 +209,7 @@ export function InvoicesTab() {
                   <td className={styles.tableCell}>{customerName ?? "—"}</td>
                   <td className={styles.tableCell}>{new Date(invoice.dueDate).toLocaleDateString()}</td>
                   <td className={styles.tableCell}>{invoice.onlineOrOffline === "online" ? "Online" : "Offline"}</td>
+                  <td className={styles.tableCell}>{STATUS_LABEL[invoice.status]}</td>
                   <td className={styles.tableCell}>₹{invoice.totalAmountAfterTax.toFixed(2)}</td>
                   <td className={styles.tableCell}>
                     <button

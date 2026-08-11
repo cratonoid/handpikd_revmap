@@ -15,6 +15,12 @@ class OnlineOrOffline(str, Enum):
     offline = "offline"
 
 
+class InvoiceStatus(str, Enum):
+    new = "new"
+    submitted = "submitted"
+    paid = "paid"
+
+
 class InvoiceDetails(Document):
     id: int
     invoice_no: int
@@ -36,6 +42,7 @@ class InvoiceDetails(Document):
     due_date: datetime
     online_or_offline: OnlineOrOffline
     transport: str = ""  # e.g. "Hand Delivery" — shipping mode, invoice-specific.
+    status: InvoiceStatus = InvoiceStatus.new
     is_deleted: bool = False
 
     class Settings:

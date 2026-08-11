@@ -13,6 +13,7 @@ import { apiFetch } from "@/lib/api";
 
 export type InvoiceType = "proforma" | "standard";
 export type OnlineOrOffline = "online" | "offline";
+export type InvoiceStatus = "new" | "submitted" | "paid";
 
 export type Invoice = {
   id: number;
@@ -25,6 +26,7 @@ export type Invoice = {
   dueDate: string;
   onlineOrOffline: OnlineOrOffline;
   transport: string;
+  status: InvoiceStatus;
   totalAmountBeforeTax: number;
   totalTaxAmount: number;
   totalAmountAfterTax: number;
@@ -43,6 +45,7 @@ type InvoiceDetailItem = {
   due_date: string;
   online_or_offline: OnlineOrOffline;
   transport: string;
+  status: InvoiceStatus;
   total_amount_before_tax: number;
   total_tax_amount: number;
   total_amount_after_tax: number;
@@ -61,6 +64,7 @@ function toInvoice(item: InvoiceDetailItem): Invoice {
     dueDate: item.due_date,
     onlineOrOffline: item.online_or_offline,
     transport: item.transport,
+    status: item.status,
     totalAmountBeforeTax: item.total_amount_before_tax,
     totalTaxAmount: item.total_tax_amount,
     totalAmountAfterTax: item.total_amount_after_tax,
@@ -109,6 +113,7 @@ export type UpdateInvoicePayload = {
   dueDate: string;
   onlineOrOffline: OnlineOrOffline;
   transport: string;
+  status: InvoiceStatus;
   isDeleted: boolean;
 };
 
@@ -122,6 +127,7 @@ export async function updateInvoice(payload: UpdateInvoicePayload): Promise<Resp
       due_date: payload.dueDate,
       online_or_offline: payload.onlineOrOffline,
       transport: payload.transport,
+      status: payload.status,
       is_deleted: payload.isDeleted,
     }),
   });

@@ -17,7 +17,7 @@ from app.models.inventory import Inventory
 from app.models.inventory_history import InventoryHistory
 from app.models.inventory_history_id_counter import InventoryHistoryIdCounter
 from app.models.inventory_id_counter import InventoryIdCounter
-from app.models.invoice_details import InvoiceDetails, InvoiceType, OnlineOrOffline
+from app.models.invoice_details import InvoiceDetails, InvoiceStatus, InvoiceType, OnlineOrOffline
 from app.models.invoice_id_counter import InvoiceIdCounter
 from app.models.invoice_no_counter_master import InvoiceNoCounterMaster
 from app.models.order_no_counter_master import OrderNoCounterMaster
@@ -75,6 +75,7 @@ __all__ = [
     "InventoryHistoryIdCounter",
     "InventoryIdCounter",
     "InvoiceDetails",
+    "InvoiceStatus",
     "InvoiceType",
     "OnlineOrOffline",
     "InvoiceIdCounter",

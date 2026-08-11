@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.models.invoice_details import InvoiceType, OnlineOrOffline
+from app.models.invoice_details import InvoiceStatus, InvoiceType, OnlineOrOffline
 
 
 class CreateNewInvoiceRequest(BaseModel):
@@ -33,6 +33,7 @@ class InvoiceDetailItem(BaseModel):
     due_date: datetime
     online_or_offline: OnlineOrOffline
     transport: str
+    status: InvoiceStatus
     total_amount_before_tax: float
     total_tax_amount: float
     total_amount_after_tax: float
@@ -48,6 +49,9 @@ class UpdateInvoiceDetailsRequest(BaseModel):
     due_date: datetime
     online_or_offline: OnlineOrOffline
     transport: str = ""
+    # Like QuotationDetails.status, only ever settable in edit mode — a new
+    # invoice is always created as InvoiceStatus.new (see create_new_invoice).
+    status: InvoiceStatus
     is_deleted: bool = False
 
 

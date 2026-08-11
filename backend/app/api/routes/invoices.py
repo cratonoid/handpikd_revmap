@@ -98,6 +98,7 @@ def _to_invoice_detail_item(invoice: InvoiceDetails) -> InvoiceDetailItem:
         due_date=invoice.due_date,
         online_or_offline=invoice.online_or_offline,
         transport=invoice.transport,
+        status=invoice.status,
         total_amount_before_tax=invoice.total_amount_before_tax,
         total_tax_amount=invoice.total_tax_amount,
         total_amount_after_tax=invoice.total_amount_after_tax,
@@ -137,6 +138,7 @@ async def update_invoice_details(
     invoice.due_date = payload.due_date
     invoice.online_or_offline = payload.online_or_offline
     invoice.transport = payload.transport
+    invoice.status = payload.status
     invoice.is_deleted = payload.is_deleted
     await invoice.save()
 
