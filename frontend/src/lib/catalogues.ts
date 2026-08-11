@@ -50,9 +50,10 @@ export async function fetchCatalogues(): Promise<Catalogue[]> {
 // page). Nothing is written to disk by this call — each page comes back as
 // base64 PNG bytes, turned into a data: URI the grid can render directly.
 // The caller holds these in its local imagePaths list alongside any
-// already-persisted "/media/..." paths; only add/update_catalogue_details
-// (see submitImages below) actually stores a page's bytes, so a page that's
-// uploaded but never saved never touches the backend's disk at all.
+// already-persisted "/media/..." paths; a page only actually gets stored
+// once Save calls addCatalogueImage for it (see catalogue-form-modal.tsx),
+// so a page that's uploaded but never saved never touches the backend's
+// disk at all.
 export async function uploadCataloguePdf(file: File): Promise<string[]> {
   const formData = new FormData();
   formData.append("file", file);
@@ -71,18 +72,30 @@ export async function uploadCataloguePdf(file: File): Promise<string[]> {
   return pageImages.map((base64) => `data:image/png;base64,${base64}`);
 }
 
-// Splits a local imagePaths entry back into the shape add/update_catalogue_
-// details expects: an already-persisted path as-is, or a pending data: URI
-// (from uploadCataloguePdf, never saved) as raw base64 bytes to store now.
-function toCatalogueImageInput(path: string): { path?: string; data?: string } {
-  if (path.startsWith("data:")) {
-    return { data: path.slice(path.indexOf(",") + 1) };
-  }
-  return { path };
-}
+// Persists one page (a data: URI held locally since uploadCataloguePdf,
+// never yet saved) against an already-saved catalogue via POST
+// /admin/add_catalogue_image. Called once per new page during Save (see
+// catalogue-form-modal.tsx's handleSubmit) rather than bundling every
+// page's bytes into add/update_catalogue_details — a multi-page catalogue's
+// combined bytes routinely exceeded the server's request size limit when
+// this used to be one request carrying everything.
+export async function addCatalogueImage(catalogueId: number, dataUri: string): Promise<string> {
+  const blob = await (await fetch(dataUri)).blob();
+  const formData = new FormData();
+  formData.append("catalogue_id", String(catalogueId));
+  formData.append("file", blob, "page.png");
 
-export function catalogueImagesPayload(imagePaths: string[]) {
-  return imagePaths.map(toCatalogueImageInput);
+  const response = await apiFetch("/admin/add_catalogue_image", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to save page");
+  }
+
+  const { image_path: imagePath }: { image_path: string } = await response.json();
+  return imagePath;
 }
 
 // Deletes a single already-saved page image immediately (backend's

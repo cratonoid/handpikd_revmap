@@ -32,7 +32,7 @@ import { Button } from "@/components/button";
 import { apiFetch, resolveMediaUrl } from "@/lib/api";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import { GST_PERCENT_OPTIONS } from "@/lib/gst";
-import { deleteProductImage, productImagesPayload, uploadProductImage, type Product } from "@/lib/products";
+import { addProductImage, deleteProductImage, uploadProductImage, type Product } from "@/lib/products";
 import type { VendorOption } from "@/lib/vendors";
 import { MultiSelectDropdown, type MultiSelectOption } from "@/components/admin/multi-select-dropdown";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
@@ -180,15 +180,9 @@ export function ProductFormModal({
     setImagePaths((prev) => prev.filter((_, i) => i !== index));
   }
 
-  // Shared by the normal Save button and the delete/restore action below —
-  // both just POST the current form state to update_product_details, only
-  // differing in what `is_visible` should end up as.
-  async function submitPayload(isVisibleValue: boolean) {
-    setStatus("saving");
-    setError(null);
-
-    const payload = {
-      ...(isEdit ? { id: initialProduct?.id } : {}),
+  function buildDetailsPayload(id: number | undefined, isVisibleValue: boolean, keepPaths: string[]) {
+    return {
+      ...(id !== undefined ? { id } : {}),
       product_name: productName,
       hsn_code: hsnCode,
       vendor_id: vendorId !== null ? Number(vendorId) : null,
@@ -200,20 +194,36 @@ export function ProductFormModal({
       moq,
       description,
       is_visible: isVisibleValue,
-      images: productImagesPayload(imagePaths.map((path) => path.trim()).filter(Boolean)),
+      image_paths: keepPaths,
     };
+  }
+
+  // Shared by the normal Save button and the delete/restore action below —
+  // both save the current form state, only differing in what `is_visible`
+  // should end up as. Two-phase, same as catalogue-form-modal.tsx: details
+  // first (carrying only already-persisted paths/pasted URLs), then one
+  // addProductImage call per pending "data:" image, since bundling every
+  // image's bytes into one request risked the same request-size blowup
+  // fixed for catalogues (see routes/catalogues.py's module docstring).
+  async function submitPayload(isVisibleValue: boolean) {
+    setStatus("saving");
+    setError(null);
+
+    const cleanedPaths = imagePaths.map((path) => path.trim()).filter(Boolean);
+    const persistedPaths = cleanedPaths.filter((path) => !path.startsWith("data:"));
+    const pendingDataUris = cleanedPaths.filter((path) => path.startsWith("data:"));
 
     try {
-      const response = await apiFetch(isEdit ? "/admin/update_product_details" : "/admin/add_product_details", {
+      const detailsResponse = await apiFetch(isEdit ? "/admin/update_product_details" : "/admin/add_product_details", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(buildDetailsPayload(isEdit ? initialProduct?.id : undefined, isVisibleValue, persistedPaths)),
       });
 
-      if (!response.ok) {
-        if (response.status === 409) {
+      if (!detailsResponse.ok) {
+        if (detailsResponse.status === 409) {
           setError("A product with these details already exists.");
-        } else if (response.status === 404) {
+        } else if (detailsResponse.status === 404) {
           setError("Product not found.");
         } else {
           setError("Something went wrong. Please try again.");
@@ -222,13 +232,39 @@ export function ProductFormModal({
         return;
       }
 
-      // See catalogue-form-modal.tsx's equivalent swap — image_paths here
-      // are the real, saved /media paths, so no "data:" URI from an image
-      // uploaded this session leaks into the parent's cached state.
-      const { image_paths: savedImagePaths }: { image_paths: string[] } = await response.json();
+      const { id: productId, image_paths: savedPersistedPaths }: { id: number; image_paths: string[] } =
+        await detailsResponse.json();
+
+      const uploadedPaths: string[] = [];
+      try {
+        for (const dataUri of pendingDataUris) {
+          uploadedPaths.push(await addProductImage(productId, dataUri));
+        }
+      } catch {
+        const keepPaths = [...savedPersistedPaths, ...uploadedPaths];
+        if (!isEdit) {
+          // ProductDetails has no hard delete, only this is_visible toggle
+          // (same one delete/restore uses) — hide the incomplete product
+          // rather than showing it to customers with missing images. Keep
+          // whatever images did upload (keepPaths) rather than wiping them.
+          await apiFetch("/admin/update_product_details", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(buildDetailsPayload(productId, false, keepPaths)),
+          }).catch(() => {});
+        }
+        setImagePaths([...keepPaths, ...pendingDataUris.slice(uploadedPaths.length)]);
+        setError(
+          isEdit
+            ? `Saved, but only ${uploadedPaths.length} of ${pendingDataUris.length} new image(s) uploaded. Try saving again for the rest.`
+            : "Couldn't upload every image, so this product was saved hidden. Try saving again to finish and make it visible.",
+        );
+        setStatus("idle");
+        return;
+      }
 
       onSaved({
-        id: initialProduct?.id ?? 0,
+        id: productId,
         productName,
         hsnCode,
         vendorId: vendorId !== null ? Number(vendorId) : 0,
@@ -240,7 +276,7 @@ export function ProductFormModal({
         moq,
         description,
         isVisible: isVisibleValue,
-        imagePaths: savedImagePaths,
+        imagePaths: [...savedPersistedPaths, ...uploadedPaths],
       });
     } catch {
       setError("Couldn't reach the server. Please try again.");

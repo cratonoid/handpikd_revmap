@@ -71,9 +71,9 @@ export async function deleteProductImage(productId: number, imagePath: string): 
 // written to disk by this call — it comes back as base64 bytes, turned into
 // a data: URI the row can preview directly. The caller holds this in its
 // local imagePaths list alongside any already-persisted "/media/..." paths
-// or pasted URLs; only add/update_product_details (see productImagesPayload
-// below) actually stores an image's bytes, so a file that's uploaded but
-// never saved never touches the backend's disk at all.
+// or pasted URLs; a pending image only actually gets stored once Save calls
+// addProductImage for it (see product-form-modal.tsx), so a file that's
+// uploaded but never saved never touches the backend's disk at all.
 export async function uploadProductImage(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);
@@ -94,21 +94,30 @@ export async function uploadProductImage(file: File): Promise<string> {
   return `data:${file.type || "application/octet-stream"};base64,${data}`;
 }
 
-// Splits a local imagePaths entry back into the shape add/update_product_
-// details expects: an already-persisted path or pasted URL as-is, or a
-// pending data: URI (from uploadProductImage, never saved) to store now.
-// Sent as the full "data:<mime>;base64,<bytes>" URI, not bare base64, so the
-// backend can recover the original file's extension (see routes/products.py
-// _decode_data_uri) instead of guessing one.
-function toProductImageInput(path: string): { path?: string; data?: string } {
-  if (path.startsWith("data:")) {
-    return { data: path };
-  }
-  return { path };
-}
+// Persists one image (a data: URI held locally since uploadProductImage,
+// never yet saved) against an already-saved product via POST
+// /admin/add_product_image. Called once per new image during Save (see
+// product-form-modal.tsx's handleSubmit) rather than bundling every image's
+// bytes into add/update_product_details — see routes/catalogues.py's module
+// docstring for why bundling doesn't scale.
+export async function addProductImage(productId: number, dataUri: string): Promise<string> {
+  const blob = await (await fetch(dataUri)).blob();
+  const extension = blob.type.split("/")[1]?.split("+")[0] || "bin";
+  const formData = new FormData();
+  formData.append("product_id", String(productId));
+  formData.append("file", blob, `image.${extension}`);
 
-export function productImagesPayload(imagePaths: string[]) {
-  return imagePaths.map(toProductImageInput);
+  const response = await apiFetch("/admin/add_product_image", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to save image");
+  }
+
+  const { image_path: imagePath }: { image_path: string } = await response.json();
+  return imagePath;
 }
 
 export async function fetchProducts(): Promise<Product[]> {

@@ -104,7 +104,6 @@ export type CreatePurchaseInvoicePayload = {
   vendorId: number;
   source: PurchaseInvoiceSource;
   poId?: number;
-  uploadedPdfData?: string;
   lineItems?: PurchaseInvoiceLineItem[];
 };
 
@@ -118,6 +117,11 @@ function lineItemsToPayload(lineItems: PurchaseInvoiceLineItem[] | undefined) {
   }));
 }
 
+// Raises the invoice itself (date/vendor/line items) — the vendor PDF, for
+// source == "pdf_upload", is attached separately once this returns an id
+// (see attachPurchaseInvoicePdf and purchase-invoice-form-modal.tsx's
+// handleSubmit). Returns the raw Response so the caller can both check
+// .ok/.status for its existing error handling and read the id on success.
 export async function createPurchaseInvoice(payload: CreatePurchaseInvoicePayload): Promise<Response> {
   return apiFetch("/admin/create_new_purchase_invoice", {
     method: "POST",
@@ -127,10 +131,29 @@ export async function createPurchaseInvoice(payload: CreatePurchaseInvoicePayloa
       vendor_id: payload.vendorId,
       source: payload.source,
       po_id: payload.poId ?? null,
-      uploaded_pdf_data: payload.uploadedPdfData ?? null,
       line_items: lineItemsToPayload(payload.lineItems),
     }),
   });
+}
+
+// Attaches the vendor PDF to an already-created pdf_upload invoice via POST
+// /admin/attach_purchase_invoice_pdf. Sends the original File the admin
+// picked (held in the modal's state since uploadAndParsePurchaseInvoicePdf)
+// directly — no base64 round-trip needed, since nothing else touches it
+// in between.
+export async function attachPurchaseInvoicePdf(purchaseInvoiceId: number, file: File): Promise<void> {
+  const formData = new FormData();
+  formData.append("purchase_invoice_id", String(purchaseInvoiceId));
+  formData.append("file", file);
+
+  const response = await apiFetch("/admin/attach_purchase_invoice_pdf", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to attach PDF");
+  }
 }
 
 export type UpdatePurchaseInvoicePayload = {
@@ -164,19 +187,14 @@ export type ParsedPurchaseInvoice = {
   lineItems: { description: string; quantity: number | null; rate: number | null }[];
 };
 
-export type ParsedPurchaseInvoiceUpload = {
-  uploadedPdfData: string;
-  parsed: ParsedPurchaseInvoice;
-};
-
 // Uploads a vendor PDF and runs best-effort local text extraction to
 // prefill the purchase-invoice form (see purchase_invoice_parser.py — no
 // LLM involved, every field stays editable). Nothing is written to disk by
-// this call — the PDF comes back as base64 bytes, passed straight into
-// createPurchaseInvoice's payload so it's only ever stored once the
-// invoice is actually created; parsing a PDF and then abandoning the form
-// leaves no file behind.
-export async function uploadAndParsePurchaseInvoicePdf(file: File): Promise<ParsedPurchaseInvoiceUpload> {
+// this call, and the file itself never comes back either — the caller
+// already has the original File it passed in (from the <input
+// type="file">) and holds onto that directly for attachPurchaseInvoicePdf,
+// so parsing a PDF and then abandoning the form leaves no file behind.
+export async function parsePurchaseInvoicePdf(file: File): Promise<ParsedPurchaseInvoice> {
   const formData = new FormData();
   formData.append("file", file);
 
@@ -191,7 +209,6 @@ export async function uploadAndParsePurchaseInvoicePdf(file: File): Promise<Pars
   }
 
   const data: {
-    uploaded_pdf_data: string;
     parsed: {
       vendor_name: string | null;
       vendor_gstin: string | null;
@@ -203,15 +220,12 @@ export async function uploadAndParsePurchaseInvoicePdf(file: File): Promise<Pars
   } = await response.json();
 
   return {
-    uploadedPdfData: data.uploaded_pdf_data,
-    parsed: {
-      vendorName: data.parsed.vendor_name,
-      vendorGstin: data.parsed.vendor_gstin,
-      suggestedVendorId: data.parsed.suggested_vendor_id,
-      date: data.parsed.date,
-      totalAmountAfterTax: data.parsed.total_amount_after_tax,
-      lineItems: data.parsed.line_items,
-    },
+    vendorName: data.parsed.vendor_name,
+    vendorGstin: data.parsed.vendor_gstin,
+    suggestedVendorId: data.parsed.suggested_vendor_id,
+    date: data.parsed.date,
+    totalAmountAfterTax: data.parsed.total_amount_after_tax,
+    lineItems: data.parsed.line_items,
   };
 }
 

@@ -4,10 +4,17 @@
 # get_public_categories, for the storefront's /products page) is intentionally
 # unauthenticated and separate from every admin endpoint above it, mirroring
 # routes/catalogues.py's router/public_router split.
+#
+# Saving a product with newly-uploaded images is a two-phase client flow
+# (see product-form-modal.tsx's handleSubmit), same as catalogues: add/
+# update_product_details first, carrying only already-persisted paths/pasted
+# URLs to keep, then one add_product_image call per new image — see
+# routes/catalogues.py's module docstring for why bundling every image's
+# bytes into a single request doesn't scale.
 import base64
 
 from beanie.operators import In, NE
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from app.api.routes.admin import require_admin
 from app.models import (
@@ -22,10 +29,10 @@ from app.models import (
 from app.schemas.products import (
     AddProductDetailsRequest,
     AddProductDetailsResponse,
+    AddProductImageResponse,
     DeleteProductImageRequest,
     DeleteProductImageResponse,
     ProductDetailItem,
-    ProductImageInput,
     PublicCategoryNode,
     PublicProductItem,
     UpdateProductDetailsRequest,
@@ -57,38 +64,11 @@ async def _validate_hsn_code_product_name(hsn_code: str, product_name: str, excl
         )
 
 
-def _decode_data_uri(data_uri: str) -> tuple[bytes, str]:
-    # Expects "data:<mime>;base64,<bytes>" (see lib/products.ts's
-    # toProductImageInput) — pulls the extension from the mime type so the
-    # stored file keeps a sensible name (e.g. .jpeg, not the original
-    # filename, which never reaches the backend in this flow).
-    header, _, encoded = data_uri.partition(",")
-    mime = header.removeprefix("data:").split(";")[0]
-    extension = mime.split("/")[-1].split("+")[0] or "bin"
-    return base64.b64decode(encoded), extension
-
-
-async def _replace_images(product_id: int, images: list[ProductImageInput]) -> list[str]:
-    # A `data` entry is a file picked via upload_product_image that was
-    # never written to disk — this is the first and only time it actually
-    # gets stored, so an abandoned add/edit never leaves a file behind.
-    try:
-        resolved_paths = []
-        for image in images:
-            if image.path is not None:
-                resolved_paths.append(image.path)
-                continue
-            image_bytes, extension = _decode_data_uri(image.data)
-            resolved_paths.append(store_product_image(image_bytes, f"image.{extension}"))
-    except LocalUploadBlockedError as error:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error))
-
+async def _replace_image_paths(product_id: int, image_paths: list[str]) -> None:
     await ProductImageDetails.find(ProductImageDetails.product_id == product_id).delete()
-    for image_path in resolved_paths:
+    for image_path in image_paths:
         image_id = await get_next_id(ProductImageIdCounter, "next_product_image_id", ProductImageDetails)
         await ProductImageDetails(id=image_id, product_id=product_id, image_path=image_path).insert()
-
-    return resolved_paths
 
 
 @router.post("/upload_product_image", response_model=UploadProductImageResponse)
@@ -96,8 +76,9 @@ async def upload_product_image(
     file: UploadFile = File(...),
     _: User | None = Depends(require_admin),
 ) -> UploadProductImageResponse:
-    # No disk write here — see ProductImageInput/_replace_images. Just reads
-    # the bytes back so the frontend can preview and, on Save, resend them.
+    # No disk write here — just reads the bytes back so the frontend can
+    # preview and, on Save, upload the same file again via add_product_image
+    # once the product actually exists.
     image_bytes = await file.read()
     return UploadProductImageResponse(data=base64.b64encode(image_bytes).decode())
 
@@ -130,9 +111,9 @@ async def add_product_details(
     )
     await product.insert()
 
-    image_paths = await _replace_images(product_id, payload.images)
+    await _replace_image_paths(product_id, payload.image_paths)
 
-    return AddProductDetailsResponse(message="product added successfully", image_paths=image_paths)
+    return AddProductDetailsResponse(message="product added successfully", id=product_id, image_paths=payload.image_paths)
 
 
 @router.get("/get_product_details", response_model=list[ProductDetailItem])
@@ -197,9 +178,34 @@ async def update_product_details(
     product.is_visible = payload.is_visible
     await product.save()
 
-    image_paths = await _replace_images(product.id, payload.images)
+    await _replace_image_paths(product.id, payload.image_paths)
 
-    return UpdateProductDetailsResponse(message="product updated successfully", image_paths=image_paths)
+    return UpdateProductDetailsResponse(message="product updated successfully", id=product.id, image_paths=payload.image_paths)
+
+
+@router.post("/add_product_image", response_model=AddProductImageResponse)
+async def add_product_image(
+    product_id: int = Form(...),
+    file: UploadFile = File(...),
+    _: User | None = Depends(require_admin),
+) -> AddProductImageResponse:
+    # Persists one image for an already-saved product — see the module
+    # docstring above for why this is a separate, per-image call rather than
+    # bundled into add/update_product_details.
+    product = await ProductDetails.get(product_id)
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="product not found")
+
+    image_bytes = await file.read()
+    try:
+        image_path = store_product_image(image_bytes, file.filename or "image")
+    except LocalUploadBlockedError as error:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error))
+
+    image_id = await get_next_id(ProductImageIdCounter, "next_product_image_id", ProductImageDetails)
+    await ProductImageDetails(id=image_id, product_id=product_id, image_path=image_path).insert()
+
+    return AddProductImageResponse(message="image added successfully", image_path=image_path)
 
 
 @router.post("/delete_product_image", response_model=DeleteProductImageResponse)

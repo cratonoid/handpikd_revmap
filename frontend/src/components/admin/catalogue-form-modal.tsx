@@ -17,10 +17,15 @@
 // Images: a catalogue's pages always come from converting an uploaded PDF
 // (uploadCataloguePdf, see lib/catalogues.ts) rather than individual image
 // uploads or pasted URLs — picking a PDF renders every page and appends the
-// resulting page images to the grid below, where the admin can drop any
-// pages that shouldn't be kept before saving. A page removed here that was
-// already persisted (part of the catalogue's saved imagePaths when the form
-// opened) is deleted from the backend right away, same as product images.
+// resulting page images (as "data:" URIs, not yet stored anywhere) to the
+// grid below, where the admin can drop any pages that shouldn't be kept
+// before saving. A page removed here that was already persisted (part of
+// the catalogue's saved imagePaths when the form opened) is deleted from
+// the backend right away, same as product images. Save itself is two-phase
+// (see handleSubmit): the details call carries only already-persisted
+// pages, then each new "data:" page is uploaded with its own
+// addCatalogueImage call — bundling every page into one request routinely
+// exceeded the server's request size limit on multi-page catalogues.
 //
 // Unlike products/vendors, catalogues have no soft-delete flag — the delete
 // action here (edit mode only) is a real, permanent delete of the catalogue
@@ -29,7 +34,7 @@ import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch, resolveMediaUrl } from "@/lib/api";
 import {
-  catalogueImagesPayload,
+  addCatalogueImage,
   deleteCatalogue,
   deleteCatalogueImage,
   uploadCataloguePdf,
@@ -184,24 +189,35 @@ export function CatalogueFormModal({
     setStatus("saving");
     setError(null);
 
-    const payload = {
+    // Already-persisted pages go in the details save itself; pages from
+    // this session's PDF upload (still "data:" URIs, never yet stored) are
+    // saved one at a time afterward via addCatalogueImage — see the module
+    // comment in routes/catalogues.py for why bundling every page into one
+    // request doesn't scale.
+    const persistedPaths = imagePaths.filter((path) => !path.startsWith("data:"));
+    const pendingDataUris = imagePaths.filter((path) => path.startsWith("data:"));
+
+    const detailsPayload = {
       ...(isEdit ? { id: initialCatalogue?.id } : {}),
       catalogue_name: catalogueName,
       catalogue_vendor_id: Number(vendorId),
       catalogue_type: catalogueType,
       category_id: Number(categoryId),
-      images: catalogueImagesPayload(imagePaths),
+      image_paths: persistedPaths,
     };
 
     try {
-      const response = await apiFetch(isEdit ? "/admin/update_catalogue_details" : "/admin/add_catalogue_details", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const detailsResponse = await apiFetch(
+        isEdit ? "/admin/update_catalogue_details" : "/admin/add_catalogue_details",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(detailsPayload),
+        },
+      );
 
-      if (!response.ok) {
-        if (response.status === 404) {
+      if (!detailsResponse.ok) {
+        if (detailsResponse.status === 404) {
           setError("Vendor or category not found.");
         } else {
           setError("Something went wrong. Please try again.");
@@ -210,19 +226,43 @@ export function CatalogueFormModal({
         return;
       }
 
-      // The response's image_paths are every saved page's real /media path,
-      // in order — swapping to these (rather than reusing local imagePaths)
-      // ensures nothing left over as a "data:" URI from this session's PDF
-      // upload leaks into the parent's state as though it were a real path.
-      const { image_paths: savedImagePaths }: { image_paths: string[] } = await response.json();
+      const { id: catalogueId, image_paths: savedPersistedPaths }: { id: number; image_paths: string[] } =
+        await detailsResponse.json();
+
+      const uploadedPaths: string[] = [];
+      try {
+        for (const dataUri of pendingDataUris) {
+          uploadedPaths.push(await addCatalogueImage(catalogueId, dataUri));
+        }
+      } catch {
+        if (isEdit) {
+          // The catalogue's other fields and kept pages are already saved
+          // above — deleting the whole thing over one failed new page
+          // would destroy real pre-existing data. Keep whatever uploaded
+          // so far plus whichever pages never got attempted, still as
+          // pending "data:" URIs, so the admin can just hit Save again.
+          setImagePaths([...savedPersistedPaths, ...pendingDataUris.slice(uploadedPaths.length)]);
+          setError(
+            `Saved, but only ${uploadedPaths.length} of ${pendingDataUris.length} new page(s) uploaded. Try saving again for the rest.`,
+          );
+        } else {
+          // Nothing about this catalogue was visible before this Save
+          // attempt, so it's safe to fully roll it back rather than leave
+          // a partial one behind — the admin can just retry.
+          await deleteCatalogue(catalogueId).catch(() => {});
+          setError("Couldn't save every page. Please try again.");
+        }
+        setStatus("idle");
+        return;
+      }
 
       onSaved({
-        id: initialCatalogue?.id ?? 0,
+        id: catalogueId,
         catalogueName,
         catalogueVendorId: Number(vendorId),
         catalogueType,
         categoryId,
-        imagePaths: savedImagePaths,
+        imagePaths: [...savedPersistedPaths, ...uploadedPaths],
       });
     } catch {
       setError("Couldn't reach the server. Please try again.");

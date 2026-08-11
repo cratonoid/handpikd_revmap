@@ -1,23 +1,5 @@
 # Request/response bodies for the catalogues module's endpoints.
-from pydantic import BaseModel, model_validator
-
-
-class CatalogueImageInput(BaseModel):
-    # Exactly one of these is set per page. `path` keeps an already-persisted
-    # page as-is (nothing re-uploaded); `data` is a page rendered this
-    # session by upload_catalogue_pdf that was never written to disk — it's
-    # base64-encoded PNG bytes, stored for the first time by whichever of
-    # add/update_catalogue_details this request reaches (see
-    # routes/catalogues.py's _replace_images). This is what keeps a page the
-    # admin uploads but never saves from ever touching disk at all.
-    path: str | None = None
-    data: str | None = None
-
-    @model_validator(mode="after")
-    def _check_exactly_one(self) -> "CatalogueImageInput":
-        if (self.path is None) == (self.data is None):
-            raise ValueError("exactly one of path or data must be set")
-        return self
+from pydantic import BaseModel
 
 
 class AddCatalogueDetailsRequest(BaseModel):
@@ -25,14 +7,19 @@ class AddCatalogueDetailsRequest(BaseModel):
     catalogue_vendor_id: int
     catalogue_type: str
     category_id: int
-    images: list[CatalogueImageInput] = []
+    # Already-persisted pages to keep, in order — always empty for a
+    # brand-new catalogue. New pages never travel through this endpoint:
+    # each is uploaded separately, one request per page, via
+    # add_catalogue_image once this call returns an id — see
+    # catalogue-form-modal.tsx's handleSubmit. Bundling every page's bytes
+    # into this one request is what caused 413s on multi-page catalogues
+    # when this used to carry base64 image data directly.
+    image_paths: list[str] = []
 
 
 class AddCatalogueDetailsResponse(BaseModel):
     message: str
-    # Resolved paths for every image in `images`, in order — lets the caller
-    # update its local state with real /media paths instead of the base64
-    # data URIs it was holding for any page that was new this session.
+    id: int
     image_paths: list[str]
 
 
@@ -51,12 +38,25 @@ class UpdateCatalogueDetailsRequest(BaseModel):
     catalogue_vendor_id: int
     catalogue_type: str
     category_id: int
-    images: list[CatalogueImageInput] = []
+    # Already-persisted pages to keep, in order — any page dropped from here
+    # relative to the catalogue's current set is removed. New pages: see
+    # AddCatalogueDetailsRequest.image_paths.
+    image_paths: list[str] = []
 
 
 class UpdateCatalogueDetailsResponse(BaseModel):
     message: str
+    id: int
     image_paths: list[str]
+
+
+class AddCatalogueImageRequest(BaseModel):
+    catalogue_id: int
+
+
+class AddCatalogueImageResponse(BaseModel):
+    message: str
+    image_path: str
 
 
 class DeleteCatalogueDetailsRequest(BaseModel):
@@ -80,8 +80,8 @@ class UploadCataloguePdfResponse(BaseModel):
     # One base64-encoded PNG per PDF page, in page order (see
     # services/pdf.py) — nothing is written to disk here. The frontend shows
     # each as a data: URI thumbnail and lets the admin drop pages it doesn't
-    # want; only add/update_catalogue_details (see CatalogueImageInput)
-    # actually stores the bytes, so an abandoned upload never leaves a file
+    # want; a kept page is only actually stored once Save calls
+    # add_catalogue_image for it, so an abandoned upload never leaves a file
     # behind.
     page_images: list[str]
 

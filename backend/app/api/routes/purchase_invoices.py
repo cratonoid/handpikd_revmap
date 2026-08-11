@@ -7,10 +7,15 @@
 # — that stays exclusively on the purchase-order-received flow. Restricted
 # to admins (bypassed entirely when settings.auth_enabled is False, matching
 # require_admin in routes/admin.py).
-import base64
-
+#
+# Raising a pdf_upload invoice is a two-phase client flow (see
+# purchase-invoice-form-modal.tsx's handleSubmit), same as catalogues/
+# products: create_new_purchase_invoice first (date/vendor/line items only),
+# then a separate attach_purchase_invoice_pdf call carrying the vendor PDF —
+# see routes/catalogues.py's module docstring for why a file never travels
+# bundled into the create request.
 from beanie.operators import In
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 
 from app.api.routes.admin import require_admin
 from app.models import (
@@ -28,6 +33,7 @@ from app.models import (
     VendorPocDetails,
 )
 from app.schemas.purchase_invoices import (
+    AttachPurchaseInvoicePdfResponse,
     CreateNewPurchaseInvoiceRequest,
     CreateNewPurchaseInvoiceResponse,
     ParsePurchaseInvoicePdfResponse,
@@ -111,11 +117,10 @@ async def parse_purchase_invoice_pdf_endpoint(
         if matched_vendor is not None:
             parsed.suggested_vendor_id = matched_vendor.id
 
-    # Not saved to disk here — see save_uploaded_pdf's call inside
-    # create_new_purchase_invoice below. A parse the admin never turns into
-    # an actual invoice (closes the modal, picks po_dropdown instead, etc.)
-    # leaves nothing behind.
-    return ParsePurchaseInvoicePdfResponse(uploaded_pdf_data=base64.b64encode(pdf_bytes).decode(), parsed=parsed)
+    # Nothing saved to disk here — see attach_purchase_invoice_pdf below. A
+    # parse the admin never turns into an actual invoice (closes the modal,
+    # picks po_dropdown instead, etc.) leaves nothing behind.
+    return ParsePurchaseInvoicePdfResponse(parsed=parsed)
 
 
 @router.post("/create_new_purchase_invoice", response_model=CreateNewPurchaseInvoiceResponse)
@@ -138,11 +143,8 @@ async def create_new_purchase_invoice(
         PurchaseInvoiceIdCounter, "next_purchase_invoice_id", PurchaseInvoiceDetails
     )
 
-    # The vendor PDF is only ever written to disk here, right as the invoice
-    # row referencing it is created — see save_uploaded_pdf and
-    # ParsePurchaseInvoicePdfResponse above.
-    uploaded_pdf_path = save_uploaded_pdf(base64.b64decode(payload.uploaded_pdf_data)) if payload.uploaded_pdf_data else None
-
+    # uploaded_pdf_path starts unset — see attach_purchase_invoice_pdf below,
+    # the only place it's ever written.
     purchase_invoice = PurchaseInvoiceDetails(
         id=purchase_invoice_id,
         purchase_invoice_no=purchase_invoice_no,
@@ -150,7 +152,7 @@ async def create_new_purchase_invoice(
         vendor_id=payload.vendor_id,
         po_id=payload.po_id,
         source=payload.source,
-        uploaded_pdf_path=uploaded_pdf_path,
+        uploaded_pdf_path=None,
         total_amount_before_tax=total_before_tax,
         total_tax_amount=total_tax,
         total_amount_after_tax=total_after_tax,
@@ -160,7 +162,29 @@ async def create_new_purchase_invoice(
     if payload.source == PurchaseInvoiceSource.pdf_upload:
         await _insert_purchase_invoice_summary_rows(purchase_invoice_id, payload.line_items)
 
-    return CreateNewPurchaseInvoiceResponse(message="purchase invoice successfully created")
+    return CreateNewPurchaseInvoiceResponse(message="purchase invoice successfully created", id=purchase_invoice_id)
+
+
+@router.post("/attach_purchase_invoice_pdf", response_model=AttachPurchaseInvoicePdfResponse)
+async def attach_purchase_invoice_pdf(
+    purchase_invoice_id: int = Form(...),
+    file: UploadFile = File(...),
+    _: User | None = Depends(require_admin),
+) -> AttachPurchaseInvoicePdfResponse:
+    # Persists the vendor PDF for an already-created pdf_upload invoice —
+    # see the module docstring above for why this is a separate call rather
+    # than bundled into create_new_purchase_invoice.
+    purchase_invoice = await PurchaseInvoiceDetails.get(purchase_invoice_id)
+    if purchase_invoice is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="purchase invoice not found")
+    if purchase_invoice.source != PurchaseInvoiceSource.pdf_upload:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="this invoice has no PDF to attach")
+
+    pdf_bytes = await file.read()
+    purchase_invoice.uploaded_pdf_path = save_uploaded_pdf(pdf_bytes)
+    await purchase_invoice.save()
+
+    return AttachPurchaseInvoicePdfResponse(message="PDF attached successfully")
 
 
 def _to_purchase_invoice_detail_item(

@@ -11,16 +11,21 @@
 //     invoice-form-modal.tsx borrowing a sales order's line items.
 //   - "pdf_upload": upload a vendor PDF, best-effort parsed locally (see
 //     purchase_invoice_parser.py — no LLM, every field stays editable) via
-//     uploadAndParsePurchaseInvoicePdf, which stores the file immediately
-//     and returns an uploadedPdfData passed straight into the create
-//     payload. Carries its own free-text line items (no product_id FK — a
-//     vendor's line items don't reliably map to our catalogue).
-// mode "add" -> POST /admin/create_new_purchase_invoice
+//     parsePurchaseInvoicePdf, which doesn't store anything — the picked
+//     File itself is held in state and attached (attachPurchaseInvoicePdf)
+//     once Save creates the invoice row, same two-phase pattern as
+//     catalogue-form-modal.tsx (see its header comment for why: bundling a
+//     file into the create request risked the same request-size blowup
+//     fixed for catalogues). Carries its own free-text line items (no
+//     product_id FK — a vendor's line items don't reliably map to our
+//     catalogue).
+// mode "add" -> POST /admin/create_new_purchase_invoice, then (pdf_upload
+//               only) POST /admin/attach_purchase_invoice_pdf
 // mode "edit" -> POST /admin/update_purchase_invoice_details (source/poId/
-//                uploadedPdfData immutable; line items only editable for
-//                the pdf_upload source, since po_dropdown's keep coming
+//                the uploaded PDF are immutable; line items only editable
+//                for the pdf_upload source, since po_dropdown's keep coming
 //                live from the linked PurchaseOrders).
-// Both live in backend/app/api/routes/purchase_invoices.py.
+// All three live in backend/app/api/routes/purchase_invoices.py.
 import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
@@ -29,9 +34,10 @@ import { GST_PERCENT_OPTIONS } from "@/lib/gst";
 import type { PurchaseOrder } from "@/lib/purchase-orders";
 import type { VendorOption } from "@/lib/vendors";
 import {
+  attachPurchaseInvoicePdf,
   createPurchaseInvoice,
+  parsePurchaseInvoicePdf,
   updatePurchaseInvoice,
-  uploadAndParsePurchaseInvoicePdf,
   type PurchaseInvoice,
   type PurchaseInvoiceLineItem,
   type PurchaseInvoiceSource,
@@ -95,7 +101,9 @@ export function PurchaseInvoiceFormModal({
   const [lineItems, setLineItems] = useState<LineItem[]>(
     initialLineItems ? lineItemsToState(initialLineItems) : [emptyLineItem()],
   );
-  const [uploadedPdfData, setUploadedPdfData] = useState<string | null>(null);
+  // Held as the raw File (not re-uploaded/converted here) so it can be sent
+  // again to attachPurchaseInvoicePdf once Save creates the invoice row.
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [parsing, setParsing] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -132,8 +140,8 @@ export function PurchaseInvoiceFormModal({
     setParsing(true);
     setError(null);
     try {
-      const { uploadedPdfData: path, parsed } = await uploadAndParsePurchaseInvoicePdf(file);
-      setUploadedPdfData(path);
+      const parsed = await parsePurchaseInvoicePdf(file);
+      setPdfFile(file);
       if (parsed.suggestedVendorId) setVendorId(String(parsed.suggestedVendorId));
       if (parsed.date) setDate(toDatetimeLocalValue(parsed.date));
       if (parsed.lineItems.length > 0) {
@@ -186,29 +194,66 @@ export function PurchaseInvoiceFormModal({
     setError(null);
 
     try {
-      const response =
-        isEdit && initialPurchaseInvoice
-          ? await updatePurchaseInvoice({
-              id: initialPurchaseInvoice.id,
-              date: fromDatetimeLocalValue(date),
-              vendorId: Number(vendorId),
-              lineItems: isPoDropdown ? undefined : parsedLineItems,
-              isDeleted: isDeletedValue,
-            })
-          : await createPurchaseInvoice({
-              date: fromDatetimeLocalValue(date),
-              vendorId: Number(vendorId),
-              source,
-              poId: poId ? Number(poId) : undefined,
-              uploadedPdfData: uploadedPdfData ?? undefined,
-              lineItems: isPoDropdown ? undefined : parsedLineItems,
-            });
+      if (isEdit && initialPurchaseInvoice) {
+        const response = await updatePurchaseInvoice({
+          id: initialPurchaseInvoice.id,
+          date: fromDatetimeLocalValue(date),
+          vendorId: Number(vendorId),
+          lineItems: isPoDropdown ? undefined : parsedLineItems,
+          isDeleted: isDeletedValue,
+        });
 
-      if (!response.ok) {
-        const detail = await response.json().catch(() => null);
+        if (!response.ok) {
+          const detail = await response.json().catch(() => null);
+          setError(typeof detail?.detail === "string" ? detail.detail : "Something went wrong. Please try again.");
+          setStatus("idle");
+          return;
+        }
+
+        onSaved();
+        return;
+      }
+
+      // Two-phase for a new invoice: raise it first, then (pdf_upload
+      // only) attach the vendor PDF as its own request — see the module
+      // comment above for why.
+      const createResponse = await createPurchaseInvoice({
+        date: fromDatetimeLocalValue(date),
+        vendorId: Number(vendorId),
+        source,
+        poId: poId ? Number(poId) : undefined,
+        lineItems: isPoDropdown ? undefined : parsedLineItems,
+      });
+
+      if (!createResponse.ok) {
+        const detail = await createResponse.json().catch(() => null);
         setError(typeof detail?.detail === "string" ? detail.detail : "Something went wrong. Please try again.");
         setStatus("idle");
         return;
+      }
+
+      const { id: purchaseInvoiceId }: { id: number } = await createResponse.json();
+
+      if (!isPoDropdown && pdfFile) {
+        try {
+          await attachPurchaseInvoicePdf(purchaseInvoiceId, pdfFile);
+        } catch {
+          // PurchaseInvoiceDetails has no hard delete, only this isDeleted
+          // ("void") toggle — void the invoice the PDF never got attached
+          // to rather than leaving a pdf_upload invoice with no PDF. The
+          // picked file stays in state, so hitting Save again just raises
+          // a fresh invoice and retries the attach.
+          await updatePurchaseInvoice({
+            id: purchaseInvoiceId,
+            date: fromDatetimeLocalValue(date),
+            vendorId: Number(vendorId),
+            lineItems: parsedLineItems,
+            isDeleted: true,
+          }).catch(() => {});
+          setError("Couldn't attach the PDF, so this invoice was voided. Please try saving again.");
+          setStatus("idle");
+          return;
+        }
       }
 
       onSaved();
@@ -230,7 +275,7 @@ export function PurchaseInvoiceFormModal({
       setError("Please select a purchase order.");
       return;
     }
-    if (!isEdit && !isPoDropdown && !uploadedPdfData) {
+    if (!isEdit && !isPoDropdown && !pdfFile) {
       setError("Please upload a vendor PDF.");
       return;
     }
@@ -339,7 +384,7 @@ export function PurchaseInvoiceFormModal({
                 ) : (
                   <>
                     <label className={styles.triggerButtonBase} style={{ display: "inline-block", cursor: "pointer" }}>
-                      {parsing ? "Parsing…" : uploadedPdfData ? "Replace file" : "Choose PDF"}
+                      {parsing ? "Parsing…" : pdfFile ? "Replace file" : "Choose PDF"}
                       <input
                         type="file"
                         accept="application/pdf"
@@ -348,7 +393,7 @@ export function PurchaseInvoiceFormModal({
                         style={{ display: "none" }}
                       />
                     </label>
-                    {uploadedPdfData && !parsing && (
+                    {pdfFile && !parsing && (
                       <p className={styles.pageSubtext}>Uploaded — fields prefilled below where possible.</p>
                     )}
                   </>
