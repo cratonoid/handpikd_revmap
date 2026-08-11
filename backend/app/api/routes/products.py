@@ -30,6 +30,7 @@ from app.schemas.products import (
     UploadProductImageResponse,
 )
 from app.services.counters import get_next_id
+from app.services.storage import LocalUploadBlockedError
 from app.services.storage import delete_product_image as remove_stored_image
 from app.services.storage import upload_product_image as store_product_image
 
@@ -66,7 +67,10 @@ async def upload_product_image(
     _: User | None = Depends(require_admin),
 ) -> UploadProductImageResponse:
     image_bytes = await file.read()
-    url = store_product_image(image_bytes, file.filename or "image")
+    try:
+        url = store_product_image(image_bytes, file.filename or "image")
+    except LocalUploadBlockedError as error:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error))
     return UploadProductImageResponse(url=url)
 
 

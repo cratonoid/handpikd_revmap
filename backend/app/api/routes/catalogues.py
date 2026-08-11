@@ -39,6 +39,7 @@ from app.schemas.catalogues import (
 )
 from app.services.counters import get_next_id
 from app.services.pdf import pdf_to_images
+from app.services.storage import LocalUploadBlockedError
 from app.services.storage import delete_catalogue_image as remove_stored_image
 from app.services.storage import upload_catalogue_image as store_catalogue_image
 
@@ -80,7 +81,10 @@ async def upload_catalogue_pdf(
     if not page_images:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF has no pages")
 
-    image_paths = [store_catalogue_image(image_bytes, "page.png") for image_bytes in page_images]
+    try:
+        image_paths = [store_catalogue_image(image_bytes, "page.png") for image_bytes in page_images]
+    except LocalUploadBlockedError as error:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error))
     return UploadCataloguePdfResponse(image_paths=image_paths)
 
 

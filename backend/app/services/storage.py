@@ -18,11 +18,36 @@ MEDIA_URL_PREFIX = "/media"
 CATALOGUE_IMAGE_SUBFOLDER = "catalogues"
 
 
+class LocalUploadBlockedError(RuntimeError):
+    """Raised by _store_image when media_root is a local dev path.
+
+    See settings.allow_local_media_uploads for why this exists — routes
+    should catch this and turn it into an HTTPException.
+    """
+
+
 def _media_root() -> Path:
     return Path(settings.media_root)
 
 
+def _ensure_upload_allowed() -> None:
+    if settings.allow_local_media_uploads:
+        return
+    if _media_root().is_absolute():
+        return
+    raise LocalUploadBlockedError(
+        f"refusing to store an upload under local path '{settings.media_root}': "
+        "MEDIA_ROOT is still the local-dev relative default, but MONGODB_URI "
+        "may point at the shared/production database, which would record a "
+        "path only this machine can serve. Point MONGODB_URI at a database "
+        "that isn't shared with production, then set "
+        "ALLOW_LOCAL_MEDIA_UPLOADS=true to upload locally anyway."
+    )
+
+
 def _store_image(image_bytes: bytes, filename: str, subfolder: str = "") -> str:
+    _ensure_upload_allowed()
+
     extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
     key = f"{uuid.uuid4().hex}.{extension}"
 

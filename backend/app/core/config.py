@@ -25,5 +25,16 @@ class Settings(BaseSettings):
     # docker-compose.yml.
     media_root: str = "media"
 
+    # Guards against a split-brain upload: MONGODB_URI in this project's own
+    # .env points at the shared production database even during local dev,
+    # so an upload run locally writes its image file under the relative
+    # media_root above but records a path in the *shared* DB that only this
+    # machine can serve — the live site then 404s on it. storage.py refuses
+    # uploads whenever media_root is still relative (the local-dev default;
+    # production always overrides it to the absolute /media mount) unless
+    # this is explicitly set, so opt in only if you've also pointed
+    # MONGODB_URI at a non-shared database for this session.
+    allow_local_media_uploads: bool = False
+
 
 settings = Settings()

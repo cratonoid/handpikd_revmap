@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# raw/unprocessed source images kept outside public/ (see public/catalogs for
+# the resized, web-ready versions actually served by the site)
+/_*-source/

@@ -71,6 +71,13 @@ export const catalogueCategories: CatalogueCategory[] = [
     ],
   },
   {
+    title: "Diwali Hampers",
+    description:
+      "Festive gift hampers curated for Diwali — corporate gifting sets for clients, employees, and business partners.",
+    icon: "gift-box",
+    items: [{ title: "Diwali Hampers", icon: "gift-box", folder: "diwali hampers/diwali hampers" }],
+  },
+  {
     title: "Corporate Trophies & Awards",
     description:
       "Premium recognition awards, glass trophies, and wooden trophies for employee appreciation and corporate events.",
