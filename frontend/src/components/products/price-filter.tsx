@@ -3,18 +3,20 @@
 // ---------------------------------------------------------------------------
 // <PriceFilter> — the dual-handle price range slider
 // ---------------------------------------------------------------------------
-// Dual-handle price range slider, mirrored by two editable numeric inputs.
+// Dual-handle price range slider, mirrored by two plain-text (read-only)
+// numbers showing the current low/high value.
 //
 // Like <CategoryFilter>, this component holds NO state of its own — `value`
 // (the current [min, max] selection) is owned by the parent
 // (products-page-client.tsx) and passed in; this component just displays it
-// and calls `onChange` when the user drags a handle or types a number. See
-// src/app/globals.css's big comment block on `.price-range-input` for how
-// the two-overlapping-<input>s trick that fakes a dual-handle slider works
-// at the CSS level (that part stays in globals.css since it targets the
-// native <input type="range"> pseudo-elements, which CSS Modules handle the
-// same way — the rest of this component's styling lives in
+// and calls `onChange` when the user drags a handle. See src/app/globals.css's
+// big comment block on `.price-range-input` for how the
+// two-overlapping-<input>s trick that fakes a dual-handle slider works at
+// the CSS level (that part stays in globals.css since it targets the native
+// <input type="range"> pseudo-elements, which CSS Modules handle the same
+// way — the rest of this component's styling lives in
 // src/styles/products.module.css).
+import { formatInr } from "@/lib/public-products";
 import styles from "@/styles/products.module.css";
 
 export function PriceFilter({
@@ -100,45 +102,20 @@ export function PriceFilter({
         />
       </div>
 
-      {/* The two editable number boxes below the slider, showing the same
-          values in a typed-number form as an alternative to dragging. */}
+      {/* The low/high values as plain read-only text below the slider —
+          not editable boxes, just numbers that track the handles as they're
+          dragged (see `setLo`/`setHi` above, called from the range
+          <input>s' onChange). */}
       <div className={styles.priceInputRow}>
-        <label className={styles.priceInputLabel}>
-          {/* `sr-only` ("screen-reader only", a plain global Tailwind
-              utility) visually hides this label while keeping it available
-              to assistive tech — the ₹ symbol + number box makes the
-              purpose visually obvious to sighted users, but a screen
-              reader still needs an explicit label. */}
-          <span className="sr-only">Minimum price</span>
-          <span className={`${styles.priceInputBox} ${pending ? styles.priceInputBoxPending : ""}`}>
-            ₹
-            <input
-              type="number"
-              min={min}
-              max={hi}
-              value={lo}
-              onChange={(e) => setLo(Number(e.target.value))}
-              className={styles.priceInputField}
-            />
-          </span>
-        </label>
-        <span className={styles.priceInputSeparator} aria-hidden="true">
-          &ndash; {/* an en-dash ("–") between the two boxes, written as an HTML entity */}
+        <span className={`${styles.priceValue} ${pending ? styles.priceValuePending : ""}`}>
+          {formatInr(lo)}
         </span>
-        <label className={styles.priceInputLabel}>
-          <span className="sr-only">Maximum price</span>
-          <span className={`${styles.priceInputBox} ${pending ? styles.priceInputBoxPending : ""}`}>
-            ₹
-            <input
-              type="number"
-              min={lo}
-              max={max}
-              value={hi}
-              onChange={(e) => setHi(Number(e.target.value))}
-              className={styles.priceInputField}
-            />
-          </span>
-        </label>
+        <span className={styles.priceInputSeparator} aria-hidden="true">
+          &ndash; {/* an en-dash ("–") between the two numbers, written as an HTML entity */}
+        </span>
+        <span className={`${styles.priceValue} ${pending ? styles.priceValuePending : ""}`}>
+          {formatInr(hi)}
+        </span>
       </div>
     </div>
   );

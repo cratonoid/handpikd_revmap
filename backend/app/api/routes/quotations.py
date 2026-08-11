@@ -11,11 +11,17 @@ from app.api.routes.admin import require_admin
 from app.models import (
     CustomerDetails,
     CustomerPocDetails,
+    InvoiceDetails,
+    InvoiceIdCounter,
+    InvoiceType,
+    OnlineOrOffline,
     ProductDetails,
     ProductImageDetails,
+    ProformaInvoiceNoCounterMaster,
     QuotationDetails,
     QuotationIdCounter,
     QuotationNoCounterMaster,
+    QuotationStatus,
     QuotationSummary,
     QuotationSummaryIdCounter,
     User,
@@ -30,6 +36,7 @@ from app.schemas.quotations import (
 from app.services.counters import get_next_id
 from app.services.personal_details import get_personal_details
 from app.services.quotation_pdf import QuotationLineItem, generate_quotation_pdf
+from app.services.quotation_storage import delete_quotation_pdf, save_quotation_pdf
 
 router = APIRouter(prefix="/admin", tags=["quotations"])
 
@@ -84,6 +91,37 @@ async def _insert_quotation_summary_rows(
             tax_amount=tax_amount,
             total=line_total_before_tax + tax_amount,
         ).insert()
+
+
+async def _maybe_create_proforma_invoice(quotation: QuotationDetails) -> None:
+    # Idempotency guard: never generate a second proforma if one already
+    # exists for this quotation (e.g. admin flips status away from
+    # "accepted" and back, or saves the same "accepted" status twice).
+    existing = await InvoiceDetails.find_one(
+        InvoiceDetails.quotation_id == quotation.id,
+        InvoiceDetails.type == InvoiceType.proforma,
+        InvoiceDetails.is_deleted == False,
+    )
+    if existing is not None:
+        return
+
+    invoice_no = await get_next_id(ProformaInvoiceNoCounterMaster, "next_invoice_no", InvoiceDetails)
+    invoice_id = await get_next_id(InvoiceIdCounter, "next_invoice_id", InvoiceDetails)
+
+    await InvoiceDetails(
+        id=invoice_id,
+        invoice_no=invoice_no,
+        date=quotation.date,
+        sales_id=None,
+        quotation_id=quotation.id,
+        total_amount_before_tax=quotation.total_amount_before_tax,
+        total_tax_amount=quotation.total_tax_amount,
+        total_amount_after_tax=quotation.total_amount_after_tax,
+        type=InvoiceType.proforma,
+        due_date=quotation.valid_till,
+        online_or_offline=OnlineOrOffline.offline,
+        transport="",
+    ).insert()
 
 
 @router.post("/create_new_quotation", response_model=CreateNewQuotationResponse)
@@ -190,6 +228,7 @@ async def update_quotation_details(
         _compute_line_items_and_totals(payload.quantities, payload.rates, payload.tax_percs)
     )
 
+    old_status = quotation.status
     quotation.status = payload.status
     quotation.cust_id = payload.cust_id
     quotation.date = payload.date
@@ -201,6 +240,11 @@ async def update_quotation_details(
     quotation.is_deleted = payload.is_deleted
     await quotation.save()
 
+    # Invalidate any previously cached PDF (see quotation_storage.py) — its
+    # contents no longer match the quotation now that the underlying data
+    # has changed. The next get_quotation_pdf call regenerates it fresh.
+    delete_quotation_pdf(quotation.id)
+
     await QuotationSummary.find(QuotationSummary.quotation_id == quotation.id).delete()
     await _insert_quotation_summary_rows(
         quotation.id,
@@ -211,6 +255,12 @@ async def update_quotation_details(
         tax_amounts,
         line_totals_before_tax,
     )
+
+    # A proforma invoice is a mock invoice generated the moment a quotation
+    # is accepted — no manual step. Only fires on the transition *into*
+    # accepted, and _maybe_create_proforma_invoice is itself idempotent.
+    if old_status != QuotationStatus.accepted and quotation.status == QuotationStatus.accepted:
+        await _maybe_create_proforma_invoice(quotation)
 
     return UpdateQuotationDetailsResponse(message="quotation updated successfully")
 
@@ -279,6 +329,12 @@ async def get_quotation_pdf(
         customer_gstin=customer.company_gst,
         personal=personal,
     )
+
+    # Cache the rendered PDF to disk (see quotation_storage.py) on every
+    # download, keeping the on-disk copy in sync with whatever was just
+    # served — cheap relative to the render itself, and update_quotation_details
+    # already invalidates it whenever the underlying data changes.
+    save_quotation_pdf(quotation.id, pdf_bytes)
 
     return Response(
         content=pdf_bytes,

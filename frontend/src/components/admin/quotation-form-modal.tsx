@@ -296,6 +296,12 @@ export function QuotationFormModal({
               placeholder="Select a customer"
               entityLabel="customers"
               required
+              // Active/Deleted toggle removed — only active customers are
+              // browsable here. A deleted customer already assigned to this
+              // quotation still resolves and displays correctly
+              // (customerOptions includes deleted rows), it's just not
+              // selectable going forward.
+              showStatusFilter={false}
               options={customerOptions}
               selectedValue={custId}
               onChange={setCustId}

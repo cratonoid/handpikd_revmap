@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { InvoicesTab } from "@/components/admin/invoices-tab";
+import { InvoicesPageClient } from "@/components/admin/invoices-page-client";
 
 export const metadata: Metadata = { title: "Invoices" };
 
 export default function AdminInvoicesPage() {
-  return <InvoicesTab />;
+  return <InvoicesPageClient />;
 }

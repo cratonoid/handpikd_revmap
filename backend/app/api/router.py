@@ -13,6 +13,7 @@ from app.api.routes import (
     orders,
     personal_details,
     products,
+    purchase_invoices,
     quotations,
     sales_orders,
     test,
@@ -37,4 +38,5 @@ api_router.include_router(sales_orders.router)
 api_router.include_router(inventory.router)
 api_router.include_router(personal_details.router)
 api_router.include_router(invoices.router)
+api_router.include_router(purchase_invoices.router)
 api_router.include_router(quotations.router)

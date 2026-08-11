@@ -1,0 +1,162 @@
+INFO:     Will watch for changes in these directories: ['C:\\Users\\amand\\Desktop\\handpikd\\handpikd_revmap\\backend']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [15032] using WatchFiles
+INFO:     Started server process [41976]
+INFO:     Waiting for application startup.
+Task exception was never retrieved
+future: <Task finished name='Task-199' coro=<Connection.run() done, defined at C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\playwright\_impl\_connection.py:339> exception=NotImplementedError()>
+Traceback (most recent call last):
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\playwright\_impl\_connection.py", line 346, in run
+    await self._transport.connect()
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\playwright\_impl\_transport.py", line 133, in connect
+    raise exc
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\playwright\_impl\_transport.py", line 120, in connect
+    self._proc = await asyncio.create_subprocess_exec(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\asyncio\subprocess.py", line 224, in create_subprocess_exec
+    transport, protocol = await loop.subprocess_exec(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+        stderr=stderr, **kwds)
+        ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 1794, in subprocess_exec
+    transport = await self._make_subprocess_transport(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        protocol, popen_args, False, stdin, stdout, stderr,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        bufsize, **kwargs)
+        ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 539, in _make_subprocess_transport
+    raise NotImplementedError
+NotImplementedError
+ERROR:    Traceback (most recent call last):
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\starlette\routing.py", line 638, in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+               ~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\fastapi\routing.py", line 233, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\app\main.py", line 21, in lifespan
+    await start_browser()
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\app\services\pdf_renderer.py", line 23, in start_browser
+    _playwright = await async_playwright().start()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\playwright\async_api\_context_manager.py", line 51, in start
+    return await self.__aenter__()
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\playwright\async_api\_context_manager.py", line 46, in __aenter__
+    playwright = AsyncPlaywright(next(iter(done)).result())
+                                 ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\playwright\_impl\_transport.py", line 120, in connect
+    self._proc = await asyncio.create_subprocess_exec(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\asyncio\subprocess.py", line 224, in create_subprocess_exec
+    transport, protocol = await loop.subprocess_exec(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+        stderr=stderr, **kwds)
+        ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 1794, in subprocess_exec
+    transport = await self._make_subprocess_transport(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        protocol, popen_args, False, stdin, stdout, stderr,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        bufsize, **kwargs)
+        ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 539, in _make_subprocess_transport
+    raise NotImplementedError
+NotImplementedError
+
+ERROR:    Application startup failed. Exiting.
+WARNING:  WatchFiles detected changes in 'app\main.py'. Reloading...
+INFO:     Started server process [39884]
+INFO:     Waiting for application startup.
+Task exception was never retrieved
+future: <Task finished name='Task-203' coro=<Connection.run() done, defined at C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\playwright\_impl\_connection.py:339> exception=NotImplementedError()>
+Traceback (most recent call last):
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\playwright\_impl\_connection.py", line 346, in run
+    await self._transport.connect()
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\playwright\_impl\_transport.py", line 133, in connect
+    raise exc
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\playwright\_impl\_transport.py", line 120, in connect
+    self._proc = await asyncio.create_subprocess_exec(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\asyncio\subprocess.py", line 224, in create_subprocess_exec
+    transport, protocol = await loop.subprocess_exec(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+        stderr=stderr, **kwds)
+        ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 1794, in subprocess_exec
+    transport = await self._make_subprocess_transport(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        protocol, popen_args, False, stdin, stdout, stderr,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        bufsize, **kwargs)
+        ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 539, in _make_subprocess_transport
+    raise NotImplementedError
+NotImplementedError
+ERROR:    Traceback (most recent call last):
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\starlette\routing.py", line 638, in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+               ~~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\fastapi\routing.py", line 233, in merged_lifespan
+    async with original_context(app) as maybe_original_state:
+               ~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\contextlib.py", line 214, in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\app\main.py", line 38, in lifespan
+    await start_browser()
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\app\services\pdf_renderer.py", line 23, in start_browser
+    _playwright = await async_playwright().start()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\playwright\async_api\_context_manager.py", line 51, in start
+    return await self.__aenter__()
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\playwright\async_api\_context_manager.py", line 46, in __aenter__
+    playwright = AsyncPlaywright(next(iter(done)).result())
+                                 ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\amand\Desktop\handpikd\handpikd_revmap\backend\venv\Lib\site-packages\playwright\_impl\_transport.py", line 120, in connect
+    self._proc = await asyncio.create_subprocess_exec(
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<9 lines>...
+    )
+    ^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\asyncio\subprocess.py", line 224, in create_subprocess_exec
+    transport, protocol = await loop.subprocess_exec(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+        stderr=stderr, **kwds)
+        ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 1794, in subprocess_exec
+    transport = await self._make_subprocess_transport(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        protocol, popen_args, False, stdin, stdout, stderr,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        bufsize, **kwargs)
+        ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\amand\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 539, in _make_subprocess_transport
+    raise NotImplementedError
+NotImplementedError
+
+ERROR:    Application startup failed. Exiting.
