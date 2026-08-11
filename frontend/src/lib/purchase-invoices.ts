@@ -104,7 +104,7 @@ export type CreatePurchaseInvoicePayload = {
   vendorId: number;
   source: PurchaseInvoiceSource;
   poId?: number;
-  uploadedPdfPath?: string;
+  uploadedPdfData?: string;
   lineItems?: PurchaseInvoiceLineItem[];
 };
 
@@ -127,7 +127,7 @@ export async function createPurchaseInvoice(payload: CreatePurchaseInvoicePayloa
       vendor_id: payload.vendorId,
       source: payload.source,
       po_id: payload.poId ?? null,
-      uploaded_pdf_path: payload.uploadedPdfPath ?? null,
+      uploaded_pdf_data: payload.uploadedPdfData ?? null,
       line_items: lineItemsToPayload(payload.lineItems),
     }),
   });
@@ -165,15 +165,17 @@ export type ParsedPurchaseInvoice = {
 };
 
 export type ParsedPurchaseInvoiceUpload = {
-  uploadedPdfPath: string;
+  uploadedPdfData: string;
   parsed: ParsedPurchaseInvoice;
 };
 
-// Uploads a vendor PDF, storing it immediately and running best-effort local
-// text extraction to prefill the purchase-invoice form (see
-// purchase_invoice_parser.py — no LLM involved, every field stays editable).
-// The returned uploadedPdfPath is passed straight into
-// createPurchaseInvoice's payload so the file doesn't need re-uploading.
+// Uploads a vendor PDF and runs best-effort local text extraction to
+// prefill the purchase-invoice form (see purchase_invoice_parser.py — no
+// LLM involved, every field stays editable). Nothing is written to disk by
+// this call — the PDF comes back as base64 bytes, passed straight into
+// createPurchaseInvoice's payload so it's only ever stored once the
+// invoice is actually created; parsing a PDF and then abandoning the form
+// leaves no file behind.
 export async function uploadAndParsePurchaseInvoicePdf(file: File): Promise<ParsedPurchaseInvoiceUpload> {
   const formData = new FormData();
   formData.append("file", file);
@@ -189,7 +191,7 @@ export async function uploadAndParsePurchaseInvoicePdf(file: File): Promise<Pars
   }
 
   const data: {
-    uploaded_pdf_path: string;
+    uploaded_pdf_data: string;
     parsed: {
       vendor_name: string | null;
       vendor_gstin: string | null;
@@ -201,7 +203,7 @@ export async function uploadAndParsePurchaseInvoicePdf(file: File): Promise<Pars
   } = await response.json();
 
   return {
-    uploadedPdfPath: data.uploaded_pdf_path,
+    uploadedPdfData: data.uploaded_pdf_data,
     parsed: {
       vendorName: data.parsed.vendor_name,
       vendorGstin: data.parsed.vendor_gstin,

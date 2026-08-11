@@ -1,5 +1,24 @@
 # Request/response bodies for the products module's endpoints.
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
+
+
+class ProductImageInput(BaseModel):
+    # Exactly one of these is set per image. `path` covers both an
+    # already-persisted "/media/..." path and a manually pasted external
+    # URL — either way it's stored as-is, nothing to upload. `data` is a
+    # file picked this session via upload_product_image that was never
+    # written to disk — base64-encoded bytes, stored for the first time by
+    # whichever of add/update_product_details this request reaches (see
+    # routes/products.py's _replace_images). This is what keeps an image
+    # the admin uploads but never saves from ever touching disk at all.
+    path: str | None = None
+    data: str | None = None
+
+    @model_validator(mode="after")
+    def _check_exactly_one(self) -> "ProductImageInput":
+        if (self.path is None) == (self.data is None):
+            raise ValueError("exactly one of path or data must be set")
+        return self
 
 
 class AddProductDetailsRequest(BaseModel):
@@ -14,11 +33,15 @@ class AddProductDetailsRequest(BaseModel):
     moq: int
     description: str
     is_visible: bool = True
-    image_paths: list[str] = []
+    images: list[ProductImageInput] = []
 
 
 class AddProductDetailsResponse(BaseModel):
     message: str
+    # Resolved paths for every image in `images`, in order — see
+    # AddCatalogueDetailsResponse for why the caller needs these back rather
+    # than reusing what it sent.
+    image_paths: list[str]
 
 
 class ProductDetailItem(BaseModel):
@@ -50,11 +73,12 @@ class UpdateProductDetailsRequest(BaseModel):
     moq: int
     description: str
     is_visible: bool = True
-    image_paths: list[str] = []
+    images: list[ProductImageInput] = []
 
 
 class UpdateProductDetailsResponse(BaseModel):
     message: str
+    image_paths: list[str]
 
 
 class DeleteProductImageRequest(BaseModel):
@@ -67,10 +91,11 @@ class DeleteProductImageResponse(BaseModel):
 
 
 class UploadProductImageResponse(BaseModel):
-    # Public CDN URL of the just-uploaded image (see services/storage.py) —
-    # the frontend adds this to its imagePaths list, which then gets
-    # persisted as a product_image_details row on the next add/update save.
-    url: str
+    # Base64-encoded bytes of the uploaded image — nothing is written to
+    # disk here (see ProductImageInput/_replace_images in
+    # routes/products.py). The frontend turns this into a data: URI to
+    # preview and hold locally until the form is actually saved.
+    data: str
 
 
 # ---------------------------------------------------------------------------

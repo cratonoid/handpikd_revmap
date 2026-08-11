@@ -29,6 +29,7 @@ import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch, resolveMediaUrl } from "@/lib/api";
 import {
+  catalogueImagesPayload,
   deleteCatalogue,
   deleteCatalogueImage,
   uploadCataloguePdf,
@@ -189,7 +190,7 @@ export function CatalogueFormModal({
       catalogue_vendor_id: Number(vendorId),
       catalogue_type: catalogueType,
       category_id: Number(categoryId),
-      image_paths: imagePaths,
+      images: catalogueImagesPayload(imagePaths),
     };
 
     try {
@@ -209,13 +210,19 @@ export function CatalogueFormModal({
         return;
       }
 
+      // The response's image_paths are every saved page's real /media path,
+      // in order — swapping to these (rather than reusing local imagePaths)
+      // ensures nothing left over as a "data:" URI from this session's PDF
+      // upload leaks into the parent's state as though it were a real path.
+      const { image_paths: savedImagePaths }: { image_paths: string[] } = await response.json();
+
       onSaved({
         id: initialCatalogue?.id ?? 0,
         catalogueName,
         catalogueVendorId: Number(vendorId),
         catalogueType,
         categoryId,
-        imagePaths,
+        imagePaths: savedImagePaths,
       });
     } catch {
       setError("Couldn't reach the server. Please try again.");

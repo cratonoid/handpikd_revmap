@@ -23,9 +23,13 @@ class CreateNewPurchaseInvoiceRequest(BaseModel):
     # source == pdf_upload (admin can still tie an uploaded vendor PDF back
     # to a known PO for reference).
     po_id: int | None = None
-    # Required when source == pdf_upload — the key returned by
-    # POST /admin/parse_purchase_invoice_pdf.
-    uploaded_pdf_path: str | None = None
+    # Required when source == pdf_upload — base64-encoded bytes of the vendor
+    # PDF, as returned (still unwritten to disk) by POST
+    # /admin/parse_purchase_invoice_pdf. Only written to
+    # settings.purchase_invoice_root here, once this invoice row is actually
+    # created (see routes/purchase_invoices.py) — a parse that's never
+    # followed by a create never leaves a file behind.
+    uploaded_pdf_data: str | None = None
     # Only used when source == pdf_upload — po_dropdown line items are
     # always derived live from the linked PurchaseOrders/PurchaseSummary
     # instead (see routes/purchase_invoices.py).
@@ -37,8 +41,8 @@ class CreateNewPurchaseInvoiceRequest(BaseModel):
             if self.po_id is None:
                 raise ValueError("po_id is required when source is po_dropdown")
         else:
-            if self.uploaded_pdf_path is None:
-                raise ValueError("uploaded_pdf_path is required when source is pdf_upload")
+            if self.uploaded_pdf_data is None:
+                raise ValueError("uploaded_pdf_data is required when source is pdf_upload")
             if not self.line_items:
                 raise ValueError("at least one line item is required when source is pdf_upload")
         return self
@@ -86,5 +90,9 @@ class UpdatePurchaseInvoiceDetailsResponse(BaseModel):
 
 
 class ParsePurchaseInvoicePdfResponse(BaseModel):
-    uploaded_pdf_path: str
+    # Base64-encoded bytes of the uploaded PDF — nothing is written to disk
+    # by this endpoint (see routes/purchase_invoices.py's
+    # parse_purchase_invoice_pdf_endpoint). Passed straight back in as
+    # CreateNewPurchaseInvoiceRequest.uploaded_pdf_data.
+    uploaded_pdf_data: str
     parsed: ParsedPurchaseInvoice

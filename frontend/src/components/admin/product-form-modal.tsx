@@ -32,7 +32,7 @@ import { Button } from "@/components/button";
 import { apiFetch, resolveMediaUrl } from "@/lib/api";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import { GST_PERCENT_OPTIONS } from "@/lib/gst";
-import { deleteProductImage, uploadProductImage, type Product } from "@/lib/products";
+import { deleteProductImage, productImagesPayload, uploadProductImage, type Product } from "@/lib/products";
 import type { VendorOption } from "@/lib/vendors";
 import { MultiSelectDropdown, type MultiSelectOption } from "@/components/admin/multi-select-dropdown";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
@@ -200,7 +200,7 @@ export function ProductFormModal({
       moq,
       description,
       is_visible: isVisibleValue,
-      image_paths: imagePaths.map((path) => path.trim()).filter(Boolean),
+      images: productImagesPayload(imagePaths.map((path) => path.trim()).filter(Boolean)),
     };
 
     try {
@@ -222,6 +222,11 @@ export function ProductFormModal({
         return;
       }
 
+      // See catalogue-form-modal.tsx's equivalent swap — image_paths here
+      // are the real, saved /media paths, so no "data:" URI from an image
+      // uploaded this session leaks into the parent's cached state.
+      const { image_paths: savedImagePaths }: { image_paths: string[] } = await response.json();
+
       onSaved({
         id: initialProduct?.id ?? 0,
         productName,
@@ -235,7 +240,7 @@ export function ProductFormModal({
         moq,
         description,
         isVisible: isVisibleValue,
-        imagePaths: imagePaths.map((path) => path.trim()).filter(Boolean),
+        imagePaths: savedImagePaths,
       });
     } catch {
       setError("Couldn't reach the server. Please try again.");

@@ -7,6 +7,8 @@
 # — that stays exclusively on the purchase-order-received flow. Restricted
 # to admins (bypassed entirely when settings.auth_enabled is False, matching
 # require_admin in routes/admin.py).
+import base64
+
 from beanie.operators import In
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 
@@ -102,7 +104,6 @@ async def parse_purchase_invoice_pdf_endpoint(
     _: User | None = Depends(require_admin),
 ) -> ParsePurchaseInvoicePdfResponse:
     pdf_bytes = await file.read()
-    uploaded_pdf_path = save_uploaded_pdf(pdf_bytes)
     parsed = parse_purchase_invoice_pdf(pdf_bytes)
 
     if parsed.vendor_gstin:
@@ -110,7 +111,11 @@ async def parse_purchase_invoice_pdf_endpoint(
         if matched_vendor is not None:
             parsed.suggested_vendor_id = matched_vendor.id
 
-    return ParsePurchaseInvoicePdfResponse(uploaded_pdf_path=uploaded_pdf_path, parsed=parsed)
+    # Not saved to disk here — see save_uploaded_pdf's call inside
+    # create_new_purchase_invoice below. A parse the admin never turns into
+    # an actual invoice (closes the modal, picks po_dropdown instead, etc.)
+    # leaves nothing behind.
+    return ParsePurchaseInvoicePdfResponse(uploaded_pdf_data=base64.b64encode(pdf_bytes).decode(), parsed=parsed)
 
 
 @router.post("/create_new_purchase_invoice", response_model=CreateNewPurchaseInvoiceResponse)
@@ -133,6 +138,11 @@ async def create_new_purchase_invoice(
         PurchaseInvoiceIdCounter, "next_purchase_invoice_id", PurchaseInvoiceDetails
     )
 
+    # The vendor PDF is only ever written to disk here, right as the invoice
+    # row referencing it is created — see save_uploaded_pdf and
+    # ParsePurchaseInvoicePdfResponse above.
+    uploaded_pdf_path = save_uploaded_pdf(base64.b64decode(payload.uploaded_pdf_data)) if payload.uploaded_pdf_data else None
+
     purchase_invoice = PurchaseInvoiceDetails(
         id=purchase_invoice_id,
         purchase_invoice_no=purchase_invoice_no,
@@ -140,7 +150,7 @@ async def create_new_purchase_invoice(
         vendor_id=payload.vendor_id,
         po_id=payload.po_id,
         source=payload.source,
-        uploaded_pdf_path=payload.uploaded_pdf_path,
+        uploaded_pdf_path=uploaded_pdf_path,
         total_amount_before_tax=total_before_tax,
         total_tax_amount=total_tax,
         total_amount_after_tax=total_after_tax,

@@ -46,11 +46,13 @@ export async function fetchCatalogues(): Promise<Catalogue[]> {
 }
 
 // Converts an uploaded PDF into one image per page, in page order, via POST
-// /admin/upload_catalogue_pdf (backend/app/services/pdf.py renders each page;
-// backend/app/services/storage.py stores it under the "catalogues" media
-// subfolder, separate from product images). Doesn't touch
-// catalogue_image_details itself — the caller manages the returned paths as
-// a local list, which is only persisted once the form is actually saved.
+// /admin/upload_catalogue_pdf (backend/app/services/pdf.py renders each
+// page). Nothing is written to disk by this call — each page comes back as
+// base64 PNG bytes, turned into a data: URI the grid can render directly.
+// The caller holds these in its local imagePaths list alongside any
+// already-persisted "/media/..." paths; only add/update_catalogue_details
+// (see submitImages below) actually stores a page's bytes, so a page that's
+// uploaded but never saved never touches the backend's disk at all.
 export async function uploadCataloguePdf(file: File): Promise<string[]> {
   const formData = new FormData();
   formData.append("file", file);
@@ -65,8 +67,22 @@ export async function uploadCataloguePdf(file: File): Promise<string[]> {
     throw new Error(detail?.detail ?? "Failed to convert PDF");
   }
 
-  const { image_paths: imagePaths }: { image_paths: string[] } = await response.json();
-  return imagePaths;
+  const { page_images: pageImages }: { page_images: string[] } = await response.json();
+  return pageImages.map((base64) => `data:image/png;base64,${base64}`);
+}
+
+// Splits a local imagePaths entry back into the shape add/update_catalogue_
+// details expects: an already-persisted path as-is, or a pending data: URI
+// (from uploadCataloguePdf, never saved) as raw base64 bytes to store now.
+function toCatalogueImageInput(path: string): { path?: string; data?: string } {
+  if (path.startsWith("data:")) {
+    return { data: path.slice(path.indexOf(",") + 1) };
+  }
+  return { path };
+}
+
+export function catalogueImagesPayload(imagePaths: string[]) {
+  return imagePaths.map(toCatalogueImageInput);
 }
 
 // Deletes a single already-saved page image immediately (backend's

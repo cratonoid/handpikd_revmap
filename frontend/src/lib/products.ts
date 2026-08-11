@@ -67,10 +67,13 @@ export async function deleteProductImage(productId: number, imagePath: string): 
   }
 }
 
-// Uploads an image file via POST /admin/upload_product_image
-// (backend/app/services/storage.py) and returns its served /media URL. Doesn't
-// touch product_image_details itself — the caller adds the returned URL to
-// its imagePaths, which is only persisted once the form is actually saved.
+// Uploads an image file via POST /admin/upload_product_image. Nothing is
+// written to disk by this call — it comes back as base64 bytes, turned into
+// a data: URI the row can preview directly. The caller holds this in its
+// local imagePaths list alongside any already-persisted "/media/..." paths
+// or pasted URLs; only add/update_product_details (see productImagesPayload
+// below) actually stores an image's bytes, so a file that's uploaded but
+// never saved never touches the backend's disk at all.
 export async function uploadProductImage(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", file);
@@ -84,8 +87,28 @@ export async function uploadProductImage(file: File): Promise<string> {
     throw new Error("Failed to upload image");
   }
 
-  const { url }: { url: string } = await response.json();
-  return url;
+  const { data }: { data: string } = await response.json();
+  // Use the original file's actual MIME type (jpg/png/webp/...) rather than
+  // assuming one, since store_product_image on the backend just writes
+  // whatever bytes it's given without re-encoding.
+  return `data:${file.type || "application/octet-stream"};base64,${data}`;
+}
+
+// Splits a local imagePaths entry back into the shape add/update_product_
+// details expects: an already-persisted path or pasted URL as-is, or a
+// pending data: URI (from uploadProductImage, never saved) to store now.
+// Sent as the full "data:<mime>;base64,<bytes>" URI, not bare base64, so the
+// backend can recover the original file's extension (see routes/products.py
+// _decode_data_uri) instead of guessing one.
+function toProductImageInput(path: string): { path?: string; data?: string } {
+  if (path.startsWith("data:")) {
+    return { data: path };
+  }
+  return { path };
+}
+
+export function productImagesPayload(imagePaths: string[]) {
+  return imagePaths.map(toProductImageInput);
 }
 
 export async function fetchProducts(): Promise<Product[]> {

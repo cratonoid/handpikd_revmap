@@ -9,6 +9,8 @@
 # saving. Unlike Products/Vendors, catalogues have no soft-delete flag:
 # delete_catalogue_details removes the catalogue, its image rows, and the
 # underlying files for good.
+import base64
+
 from beanie.operators import In
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
@@ -26,6 +28,7 @@ from app.schemas.catalogues import (
     AddCatalogueDetailsRequest,
     AddCatalogueDetailsResponse,
     CatalogueDetailItem,
+    CatalogueImageInput,
     DeleteCatalogueDetailsRequest,
     DeleteCatalogueDetailsResponse,
     DeleteCatalogueImageRequest,
@@ -50,11 +53,27 @@ router = APIRouter(prefix="/admin", tags=["catalogues"])
 public_router = APIRouter(prefix="/catalogues", tags=["catalogues-public"])
 
 
-async def _replace_image_paths(catalogue_id: int, image_paths: list[str]) -> None:
+async def _replace_images(catalogue_id: int, images: list[CatalogueImageInput]) -> list[str]:
+    # Resolves each image to a final path first — a `data` entry is a page
+    # rendered by upload_catalogue_pdf that was never written to disk, so
+    # this is the first and only time it actually gets stored. This is what
+    # makes an abandoned "Add new catalogue" attempt leave nothing behind:
+    # unsaved pages only ever exist as base64 in the request/response, never
+    # on disk.
+    try:
+        resolved_paths = [
+            image.path if image.path is not None else store_catalogue_image(base64.b64decode(image.data), "page.png")
+            for image in images
+        ]
+    except LocalUploadBlockedError as error:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error))
+
     await CatalogueImageDetails.find(CatalogueImageDetails.catalogue_id == catalogue_id).delete()
-    for image_path in image_paths:
+    for image_path in resolved_paths:
         image_id = await get_next_id(CatalogueImageIdCounter, "next_catalogue_image_id", CatalogueImageDetails)
         await CatalogueImageDetails(id=image_id, catalogue_id=catalogue_id, image_path=image_path).insert()
+
+    return resolved_paths
 
 
 async def _require_vendor_and_category(vendor_id: int, category_id: int) -> None:
@@ -81,11 +100,7 @@ async def upload_catalogue_pdf(
     if not page_images:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PDF has no pages")
 
-    try:
-        image_paths = [store_catalogue_image(image_bytes, "page.png") for image_bytes in page_images]
-    except LocalUploadBlockedError as error:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error))
-    return UploadCataloguePdfResponse(image_paths=image_paths)
+    return UploadCataloguePdfResponse(page_images=[base64.b64encode(image_bytes).decode() for image_bytes in page_images])
 
 
 @router.post("/add_catalogue_details", response_model=AddCatalogueDetailsResponse)
@@ -105,9 +120,9 @@ async def add_catalogue_details(
     )
     await catalogue.insert()
 
-    await _replace_image_paths(catalogue_id, payload.image_paths)
+    image_paths = await _replace_images(catalogue_id, payload.images)
 
-    return AddCatalogueDetailsResponse(message="catalogue added successfully")
+    return AddCatalogueDetailsResponse(message="catalogue added successfully", image_paths=image_paths)
 
 
 @router.get("/get_catalogue_details", response_model=list[CatalogueDetailItem])
@@ -154,9 +169,9 @@ async def update_catalogue_details(
     catalogue.category_id = payload.category_id
     await catalogue.save()
 
-    await _replace_image_paths(catalogue.id, payload.image_paths)
+    image_paths = await _replace_images(catalogue.id, payload.images)
 
-    return UpdateCatalogueDetailsResponse(message="catalogue updated successfully")
+    return UpdateCatalogueDetailsResponse(message="catalogue updated successfully", image_paths=image_paths)
 
 
 @router.post("/delete_catalogue_details", response_model=DeleteCatalogueDetailsResponse)

@@ -12,12 +12,12 @@
 //   - "pdf_upload": upload a vendor PDF, best-effort parsed locally (see
 //     purchase_invoice_parser.py — no LLM, every field stays editable) via
 //     uploadAndParsePurchaseInvoicePdf, which stores the file immediately
-//     and returns an uploadedPdfPath passed straight into the create
+//     and returns an uploadedPdfData passed straight into the create
 //     payload. Carries its own free-text line items (no product_id FK — a
 //     vendor's line items don't reliably map to our catalogue).
 // mode "add" -> POST /admin/create_new_purchase_invoice
 // mode "edit" -> POST /admin/update_purchase_invoice_details (source/poId/
-//                uploadedPdfPath immutable; line items only editable for
+//                uploadedPdfData immutable; line items only editable for
 //                the pdf_upload source, since po_dropdown's keep coming
 //                live from the linked PurchaseOrders).
 // Both live in backend/app/api/routes/purchase_invoices.py.
@@ -95,7 +95,7 @@ export function PurchaseInvoiceFormModal({
   const [lineItems, setLineItems] = useState<LineItem[]>(
     initialLineItems ? lineItemsToState(initialLineItems) : [emptyLineItem()],
   );
-  const [uploadedPdfPath, setUploadedPdfPath] = useState<string | null>(null);
+  const [uploadedPdfData, setUploadedPdfData] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -132,8 +132,8 @@ export function PurchaseInvoiceFormModal({
     setParsing(true);
     setError(null);
     try {
-      const { uploadedPdfPath: path, parsed } = await uploadAndParsePurchaseInvoicePdf(file);
-      setUploadedPdfPath(path);
+      const { uploadedPdfData: path, parsed } = await uploadAndParsePurchaseInvoicePdf(file);
+      setUploadedPdfData(path);
       if (parsed.suggestedVendorId) setVendorId(String(parsed.suggestedVendorId));
       if (parsed.date) setDate(toDatetimeLocalValue(parsed.date));
       if (parsed.lineItems.length > 0) {
@@ -200,7 +200,7 @@ export function PurchaseInvoiceFormModal({
               vendorId: Number(vendorId),
               source,
               poId: poId ? Number(poId) : undefined,
-              uploadedPdfPath: uploadedPdfPath ?? undefined,
+              uploadedPdfData: uploadedPdfData ?? undefined,
               lineItems: isPoDropdown ? undefined : parsedLineItems,
             });
 
@@ -230,7 +230,7 @@ export function PurchaseInvoiceFormModal({
       setError("Please select a purchase order.");
       return;
     }
-    if (!isEdit && !isPoDropdown && !uploadedPdfPath) {
+    if (!isEdit && !isPoDropdown && !uploadedPdfData) {
       setError("Please upload a vendor PDF.");
       return;
     }
@@ -339,7 +339,7 @@ export function PurchaseInvoiceFormModal({
                 ) : (
                   <>
                     <label className={styles.triggerButtonBase} style={{ display: "inline-block", cursor: "pointer" }}>
-                      {parsing ? "Parsing…" : uploadedPdfPath ? "Replace file" : "Choose PDF"}
+                      {parsing ? "Parsing…" : uploadedPdfData ? "Replace file" : "Choose PDF"}
                       <input
                         type="file"
                         accept="application/pdf"
@@ -348,7 +348,7 @@ export function PurchaseInvoiceFormModal({
                         style={{ display: "none" }}
                       />
                     </label>
-                    {uploadedPdfPath && !parsing && (
+                    {uploadedPdfData && !parsing && (
                       <p className={styles.pageSubtext}>Uploaded — fields prefilled below where possible.</p>
                     )}
                   </>
