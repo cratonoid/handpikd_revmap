@@ -315,7 +315,7 @@ async def get_purchase_invoice_pdf(
     personal = await get_personal_details()
     purchase_invoice_no_display = format_purchase_invoice_no(purchase_invoice.purchase_invoice_no)
 
-    pdf_bytes = generate_purchase_invoice_pdf(
+    pdf_bytes = await generate_purchase_invoice_pdf(
         purchase_invoice_no=purchase_invoice_no_display,
         invoice_date=purchase_invoice.date,
         line_items=line_items,

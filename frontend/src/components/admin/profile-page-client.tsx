@@ -10,9 +10,12 @@
 // lib/personal-details.ts) — this page just exposes every attribute
 // (including quotation_tnc/quotation_notes, not shown in that modal) under
 // its own endpoint names, on its own page instead of a popup.
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/button";
+import { resolveMediaUrl } from "@/lib/api";
+import { uploadSignatureImage } from "@/lib/personal-details";
 import { fetchProfileDetails, updateProfileDetails } from "@/lib/profile-details";
+import { ArrowUpTrayIcon, DocumentTextIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
 type LoadState = "loading" | "loaded";
@@ -31,6 +34,7 @@ const FIELD_KEYS = [
   "bank_account_no",
   "bank_ifsc",
   "qr_value",
+  "signature_image",
   "invoice_tnc",
   "quotation_tnc",
   "quotation_notes",
@@ -49,6 +53,8 @@ export function ProfilePageClient() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [isUploadingSignature, setIsUploadingSignature] = useState(false);
+  const [signatureUploadError, setSignatureUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +79,24 @@ export function ProfilePageClient() {
   function set(key: FieldKey, value: string) {
     setValues((prev) => ({ ...prev, [key]: value }));
     setSaveStatus("idle");
+  }
+
+  async function handleSignatureFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setIsUploadingSignature(true);
+    setSignatureUploadError(null);
+
+    try {
+      const url = await uploadSignatureImage(file);
+      set("signature_image", url);
+    } catch {
+      setSignatureUploadError("Couldn't upload signature. Please try again.");
+    } finally {
+      setIsUploadingSignature(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -269,6 +293,52 @@ export function ProfilePageClient() {
                   className={styles.formInput}
                 />
               </div>
+            </div>
+
+            <div className={styles.imagesSection}>
+              <span className={styles.formLabel}>Signature (used on offline invoices)</span>
+              <p className={styles.pageSubtext}>
+                Shown on invoices marked &quot;offline&quot; in place of the &quot;system generated, no signature
+                required&quot; note. Online invoices are unaffected.
+              </p>
+              <div className={styles.imageRow}>
+                {values.signature_image ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- arbitrary/dynamic URL, not an optimizable local/remote asset
+                  <img
+                    src={resolveMediaUrl(values.signature_image)}
+                    alt=""
+                    className={styles.imageThumb}
+                    onError={(e) => {
+                      e.currentTarget.style.opacity = "0";
+                    }}
+                  />
+                ) : (
+                  <div className={styles.imageThumbEmpty}>
+                    <DocumentTextIcon className="h-8 w-8" />
+                  </div>
+                )}
+                <label
+                  htmlFor="profileSignatureUpload"
+                  className={`${styles.uploadImageButton} ${isUploadingSignature ? styles.uploadImageButtonDisabled : ""}`}
+                  aria-label="Upload signature image"
+                >
+                  <ArrowUpTrayIcon className="h-4 w-4" />
+                </label>
+                <input
+                  id="profileSignatureUpload"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => void handleSignatureFileChange(e)}
+                  disabled={isUploadingSignature}
+                  className="sr-only"
+                />
+                {isUploadingSignature && <p className={styles.pageSubtext}>Uploading…</p>}
+              </div>
+              {signatureUploadError && (
+                <p role="alert" aria-live="polite" className={styles.formError}>
+                  {signatureUploadError}
+                </p>
+              )}
             </div>
 
             <div>

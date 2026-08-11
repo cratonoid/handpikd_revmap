@@ -10,10 +10,11 @@
 // quotations-tab.tsx's "Company details" buttons) — updatePersonalDetails
 // only touches the keys it's given, so opening this from either tab still
 // round-trips every field shown here.
-import { useState, type FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/button";
-import { updatePersonalDetails } from "@/lib/personal-details";
-import { XMarkIcon } from "@/components/icons";
+import { resolveMediaUrl } from "@/lib/api";
+import { updatePersonalDetails, uploadSignatureImage } from "@/lib/personal-details";
+import { ArrowUpTrayIcon, DocumentTextIcon, XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
 type Status = "idle" | "saving";
@@ -44,12 +45,37 @@ export function PersonalDetailsModal({
     quotation_tnc: initialValues.quotation_tnc ?? "",
     quotation_notes: initialValues.quotation_notes ?? "",
     qr_value: initialValues.qr_value ?? "",
+    signature_image: initialValues.signature_image ?? "",
   });
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [isUploadingSignature, setIsUploadingSignature] = useState(false);
+  const [signatureUploadError, setSignatureUploadError] = useState<string | null>(null);
 
   function set(key: keyof typeof values, value: string) {
     setValues((prev) => ({ ...prev, [key]: value }));
+  }
+
+  // Uploads immediately on file pick (see lib/personal-details.ts's
+  // uploadSignatureImage) and stashes the returned /media URL into local
+  // state — only persisted to personal_details once the form's Save button
+  // is pressed, same two-step flow as product images.
+  async function handleSignatureFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setIsUploadingSignature(true);
+    setSignatureUploadError(null);
+
+    try {
+      const url = await uploadSignatureImage(file);
+      set("signature_image", url);
+    } catch {
+      setSignatureUploadError("Couldn't upload signature. Please try again.");
+    } finally {
+      setIsUploadingSignature(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -266,6 +292,52 @@ export function PersonalDetailsModal({
                 className={styles.formInput}
               />
             </div>
+          </div>
+
+          <div className={styles.imagesSection}>
+            <span className={styles.formLabel}>Signature (used on offline invoices)</span>
+            <p className={styles.pageSubtext}>
+              Shown on invoices marked &quot;offline&quot; in place of the &quot;system generated, no signature
+              required&quot; note. Online invoices are unaffected.
+            </p>
+            <div className={styles.imageRow}>
+              {values.signature_image ? (
+                // eslint-disable-next-line @next/next/no-img-element -- arbitrary/dynamic URL, not an optimizable local/remote asset
+                <img
+                  src={resolveMediaUrl(values.signature_image)}
+                  alt=""
+                  className={styles.imageThumb}
+                  onError={(e) => {
+                    e.currentTarget.style.opacity = "0";
+                  }}
+                />
+              ) : (
+                <div className={styles.imageThumbEmpty}>
+                  <DocumentTextIcon className="h-8 w-8" />
+                </div>
+              )}
+              <label
+                htmlFor="signatureUpload"
+                className={`${styles.uploadImageButton} ${isUploadingSignature ? styles.uploadImageButtonDisabled : ""}`}
+                aria-label="Upload signature image"
+              >
+                <ArrowUpTrayIcon className="h-4 w-4" />
+              </label>
+              <input
+                id="signatureUpload"
+                type="file"
+                accept="image/*"
+                onChange={(e) => void handleSignatureFileChange(e)}
+                disabled={isUploadingSignature}
+                className="sr-only"
+              />
+              {isUploadingSignature && <p className={styles.pageSubtext}>Uploading…</p>}
+            </div>
+            {signatureUploadError && (
+              <p role="alert" aria-live="polite" className={styles.formError}>
+                {signatureUploadError}
+              </p>
+            )}
           </div>
 
           <div>

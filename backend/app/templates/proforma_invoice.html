@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Quotation {{ quotation_no }}</title>
+<title>Proforma Invoice {{ invoice_no_display }}</title>
 <style>
   :root {
     --hp-yellow: #f4c430;
@@ -13,7 +13,7 @@
   /* Page size/margins and the "Page X of Y" footer are supplied by
      Chromium's print-to-PDF options instead of CSS @page here — see
      app/services/pdf_renderer.py's render_html_to_pdf (margin) and
-     quotation_pdf.py's _FOOTER_TEMPLATE (page numbers). */
+     proforma_invoice_pdf.py's _FOOTER_TEMPLATE (page numbers). */
 
   * { box-sizing: border-box; }
   body {
@@ -104,14 +104,6 @@
     font-weight: bold;
     color: var(--hp-navy);
     letter-spacing: 1px;
-  }
-  .title-row .status-pill {
-    font-size: 8pt;
-    font-weight: bold;
-    color: var(--hp-navy);
-    background: var(--hp-yellow);
-    padding: 2px 8px;
-    border-radius: 3px;
   }
 
   .detail-row { display: flex; margin-top: 4mm; gap: 6mm; font-size: 8.5pt; }
@@ -233,13 +225,12 @@
   </div>
 
   <div class="title-row">
-    <span class="title">QUOTATION</span>
-    <span class="status-pill">{{ status }}</span>
+    <span class="title">PROFORMA INVOICE</span>
   </div>
 
   <div class="detail-row">
     <div class="detail-col">
-      <p class="heading">Quoted to</p>
+      <p class="heading">Invoiced to</p>
       <p><b>{{ customer_name }}</b></p>
       <p>{{ customer_address }}</p>
       {% if customer_phone and customer_phone != "-" %}<p>{{ customer_phone }}</p>{% endif %}
@@ -251,9 +242,9 @@
     </div>
     <div class="detail-col meta-col">
       <table>
-        <tr><td>Quotation No.</td><td class="meta-value">{{ quotation_no }}</td></tr>
-        <tr><td>Issue Date</td><td class="meta-value">{{ quotation_date }}</td></tr>
-        <tr><td>Valid Till</td><td class="meta-value">{{ valid_till }}</td></tr>
+        <tr><td>Invoice No.</td><td class="meta-value">{{ invoice_no_display }}</td></tr>
+        <tr><td>Issue Date</td><td class="meta-value">{{ invoice_date }}</td></tr>
+        <tr><td>Due Date</td><td class="meta-value">{{ due_date }}</td></tr>
       </table>
     </div>
   </div>

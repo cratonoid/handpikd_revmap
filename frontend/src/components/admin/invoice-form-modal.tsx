@@ -1,17 +1,17 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// <InvoiceFormModal> — add/edit popup on the Sales Invoices tab
+// <InvoiceFormModal> — add/edit popup on the Standard view of the Sales Invoices tab
 // ---------------------------------------------------------------------------
-// Manual creation is standard-only — an invoice always raises against an
-// existing sales order — there's no line-item entry here (unlike
-// sales-order-form-modal.tsx); totals are just read from the selected sales
-// order (lib/sales-orders.ts) and previewed live.
-//   - mode "add"  -> POST /admin/create_new_invoice (always type=standard)
-//   - mode "edit" -> POST /admin/update_invoice_details (sales_id/
-//                    quotation_id/type are immutable once raised — shown
-//                    read-only; a proforma row shows its source quotation
-//                    instead of a sales-order picker)
+// Standard-only — an invoice always raises against an existing sales order —
+// there's no line-item entry here (unlike sales-order-form-modal.tsx);
+// totals are just read from the selected sales order (lib/sales-orders.ts)
+// and previewed live. Proforma invoices have their own dedicated modal
+// (proforma-invoice-form-modal.tsx), since they carry their own line items
+// instead of a sales-order link.
+//   - mode "add"  -> POST /admin/create_new_invoice
+//   - mode "edit" -> POST /admin/update_invoice_details (sales_id is
+//                    immutable once raised — shown read-only)
 // Both live in backend/app/api/routes/invoices.py.
 import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
@@ -19,7 +19,6 @@ import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue }
 import type { Invoice, OnlineOrOffline } from "@/lib/invoices";
 import { createInvoice, updateInvoice } from "@/lib/invoices";
 import type { SalesOrder } from "@/lib/sales-orders";
-import type { Quotation } from "@/lib/quotations";
 import type { CustomerOption } from "@/lib/customers";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
 import { XMarkIcon } from "@/components/icons";
@@ -31,7 +30,6 @@ export function InvoiceFormModal({
   mode,
   initialInvoice,
   salesOrders,
-  quotations,
   customers,
   onClose,
   onSaved,
@@ -39,7 +37,6 @@ export function InvoiceFormModal({
   mode: "add" | "edit";
   initialInvoice?: Invoice;
   salesOrders: SalesOrder[];
-  quotations: Quotation[];
   customers: CustomerOption[];
   onClose: () => void;
   onSaved: () => void;
@@ -62,7 +59,6 @@ export function InvoiceFormModal({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const isEdit = mode === "edit";
-  const isProforma = initialInvoice?.type === "proforma";
   const wasDeleted = initialInvoice?.isDeleted ?? false;
   const title = isEdit ? "Edit invoice" : "New invoice";
 
@@ -79,7 +75,6 @@ export function InvoiceFormModal({
     [salesOrders, customersById],
   );
   const selectedSalesOrder = salesOrders.find((order) => String(order.id) === salesId) ?? null;
-  const linkedQuotation = quotations.find((quotation) => quotation.id === initialInvoice?.quotationId) ?? null;
 
   async function submitPayload(isDeletedValue: boolean) {
     setStatus("saving");
@@ -171,16 +166,7 @@ export function InvoiceFormModal({
               </div>
             )}
 
-            {isProforma ? (
-              <div>
-                <span className={styles.formLabel}>Source quotation</span>
-                <p className={styles.pageSubtext}>
-                  {linkedQuotation
-                    ? `Quotation #${linkedQuotation.quotationNo} · ${customersById.get(linkedQuotation.custId)?.name ?? "Unknown customer"}`
-                    : "—"}
-                </p>
-              </div>
-            ) : isEdit ? (
+            {isEdit ? (
               <div>
                 <span className={styles.formLabel}>Sales order</span>
                 <p className={styles.pageSubtext}>
@@ -226,11 +212,6 @@ export function InvoiceFormModal({
                 onChange={(e) => setDueDate(e.target.value)}
                 className={styles.formInput}
               />
-            </div>
-
-            <div>
-              <span className={styles.formLabel}>Type</span>
-              <p className={styles.pageSubtext}>{isProforma ? "Proforma" : "Standard"}</p>
             </div>
 
             <div>

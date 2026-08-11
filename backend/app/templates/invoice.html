@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>{{ title_text }} {{ invoice_no }}</title>
+<style>
+  :root {
+    --hp-yellow: #f4c430;
+    --hp-navy: #16294f;
+    --hp-ink: #1a1a1a;
+  }
+
+  /* Page size/margins and the "Page X of Y" footer are supplied by
+     Chromium's print-to-PDF options instead of CSS @page here — see
+     app/services/pdf_renderer.py's render_html_to_pdf (margin) and
+     invoice_pdf.py's _FOOTER_TEMPLATE (page numbers). Cloned from
+     quotation.html's letterhead/corner-accent/detail-row structure, with
+     the GST-specific boxes (tax table, bank details, signature) it doesn't
+     need. */
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Helvetica", "Arial", sans-serif;
+    font-size: 9pt;
+    color: var(--hp-ink);
+    margin: 0;
+  }
+  table { border-collapse: collapse; width: 100%; }
+  p { margin: 0; }
+
+  .corner-accent {
+    position: fixed;
+    width: 18mm;
+    height: 18mm;
+    z-index: -1;
+  }
+  .corner-accent.top-right { top: 0; right: 0; }
+  .corner-accent.top-right .tri-black {
+    position: absolute; inset: 0;
+    background: var(--hp-ink);
+    clip-path: polygon(100% 0, 0 0, 100% 100%);
+  }
+  .corner-accent.top-right .tri-yellow {
+    position: absolute; top: 0; right: 0; width: 68%; height: 68%;
+    background: var(--hp-yellow);
+    clip-path: polygon(100% 0, 0 0, 100% 100%);
+  }
+  .corner-accent.bottom-left { bottom: 0; left: 0; }
+  .corner-accent.bottom-left .tri-black {
+    position: absolute; inset: 0;
+    background: var(--hp-ink);
+    clip-path: polygon(0 100%, 0 0, 100% 100%);
+  }
+  .corner-accent.bottom-left .tri-yellow {
+    position: absolute; bottom: 0; left: 0; width: 68%; height: 68%;
+    background: var(--hp-yellow);
+    clip-path: polygon(0 100%, 0 0, 100% 100%);
+  }
+
+  .letterhead {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .logo-block { display: flex; align-items: center; gap: 3mm; }
+  .logo-block img { height: 16mm; width: auto; }
+  .contact-block { text-align: right; font-size: 8pt; color: var(--hp-navy); padding-right: 21mm; }
+  .contact-block p { margin: 1px 0; }
+
+  .title-row {
+    margin-top: 5mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 2mm;
+    border-bottom: 1.5pt solid var(--hp-navy);
+  }
+  .title-row .side { flex: 1; font-size: 8pt; color: var(--hp-navy); }
+  .title-row .side.right { text-align: right; }
+  .title-row .doc-title {
+    flex: 0 0 auto;
+    font-size: 16pt;
+    font-weight: bold;
+    color: var(--hp-navy);
+    letter-spacing: 1px;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .tag-pill {
+    font-size: 7pt;
+    font-weight: bold;
+    color: var(--hp-navy);
+    background: var(--hp-yellow);
+    padding: 2px 8px;
+    border-radius: 3px;
+    letter-spacing: 0.3px;
+  }
+
+  .detail-row { display: flex; margin-top: 4mm; gap: 6mm; font-size: 8.5pt; }
+  .detail-col { flex: 1; }
+  .detail-col .heading {
+    font-weight: bold;
+    color: var(--hp-navy);
+    text-transform: uppercase;
+    font-size: 7.5pt;
+    letter-spacing: 0.5px;
+    margin-bottom: 1.5mm;
+  }
+  .detail-col p { margin: 0.5px 0; color: #333; }
+  .meta-col { text-align: right; }
+  .meta-col table { width: auto; margin-left: auto; }
+  .meta-col td { padding: 1px 0 1px 6mm; text-align: right; }
+  .meta-col td:first-child { color: #666; padding-left: 0; }
+  .meta-col .meta-value { font-weight: bold; color: var(--hp-navy); }
+
+  .line-items { margin-top: 5mm; }
+  .line-items th {
+    background: var(--hp-navy);
+    color: #fff;
+    font-size: 7.2pt;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 2mm 1.5mm;
+    text-align: center;
+    border: 0.5pt solid #2c4270;
+  }
+  .line-items td {
+    border-bottom: 0.5pt solid #e7d488;
+    border-left: 0.5pt solid #eee;
+    border-right: 0.5pt solid #eee;
+    padding: 2mm 1.5mm;
+    font-size: 8pt;
+    text-align: center;
+    vertical-align: middle;
+  }
+  .line-items td.desc { text-align: left; }
+  .line-items td.desc .name { font-weight: bold; color: var(--hp-navy); }
+  .line-items tbody tr.shade-a { background: #fdf6e0; }
+  .line-items tbody tr.shade-b { background: #fff8e0; }
+  .line-items tfoot .grand-row td {
+    background: var(--hp-navy);
+    color: var(--hp-yellow);
+    font-weight: bold;
+    font-size: 8.5pt;
+    border: none;
+    padding: 2.5mm 1.5mm;
+  }
+  .line-items tfoot .grand-row td.label { text-align: right; }
+
+  .summary-row { display: flex; margin-top: 4mm; gap: 6mm; align-items: stretch; }
+  .box { border: 0.5pt solid #c9b568; }
+  .box .box-header {
+    background: var(--hp-navy);
+    color: #fff;
+    font-weight: bold;
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 1.5mm 3mm;
+  }
+  .box .box-body { padding: 2.5mm 3mm; font-size: 8.5pt; }
+  .words-box { flex: 1.2; }
+  .words-box .box-body { text-align: center; font-weight: bold; color: var(--hp-navy); }
+  .tax-summary-box { flex: 1; }
+  .tax-summary-box table td { padding: 1mm 0; font-size: 8.5pt; }
+  .tax-summary-box table td:last-child { text-align: right; }
+  .tax-summary-box tr.grand td {
+    font-weight: bold;
+    color: var(--hp-navy);
+    border-top: 0.5pt solid #c9b568;
+    padding-top: 1.5mm;
+  }
+
+  .footer-row { display: flex; margin-top: 5mm; gap: 6mm; align-items: flex-start; }
+  .footer-left { flex: 1; }
+  .footer-right { flex: 1.3; }
+
+  .bank-box table td { padding: 0.8mm 0; font-size: 8pt; }
+  .bank-box table td:first-child { color: #666; width: 24mm; }
+  .qr-note { margin-top: 3mm; font-size: 7.5pt; color: #666; text-align: center; }
+  .qr-note img { display: block; margin: 1.5mm auto 0; width: 22mm; height: 22mm; }
+
+  .tnc-box { margin-top: 3mm; }
+  .tnc-box .box-body p { margin: 0.5px 0; font-size: 7.8pt; color: #444; }
+
+  .signature-box { text-align: center; }
+  .signature-box .eoe { text-align: right; font-size: 7.5pt; padding: 2mm 3mm 0; color: #666; }
+  .signature-box .certify { font-weight: bold; color: var(--hp-navy); font-size: 8.3pt; padding: 2mm 4mm 0; }
+  .signature-box .for-company { font-weight: bold; color: var(--hp-navy); margin-top: 2mm; }
+  .signature-box .sign-image { height: 20mm; margin: 4mm auto 2mm; display: block; }
+  .signature-box .system-note { font-size: 7pt; color: #888; margin: 12mm 4mm 2mm; }
+  .signature-box .authorised {
+    font-weight: bold;
+    color: var(--hp-navy);
+    border-top: 0.5pt solid #c9b568;
+    margin-top: 2mm;
+    padding: 2mm 0;
+  }
+</style>
+</head>
+<body>
+
+  <div class="corner-accent top-right">
+    <div class="tri-black"></div>
+    <div class="tri-yellow"></div>
+  </div>
+  <div class="corner-accent bottom-left">
+    <div class="tri-black"></div>
+    <div class="tri-yellow"></div>
+  </div>
+
+  <div class="letterhead">
+    <div class="logo-block">
+      {% if logo_data_uri %}
+      <img src="{{ logo_data_uri }}" alt="{{ company_name }}" />
+      {% else %}
+      <span style="font-size: 16pt; font-weight: bold; color: var(--hp-navy);">{{ company_name }}</span>
+      {% endif %}
+    </div>
+    <div class="contact-block">
+      <p><b>{{ personal.name }}</b></p>
+      <p>{{ personal.phone }}</p>
+      <p>{{ personal.email }}</p>
+      <p>{{ personal.website }}</p>
+    </div>
+  </div>
+
+  <div class="title-row">
+    <div class="side">GSTIN : {{ personal.gstin }}</div>
+    <div class="doc-title">{{ title_text }}</div>
+    <div class="side right"><span class="tag-pill">ORIGINAL FOR RECIPIENT</span></div>
+  </div>
+
+  <div class="detail-row">
+    <div class="detail-col">
+      <p class="heading">{{ party_label }} Detail</p>
+      <p><b>{{ customer_name }}</b></p>
+      <p>{{ customer_address }}</p>
+      <p>Phone: {{ customer_phone }}</p>
+      <p>GSTIN: {{ customer_gstin }}</p>
+      <p>Place of Supply: {{ place_of_supply }}</p>
+    </div>
+    <div class="detail-col">
+      <p class="heading">From</p>
+      <p>{{ personal.address }}</p>
+    </div>
+    <div class="detail-col meta-col">
+      <table>
+        <tr><td>Invoice No.</td><td class="meta-value">{{ invoice_no }}</td></tr>
+        <tr><td>Invoice Date</td><td class="meta-value">{{ invoice_date }}</td></tr>
+        <tr><td>Due Date</td><td class="meta-value">{{ due_date }}</td></tr>
+        <tr><td>Transport</td><td class="meta-value">{{ transport }}</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <table class="line-items">
+    <thead>
+      <tr>
+        <th rowspan="2">Sr.<br/>No.</th>
+        <th rowspan="2" style="text-align:left;">Name of Product / Service</th>
+        <th rowspan="2">HSN /<br/>SAC</th>
+        <th rowspan="2">Qty</th>
+        <th rowspan="2">Rate</th>
+        <th rowspan="2">Taxable<br/>Value</th>
+        {% if intra_state %}
+        <th colspan="2">CGST</th>
+        <th colspan="2">SGST</th>
+        {% else %}
+        <th colspan="2">IGST</th>
+        {% endif %}
+        <th rowspan="2">Total</th>
+      </tr>
+      <tr>
+        {% if intra_state %}
+        <th>%</th><th>Amount</th><th>%</th><th>Amount</th>
+        {% else %}
+        <th>%</th><th>Amount</th>
+        {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in line_items %}
+      <tr class="{{ 'shade-a' if loop.index is odd else 'shade-b' }}">
+        <td>{{ item.sr_no }}</td>
+        <td class="desc"><span class="name">{{ item.product_name }}</span></td>
+        <td>{{ item.hsn_code }}</td>
+        <td>{{ item.quantity }}</td>
+        <td>{{ item.rate }}</td>
+        <td>{{ item.taxable_value }}</td>
+        <td>{{ item.tax_perc_1 }}</td>
+        <td>{{ item.tax_amount_1 }}</td>
+        {% if intra_state %}
+        <td>{{ item.tax_perc_2 }}</td>
+        <td>{{ item.tax_amount_2 }}</td>
+        {% endif %}
+        <td>{{ item.total }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr class="grand-row">
+        <td></td>
+        <td class="label">Total</td>
+        <td></td>
+        <td>{{ total_qty }}</td>
+        <td></td>
+        <td>{{ total_amount_before_tax }}</td>
+        <td></td>
+        <td>{{ tax_total_1 }}</td>
+        {% if intra_state %}
+        <td></td>
+        <td>{{ tax_total_2 }}</td>
+        {% endif %}
+        <td>{{ total_amount_after_tax }}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="summary-row">
+    <div class="box words-box">
+      <p class="box-header">Total in Words</p>
+      <div class="box-body">{{ amount_in_words }}</div>
+    </div>
+    <div class="box tax-summary-box">
+      <p class="box-header">Tax Summary</p>
+      <div class="box-body">
+        <table>
+          <tr><td>Taxable Amount</td><td>{{ total_amount_before_tax }}</td></tr>
+          <tr><td>{{ "CGST + SGST" if intra_state else "Add : IGST" }}</td><td>{{ total_tax_amount }}</td></tr>
+          <tr><td>Total Tax</td><td>{{ total_tax_amount }}</td></tr>
+          <tr class="grand"><td>Total Amount After Tax</td><td>{{ grand_total_money }}</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-row">
+    <div class="footer-left">
+      <div class="box bank-box">
+        <p class="box-header">Bank Details</p>
+        <div class="box-body">
+          <table>
+            {% for label, value in bank_details %}
+            <tr><td>{{ label }}</td><td>{{ value or "-" }}</td></tr>
+            {% endfor %}
+          </table>
+        </div>
+      </div>
+      {% if qr_data_uri %}
+      <div class="qr-note">
+        <p>Scan to pay</p>
+        <img src="{{ qr_data_uri }}" alt="QR" />
+      </div>
+      {% endif %}
+      <div class="box tnc-box">
+        <p class="box-header">Terms and Conditions</p>
+        <div class="box-body">
+          {% if tnc_lines %}
+          {% for line in tnc_lines %}
+          <p>{{ line }}</p>
+          {% endfor %}
+          {% else %}
+          <p>-</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="footer-right">
+      <div class="box signature-box">
+        <p class="eoe">(E &amp; O.E.)</p>
+        <p class="certify">Certified that the particulars given above are true and correct.</p>
+        <p class="for-company">For {{ company_name }}</p>
+        {% if signature_data_uri %}
+        <img class="sign-image" src="{{ signature_data_uri }}" alt="Signature" />
+        {% else %}
+        <p class="system-note">THIS IS A SYSTEM GENERATED INVOICE AND DOES NOT REQUIRE AN AUTHORISED SIGNATURE</p>
+        {% endif %}
+        <p class="authorised">Authorised Signatory</p>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
