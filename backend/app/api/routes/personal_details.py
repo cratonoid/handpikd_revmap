@@ -2,7 +2,7 @@
 # (letterhead, bank details, terms & conditions) that get_invoice_pdf renders
 # onto generated invoices. Restricted to admins, same as every other
 # routes/*.py module here (bypassed when settings.auth_enabled is False).
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.api.routes.admin import require_admin
 from app.models import User
@@ -10,10 +10,22 @@ from app.schemas.personal_details import (
     PersonalDetailsItem,
     UpdatePersonalDetailsRequest,
     UpdatePersonalDetailsResponse,
+    UploadSignatureImageResponse,
 )
 from app.services.personal_details import get_personal_details, update_personal_details
+from app.services.storage import upload_signature_image as store_signature_image
 
 router = APIRouter(prefix="/admin", tags=["personal_details"])
+
+
+@router.post("/upload_signature_image", response_model=UploadSignatureImageResponse)
+async def upload_signature_image_route(
+    file: UploadFile = File(...),
+    _: User | None = Depends(require_admin),
+) -> UploadSignatureImageResponse:
+    image_bytes = await file.read()
+    url = store_signature_image(image_bytes, file.filename or "signature")
+    return UploadSignatureImageResponse(url=url)
 
 
 @router.get("/get_personal_details", response_model=list[PersonalDetailsItem])

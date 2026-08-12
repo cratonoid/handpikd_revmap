@@ -31,7 +31,6 @@ import {
   descendantIdsById,
   fetchCategories,
   flattenCategories,
-  namesForCategoryIds,
   type FlatCategory,
 } from "@/lib/categories";
 import { CubeIcon } from "@/components/icons";
@@ -155,7 +154,7 @@ export function ProductsPageClient() {
               <th className={styles.tableHeadCell}>Product</th>
               <th className={styles.tableHeadCell}>HSN</th>
               <th className={styles.tableHeadCell}>Vendor</th>
-              <th className={styles.tableHeadCell}>Categories</th>
+              <th className={styles.tableHeadCell}>Vendor Rate</th>
               <th className={styles.tableHeadCell}>Price</th>
               <th className={styles.tableHeadCell}>GST %</th>
               <th className={styles.tableHeadCell}>MOQ</th>
@@ -164,7 +163,6 @@ export function ProductsPageClient() {
           <tbody>
             {visibleProducts.map((product, index) => {
               const vendor = vendorsById.get(product.vendorId);
-              const categoryNames = namesForCategoryIds(flatCategories, product.categoryIds);
               const thumb = product.imagePaths[0];
 
               return (
@@ -187,19 +185,7 @@ export function ProductsPageClient() {
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{product.productName}</td>
                   <td className={styles.tableCell}>{product.hsnCode}</td>
                   <td className={styles.tableCell}>{vendor?.registeredName ?? "—"}</td>
-                  <td className={styles.tableCell}>
-                    {categoryNames.length === 0 ? (
-                      "—"
-                    ) : (
-                      <span className={styles.tableChipList}>
-                        {categoryNames.map((name) => (
-                          <span key={name} className={styles.tableChip}>
-                            {name}
-                          </span>
-                        ))}
-                      </span>
-                    )}
-                  </td>
+                  <td className={styles.tableCell}>₹{product.vendorRate.toFixed(2)}</td>
                   <td className={styles.tableCell}>
                     ₹{product.discountedPrice.toFixed(2)}
                     {product.discountedPrice !== product.actualPrice && (

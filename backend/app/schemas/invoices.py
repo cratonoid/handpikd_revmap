@@ -1,16 +1,16 @@
 # Request/response bodies for the invoices module's endpoints.
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from app.models.invoice_details import InvoiceStatus, InvoiceType, OnlineOrOffline
 
 
 class CreateNewInvoiceRequest(BaseModel):
-    # Manual creation is standard-only — proforma invoices are generated
-    # automatically when a quotation is marked accepted (see
-    # routes/quotations.py), so sales_id is the only linkage accepted here;
-    # type is implied and validated server-side as InvoiceType.standard.
+    # Manual creation here is standard-only — sales_id is the only linkage
+    # accepted; type is implied and validated server-side as
+    # InvoiceType.standard. Proforma invoices are created via
+    # CreateNewProformaInvoiceRequest/create_new_proforma_invoice instead.
     sales_id: int
     date: datetime
     due_date: datetime
@@ -29,11 +29,21 @@ class InvoiceDetailItem(BaseModel):
     date: datetime
     sales_id: int | None
     quotation_id: int | None
+    cust_id: int | None
     type: InvoiceType
     due_date: datetime
     online_or_offline: OnlineOrOffline
     transport: str
     status: InvoiceStatus
+    # Parallel arrays, one entry per line item — populated for proforma
+    # invoices (own line items, see ProformaInvoiceSummary), empty for
+    # standard invoices (whose line items live on the linked SalesOrders'
+    # SalesSummary instead and aren't surfaced here).
+    product_ids: list[int]
+    quantities: list[int]
+    rates: list[float]
+    tax_percs: list[float]
+    description: str
     total_amount_before_tax: float
     total_tax_amount: float
     total_amount_after_tax: float
@@ -42,9 +52,10 @@ class InvoiceDetailItem(BaseModel):
 
 class UpdateInvoiceDetailsRequest(BaseModel):
     id: int
-    # sales_id/quotation_id/type are intentionally not editable — an
-    # invoice always stays tied to whatever it was raised against, and its
-    # type determines which of those two FKs is populated.
+    # sales_id/type are intentionally not editable — a standard invoice
+    # always stays tied to the sales order it was raised against. This
+    # endpoint is standard-only; proforma invoices are edited via
+    # UpdateProformaInvoiceDetailsRequest/update_proforma_invoice_details.
     date: datetime
     due_date: datetime
     online_or_offline: OnlineOrOffline
@@ -56,4 +67,58 @@ class UpdateInvoiceDetailsRequest(BaseModel):
 
 
 class UpdateInvoiceDetailsResponse(BaseModel):
+    message: str
+
+
+class CreateNewProformaInvoiceRequest(BaseModel):
+    cust_id: int
+    date: datetime
+    due_date: datetime
+    # Parallel arrays, one entry per line item — same convention as
+    # CreateNewQuotationRequest's product_ids/quantities/rates/tax_percs.
+    product_ids: list[int]
+    quantities: list[int]
+    rates: list[float]
+    tax_percs: list[float]
+    description: str = ""
+
+    @model_validator(mode="after")
+    def _check_line_items_match(self) -> "CreateNewProformaInvoiceRequest":
+        lengths = {len(self.product_ids), len(self.quantities), len(self.rates), len(self.tax_percs)}
+        if len(lengths) != 1:
+            raise ValueError("product_ids, quantities, rates, and tax_percs must have the same number of entries")
+        if len(self.product_ids) == 0:
+            raise ValueError("at least one line item is required")
+        return self
+
+
+class CreateNewProformaInvoiceResponse(BaseModel):
+    message: str
+    id: int
+    invoice_no_display: str
+
+
+class UpdateProformaInvoiceDetailsRequest(BaseModel):
+    id: int
+    is_deleted: bool = False
+    cust_id: int
+    date: datetime
+    due_date: datetime
+    product_ids: list[int]
+    quantities: list[int]
+    rates: list[float]
+    tax_percs: list[float]
+    description: str = ""
+
+    @model_validator(mode="after")
+    def _check_line_items_match(self) -> "UpdateProformaInvoiceDetailsRequest":
+        lengths = {len(self.product_ids), len(self.quantities), len(self.rates), len(self.tax_percs)}
+        if len(lengths) != 1:
+            raise ValueError("product_ids, quantities, rates, and tax_percs must have the same number of entries")
+        if len(self.product_ids) == 0:
+            raise ValueError("at least one line item is required")
+        return self
+
+
+class UpdateProformaInvoiceDetailsResponse(BaseModel):
     message: str

@@ -11,13 +11,8 @@ from app.api.routes.admin import require_admin
 from app.models import (
     CustomerDetails,
     CustomerPocDetails,
-    InvoiceDetails,
-    InvoiceIdCounter,
-    InvoiceType,
-    OnlineOrOffline,
     ProductDetails,
     ProductImageDetails,
-    ProformaInvoiceNoCounterMaster,
     QuotationDetails,
     QuotationIdCounter,
     QuotationNoCounterMaster,
@@ -90,37 +85,6 @@ async def _insert_quotation_summary_rows(
             tax_amount=tax_amount,
             total=line_total_before_tax + tax_amount,
         ).insert()
-
-
-async def _maybe_create_proforma_invoice(quotation: QuotationDetails) -> None:
-    # Idempotency guard: never generate a second proforma if one already
-    # exists for this quotation (e.g. admin flips status away from
-    # "accepted" and back, or saves the same "accepted" status twice).
-    existing = await InvoiceDetails.find_one(
-        InvoiceDetails.quotation_id == quotation.id,
-        InvoiceDetails.type == InvoiceType.proforma,
-        InvoiceDetails.is_deleted == False,
-    )
-    if existing is not None:
-        return
-
-    invoice_no = await get_next_id(ProformaInvoiceNoCounterMaster, "next_invoice_no", InvoiceDetails)
-    invoice_id = await get_next_id(InvoiceIdCounter, "next_invoice_id", InvoiceDetails)
-
-    await InvoiceDetails(
-        id=invoice_id,
-        invoice_no=invoice_no,
-        date=quotation.date,
-        sales_id=None,
-        quotation_id=quotation.id,
-        total_amount_before_tax=quotation.total_amount_before_tax,
-        total_tax_amount=quotation.total_tax_amount,
-        total_amount_after_tax=quotation.total_amount_after_tax,
-        type=InvoiceType.proforma,
-        due_date=quotation.valid_till,
-        online_or_offline=OnlineOrOffline.offline,
-        transport="",
-    ).insert()
 
 
 @router.post("/create_new_quotation", response_model=CreateNewQuotationResponse)
@@ -227,7 +191,6 @@ async def update_quotation_details(
         _compute_line_items_and_totals(payload.quantities, payload.rates, payload.tax_percs)
     )
 
-    old_status = quotation.status
     quotation.status = payload.status
     quotation.cust_id = payload.cust_id
     quotation.date = payload.date
@@ -249,12 +212,6 @@ async def update_quotation_details(
         tax_amounts,
         line_totals_before_tax,
     )
-
-    # A proforma invoice is a mock invoice generated the moment a quotation
-    # is accepted — no manual step. Only fires on the transition *into*
-    # accepted, and _maybe_create_proforma_invoice is itself idempotent.
-    if old_status != QuotationStatus.accepted and quotation.status == QuotationStatus.accepted:
-        await _maybe_create_proforma_invoice(quotation)
 
     return UpdateQuotationDetailsResponse(message="quotation updated successfully")
 
@@ -313,8 +270,6 @@ async def get_quotation_pdf(
         valid_till=quotation.valid_till,
         status=quotation.status.value,
         line_items=line_items,
-        total_amount_before_tax=quotation.total_amount_before_tax,
-        total_tax_amount=quotation.total_tax_amount,
         total_amount_after_tax=quotation.total_amount_after_tax,
         description=quotation.description,
         customer_name=customer.registered_name,

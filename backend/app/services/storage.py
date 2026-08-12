@@ -81,3 +81,14 @@ def upload_catalogue_image(image_bytes: bytes, filename: str) -> str:
 
 def delete_catalogue_image(image_path: str) -> None:
     _delete_image(image_path)
+
+
+# The company's own signature scan, embedded on offline invoices (see
+# services/invoice_pdf.py) instead of the "system generated, no signature
+# required" disclaimer. Stored under its own subfolder rather than loose in
+# media_root, same organizing convention as CATALOGUE_IMAGE_SUBFOLDER.
+SIGNATURE_IMAGE_SUBFOLDER = "signatures"
+
+
+def upload_signature_image(image_bytes: bytes, filename: str) -> str:
+    return _store_image(image_bytes, filename, subfolder=SIGNATURE_IMAGE_SUBFOLDER)

@@ -3,12 +3,12 @@
 // ---------------------------------------------------------------------------
 // Mirrors lib/sales-orders.ts. Fetches from GET /admin/get_invoice_details
 // (backend/app/api/routes/invoices.py), which only ever returns active
-// (non-deleted) invoices. An invoice has no line items of its own.
-// Standard invoices are raised against an existing sales order (salesId);
-// proforma invoices are generated automatically when a quotation is marked
-// accepted (quotationId) — see routes/quotations.py. Exactly one of
-// salesId/quotationId is set, matching `type`, and `type` is immutable once
-// an invoice exists (manual creation here is standard-only).
+// (non-deleted) invoices. Standard invoices are raised against an existing
+// sales order (salesId) and have no line items of their own here. Proforma
+// invoices are raised by hand, like a quotation — own customer (custId) and
+// own line items (productIds/quantities/rates/taxPercs, parallel arrays,
+// empty for standard invoices) — see lib/quotations.ts for the identical
+// shape. `type` is immutable once an invoice exists.
 import { apiFetch } from "@/lib/api";
 
 export type InvoiceType = "proforma" | "standard";
@@ -22,11 +22,17 @@ export type Invoice = {
   date: string;
   salesId: number | null;
   quotationId: number | null;
+  custId: number | null;
   type: InvoiceType;
   dueDate: string;
   onlineOrOffline: OnlineOrOffline;
   transport: string;
   status: InvoiceStatus;
+  productIds: number[];
+  quantities: number[];
+  rates: number[];
+  taxPercs: number[];
+  description: string;
   totalAmountBeforeTax: number;
   totalTaxAmount: number;
   totalAmountAfterTax: number;
@@ -41,11 +47,17 @@ type InvoiceDetailItem = {
   date: string;
   sales_id: number | null;
   quotation_id: number | null;
+  cust_id: number | null;
   type: InvoiceType;
   due_date: string;
   online_or_offline: OnlineOrOffline;
   transport: string;
   status: InvoiceStatus;
+  product_ids: number[];
+  quantities: number[];
+  rates: number[];
+  tax_percs: number[];
+  description: string;
   total_amount_before_tax: number;
   total_tax_amount: number;
   total_amount_after_tax: number;
@@ -60,11 +72,17 @@ function toInvoice(item: InvoiceDetailItem): Invoice {
     date: item.date,
     salesId: item.sales_id,
     quotationId: item.quotation_id,
+    custId: item.cust_id,
     type: item.type,
     dueDate: item.due_date,
     onlineOrOffline: item.online_or_offline,
     transport: item.transport,
     status: item.status,
+    productIds: item.product_ids,
+    quantities: item.quantities,
+    rates: item.rates,
+    taxPercs: item.tax_percs,
+    description: item.description,
     totalAmountBeforeTax: item.total_amount_before_tax,
     totalTaxAmount: item.total_tax_amount,
     totalAmountAfterTax: item.total_amount_after_tax,
@@ -82,9 +100,8 @@ export async function fetchInvoices(): Promise<Invoice[]> {
   return items.map(toInvoice);
 }
 
-// Manual creation is standard-only — proforma invoices only come from the
-// quotation-acceptance flow (see purchase-invoices-tab.tsx's sibling,
-// invoices-tab.tsx, for the Proforma view which has no "+ New" action).
+// Manual creation via this function is standard-only — proforma invoices
+// are created through createProformaInvoice below instead.
 export type CreateInvoicePayload = {
   salesId: number;
   date: string;
@@ -129,6 +146,80 @@ export async function updateInvoice(payload: UpdateInvoicePayload): Promise<Resp
       transport: payload.transport,
       status: payload.status,
       is_deleted: payload.isDeleted,
+    }),
+  });
+}
+
+// Proforma invoices are raised by hand — own customer + line items, no
+// sales order/quotation involved. Mirrors lib/quotations.ts's
+// createQuotation/updateQuotation exactly (same parallel-array line-item
+// convention, same "create returns id so the caller can chain into a PDF
+// download" reasoning).
+export type ProformaInvoiceLineItemPayload = {
+  productId: number;
+  quantity: number;
+  rate: number;
+  taxPerc: number;
+};
+
+export type CreateProformaInvoicePayload = {
+  custId: number;
+  date: string;
+  dueDate: string;
+  lineItems: ProformaInvoiceLineItemPayload[];
+  description: string;
+};
+
+export type UpdateProformaInvoicePayload = CreateProformaInvoicePayload & {
+  id: number;
+  isDeleted?: boolean;
+};
+
+function proformaLineItemsToParallelArrays(lineItems: ProformaInvoiceLineItemPayload[]) {
+  return {
+    product_ids: lineItems.map((item) => item.productId),
+    quantities: lineItems.map((item) => item.quantity),
+    rates: lineItems.map((item) => item.rate),
+    tax_percs: lineItems.map((item) => item.taxPerc),
+  };
+}
+
+export async function createProformaInvoice(
+  payload: CreateProformaInvoicePayload,
+): Promise<{ id: number; invoiceNoDisplay: string }> {
+  const response = await apiFetch("/admin/create_new_proforma_invoice", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      cust_id: payload.custId,
+      date: payload.date,
+      due_date: payload.dueDate,
+      description: payload.description,
+      ...proformaLineItemsToParallelArrays(payload.lineItems),
+    }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    throw new Error(typeof detail?.detail === "string" ? detail.detail : "Failed to create proforma invoice");
+  }
+
+  const body: { id: number; invoice_no_display: string } = await response.json();
+  return { id: body.id, invoiceNoDisplay: body.invoice_no_display };
+}
+
+export async function updateProformaInvoice(payload: UpdateProformaInvoicePayload): Promise<Response> {
+  return apiFetch("/admin/update_proforma_invoice_details", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: payload.id,
+      is_deleted: payload.isDeleted ?? false,
+      cust_id: payload.custId,
+      date: payload.date,
+      due_date: payload.dueDate,
+      description: payload.description,
+      ...proformaLineItemsToParallelArrays(payload.lineItems),
     }),
   });
 }

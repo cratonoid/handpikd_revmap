@@ -1,18 +1,17 @@
-# Renders a QuotationDetails row (plus its joined line items/customer/seller
-# data) into a PDF. Fills a static Jinja2 HTML template
-# (app/templates/quotation.html) and rasterizes it with a headless Chromium
-# browser (see app/services/pdf_renderer.py) — the structure/styling
-# therefore live in the template, not in this file. Swap the template's
-# markup to restyle the document without touching this module. Pure
-# rendering only — routes/quotations.py does all the DB lookups and joins
-# (QuotationSummary, ProductDetails, ProductImageDetails, CustomerDetails,
-# CustomerPocDetails, personal_details) and passes plain data in.
+# Renders a proforma InvoiceDetails row (plus its joined line items/customer/
+# seller data) into a PDF. Same approach as quotation_pdf.py — fills a static
+# Jinja2 HTML template (app/templates/proforma_invoice.html) and rasterizes it
+# with a headless Chromium browser (see app/services/pdf_renderer.py). Pure
+# rendering only — routes/invoices.py does all the DB lookups and joins
+# (ProformaInvoiceSummary, ProductDetails, ProductImageDetails,
+# CustomerDetails, CustomerPocDetails, personal_details) and passes plain
+# data in.
 #
 # Unlike invoice_pdf.py's tax-invoice layout (CGST/SGST vs IGST split,
-# GSTIN/place-of-supply, bank details, signature block), a quotation isn't a
-# GST document — it shows a flat "GST %" + amount per line (matching
-# Handpikd's actual quotation format, a sample of which this was built
-# against) rather than an interstate/intrastate tax split.
+# GSTIN/place-of-supply, bank details, signature block), a proforma invoice
+# raised this way isn't a GST document — it shows a flat "GST %" + amount per
+# line, same as quotation_pdf.py, and reuses the same quotation_tnc/
+# quotation_notes personal-details fields (no separate proforma wording).
 from __future__ import annotations
 
 import base64
@@ -57,14 +56,14 @@ def _product_image_data_uri(image_path: str | None) -> str | None:
 
 
 @dataclass
-class QuotationLineItem:
+class ProformaInvoiceLineItem:
     product_name: str
     image_path: str | None  # raw "/media/..." path, resolved to a data URI here
     unit_price: float  # product's listed/MRP price (informational reference)
-    rate: float  # the actual per-unit price charged on this quotation line
+    rate: float  # the actual per-unit price charged on this line
     quantity: int
     tax_perc: float
-    total: float  # (rate + rate * tax_perc / 100) * quantity, from QuotationSummary
+    total: float  # (rate + rate * tax_perc / 100) * quantity, from ProformaInvoiceSummary
 
 
 def _money(value: float) -> str:
@@ -85,13 +84,12 @@ _FOOTER_TEMPLATE = """
 """
 
 
-async def generate_quotation_pdf(
+async def generate_proforma_invoice_pdf(
     *,
-    quotation_no: int,
-    quotation_date: datetime,
-    valid_till: datetime,
-    status: str,
-    line_items: list[QuotationLineItem],
+    invoice_no_display: str,
+    invoice_date: datetime,
+    due_date: datetime,
+    line_items: list[ProformaInvoiceLineItem],
     total_amount_after_tax: float,
     description: str,
     customer_name: str,
@@ -124,15 +122,14 @@ async def generate_quotation_pdf(
             }
         )
 
-    template = _env.get_template("quotation.html")
+    template = _env.get_template("proforma_invoice.html")
     html_content = template.render(
         logo_data_uri=_LOGO_DATA_URI,
         company_name=personal.get("company_name") or "Handpikd",
         personal=personal,
-        quotation_no=quotation_no,
-        quotation_date=quotation_date.strftime("%d %b, %Y"),
-        valid_till=valid_till.strftime("%d %b, %Y"),
-        status=status.title(),
+        invoice_no_display=invoice_no_display,
+        invoice_date=invoice_date.strftime("%d %b, %Y"),
+        due_date=due_date.strftime("%d %b, %Y"),
         description=description,
         customer_name=customer_name,
         customer_address=customer_address,

@@ -26,6 +26,11 @@ ATTRIBUTE_IDS: dict[str, int] = {
     # signature line — kept separate since they're different values in
     # practice (e.g. "Handpikd" vs. "Alvis Abreo").
     "company_name": 16,
+    # "/media/signatures/<uuid>.<ext>" path (see services/storage.py's
+    # upload_signature_image) of the company's own signature scan, embedded
+    # on offline invoices — see routes/invoices.py's get_invoice_pdf and
+    # services/invoice_pdf.py's show_signature param.
+    "signature_image": 17,
 }
 
 

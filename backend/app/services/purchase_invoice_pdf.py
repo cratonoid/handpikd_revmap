@@ -16,7 +16,7 @@ from app.services.invoice_pdf import InvoiceLineItem, generate_invoice_pdf
 PurchaseInvoiceLineItem = InvoiceLineItem
 
 
-def generate_purchase_invoice_pdf(
+async def generate_purchase_invoice_pdf(
     *,
     purchase_invoice_no: str,
     invoice_date: datetime,
@@ -30,7 +30,7 @@ def generate_purchase_invoice_pdf(
     vendor_gstin: str,
     personal: dict[str, str],
 ) -> bytes:
-    return generate_invoice_pdf(
+    return await generate_invoice_pdf(
         invoice_no=purchase_invoice_no,
         invoice_date=invoice_date,
         due_date=invoice_date,

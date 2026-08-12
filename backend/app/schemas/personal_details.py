@@ -27,3 +27,11 @@ class UpdatePersonalDetailsRequest(BaseModel):
 
 class UpdatePersonalDetailsResponse(BaseModel):
     message: str
+
+
+class UploadSignatureImageResponse(BaseModel):
+    # Public /media URL of the just-uploaded signature scan (see
+    # services/storage.py's upload_signature_image) — the frontend saves this
+    # into personal_details' "signature_image" attribute via the normal
+    # update_personal_details call, same two-step flow as product images.
+    url: str

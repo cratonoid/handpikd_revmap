@@ -32,3 +32,25 @@ export async function updatePersonalDetails(values: Record<string, string>): Pro
     body: JSON.stringify({ values }),
   });
 }
+
+// Uploads the company's signature scan via POST /admin/upload_signature_image
+// (backend/app/services/storage.py) and returns its served /media URL. Same
+// two-step flow as lib/products.ts's uploadProductImage: this only stores the
+// file and hands back its path -- the caller still has to save it into the
+// "signature_image" personal_details attribute via updatePersonalDetails.
+export async function uploadSignatureImage(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await apiFetch("/admin/upload_signature_image", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to upload signature image");
+  }
+
+  const { url }: { url: string } = await response.json();
+  return url;
+}

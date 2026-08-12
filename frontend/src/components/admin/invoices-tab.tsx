@@ -6,25 +6,27 @@
 // Mirrors sales-orders-tab.tsx, plus an inner Standard/Proforma view toggle
 // (same .viewToggle pattern as invoices-page-client.tsx/orders-page-client.tsx)
 // filtering the one GET /admin/get_invoice_details list client-side by
-// invoice.type. Proforma invoices are generated automatically when a
-// quotation is marked accepted (routes/quotations.py) — there's no "+ New
-// invoice" action in that view, only view/edit/void/download on rows that
-// already exist. "+ New invoice" in the Standard view opens the popup in
-// "add" mode; double-clicking a row opens it in "edit" mode. Both modes save
-// through invoice-form-modal.tsx, which POSTs to
-// create_new_invoice/update_invoice_details (backend/app/api/routes/invoices.py).
+// invoice.type. Both views support "+ New invoice", opening the popup in
+// "add" mode; double-clicking a row opens it in "edit" mode. Standard saves
+// through invoice-form-modal.tsx (POSTs to create_new_invoice/
+// update_invoice_details); Proforma saves through
+// proforma-invoice-form-modal.tsx (its own line items, POSTs to
+// create_new_proforma_invoice/update_proforma_invoice_details) — both in
+// backend/app/api/routes/invoices.py.
 //
 // "Company details" opens personal-details-modal.tsx — the seller/bank/terms
-// info baked onto every generated PDF (backend/app/services/invoice_pdf.py),
-// stored in the #personal_details EAV table (lib/personal-details.ts).
+// info baked onto every generated PDF (backend/app/services/invoice_pdf.py,
+// proforma_invoice_pdf.py), stored in the #personal_details EAV table
+// (lib/personal-details.ts).
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { InvoiceFormModal } from "@/components/admin/invoice-form-modal";
+import { ProformaInvoiceFormModal } from "@/components/admin/proforma-invoice-form-modal";
 import { PersonalDetailsModal } from "@/components/admin/personal-details-modal";
 import { downloadInvoicePdf, fetchInvoices, type Invoice, type InvoiceStatus, type InvoiceType } from "@/lib/invoices";
 import { fetchPersonalDetails } from "@/lib/personal-details";
 import { fetchSalesOrders, type SalesOrder } from "@/lib/sales-orders";
-import { fetchQuotations, type Quotation } from "@/lib/quotations";
+import { fetchProducts, type Product } from "@/lib/products";
 import { fetchCustomerList, type CustomerOption } from "@/lib/customers";
 import styles from "@/styles/dashboard.module.css";
 
@@ -40,7 +42,7 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
 export function InvoicesTab() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
-  const [quotations, setQuotations] = useState<Quotation[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [personalDetails, setPersonalDetails] = useState<Record<string, string>>({});
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -51,7 +53,6 @@ export function InvoicesTab() {
   const [invoiceType, setInvoiceType] = useState<InvoiceType>("standard");
 
   const salesOrdersById = new Map(salesOrders.map((order) => [order.id, order]));
-  const quotationsById = new Map(quotations.map((quotation) => [quotation.id, quotation]));
   const customersById = new Map(customers.map((c) => [c.id, c]));
   const visibleInvoices = invoices.filter((invoice) => invoice.type === invoiceType);
 
@@ -59,13 +60,13 @@ export function InvoicesTab() {
     return Promise.all([
       fetchInvoices(),
       fetchSalesOrders(),
-      fetchQuotations(),
+      fetchProducts(),
       fetchCustomerList(),
       fetchPersonalDetails(),
-    ]).then(([invoiceData, salesOrderData, quotationData, customerData, personalData]) => {
+    ]).then(([invoiceData, salesOrderData, productData, customerData, personalData]) => {
       setInvoices(invoiceData);
       setSalesOrders(salesOrderData);
-      setQuotations(quotationData);
+      setProducts(productData);
       setCustomers(customerData);
       setPersonalDetails(personalData);
     });
@@ -110,6 +111,15 @@ export function InvoicesTab() {
       .catch(() => {});
   }
 
+  // "add" mode has no invoice yet to read a type off, so it falls back to
+  // whichever view (Standard/Proforma) the "+ New invoice" button was
+  // clicked from.
+  const modalInvoiceType: InvoiceType | null = modalState
+    ? modalState.mode === "edit"
+      ? modalState.invoice.type
+      : invoiceType
+    : null;
+
   async function handleDownload(invoice: Invoice) {
     setDownloadError(null);
     setDownloadingId(invoice.id);
@@ -149,17 +159,15 @@ export function InvoicesTab() {
         <p className={styles.pageSubtext}>
           {invoiceType === "standard"
             ? "Raise invoices against existing sales orders."
-            : "Proforma invoices are generated automatically when a quotation is marked Accepted."}
+            : "Raise proforma invoices by hand, before a sales order or shipment exists."}
         </p>
         <div className={styles.modalActionsRight}>
           <Button type="button" variant="tertiary" onClick={() => setShowCompanyDetails(true)}>
             Company details
           </Button>
-          {invoiceType === "standard" && (
-            <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
-              + New invoice
-            </Button>
-          )}
+          <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
+            + New invoice
+          </Button>
         </div>
       </div>
 
@@ -176,11 +184,11 @@ export function InvoicesTab() {
               <th className={styles.tableHeadCell}>S.No</th>
               <th className={styles.tableHeadCell}>Invoice no.</th>
               <th className={styles.tableHeadCell}>Date</th>
-              <th className={styles.tableHeadCell}>{invoiceType === "standard" ? "Sales order" : "Quotation"}</th>
+              {invoiceType === "standard" && <th className={styles.tableHeadCell}>Sales order</th>}
               <th className={styles.tableHeadCell}>Customer</th>
               <th className={styles.tableHeadCell}>Due date</th>
-              <th className={styles.tableHeadCell}>Payment</th>
-              <th className={styles.tableHeadCell}>Status</th>
+              {invoiceType === "standard" && <th className={styles.tableHeadCell}>Payment</th>}
+              {invoiceType === "standard" && <th className={styles.tableHeadCell}>Status</th>}
               <th className={styles.tableHeadCell}>Amount</th>
               <th className={styles.tableHeadCell}>PDF</th>
             </tr>
@@ -188,14 +196,8 @@ export function InvoicesTab() {
           <tbody>
             {visibleInvoices.map((invoice, index) => {
               const salesOrder = invoice.salesId ? salesOrdersById.get(invoice.salesId) : undefined;
-              const quotation = invoice.quotationId ? quotationsById.get(invoice.quotationId) : undefined;
-              const custId = salesOrder?.custId ?? quotation?.custId;
+              const custId = salesOrder?.custId ?? invoice.custId ?? undefined;
               const customerName = custId !== undefined ? customersById.get(custId)?.name : undefined;
-              const sourceLabel = salesOrder
-                ? `SO-${salesOrder.orderNo}`
-                : quotation
-                  ? `Quotation #${quotation.quotationNo}`
-                  : "—";
               return (
                 <tr
                   key={invoice.id || `${invoice.invoiceNo}-${index}`}
@@ -205,11 +207,17 @@ export function InvoicesTab() {
                   <td className={styles.tableCell}>{index + 1}</td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{invoice.invoiceNoDisplay}</td>
                   <td className={styles.tableCell}>{new Date(invoice.date).toLocaleDateString()}</td>
-                  <td className={styles.tableCell}>{sourceLabel}</td>
+                  {invoiceType === "standard" && (
+                    <td className={styles.tableCell}>{salesOrder ? `SO-${salesOrder.orderNo}` : "—"}</td>
+                  )}
                   <td className={styles.tableCell}>{customerName ?? "—"}</td>
                   <td className={styles.tableCell}>{new Date(invoice.dueDate).toLocaleDateString()}</td>
-                  <td className={styles.tableCell}>{invoice.onlineOrOffline === "online" ? "Online" : "Offline"}</td>
-                  <td className={styles.tableCell}>{STATUS_LABEL[invoice.status]}</td>
+                  {invoiceType === "standard" && (
+                    <td className={styles.tableCell}>{invoice.onlineOrOffline === "online" ? "Online" : "Offline"}</td>
+                  )}
+                  {invoiceType === "standard" && (
+                    <td className={styles.tableCell}>{STATUS_LABEL[invoice.status]}</td>
+                  )}
                   <td className={styles.tableCell}>₹{invoice.totalAmountAfterTax.toFixed(2)}</td>
                   <td className={styles.tableCell}>
                     <button
@@ -232,18 +240,28 @@ export function InvoicesTab() {
         {loadState === "loading" && <p className={styles.pageSubtext}>Loading invoices…</p>}
         {loadState === "loaded" && visibleInvoices.length === 0 && (
           <p className={styles.pageSubtext}>
-            {invoiceType === "standard" ? "No invoices raised yet." : "No proforma invoices generated yet."}
+            {invoiceType === "standard" ? "No invoices raised yet." : "No proforma invoices raised yet."}
           </p>
         )}
       </div>
 
-      {modalState && (
+      {modalState && modalInvoiceType === "standard" && (
         <InvoiceFormModal
           mode={modalState.mode}
           initialInvoice={modalState.mode === "edit" ? modalState.invoice : undefined}
           salesOrders={salesOrders}
-          quotations={quotations}
           customers={customers}
+          onClose={() => setModalState(null)}
+          onSaved={handleSaved}
+        />
+      )}
+
+      {modalState && modalInvoiceType === "proforma" && (
+        <ProformaInvoiceFormModal
+          mode={modalState.mode}
+          initialInvoice={modalState.mode === "edit" ? modalState.invoice : undefined}
+          customers={customers}
+          products={products}
           onClose={() => setModalState(null)}
           onSaved={handleSaved}
         />

@@ -6,4 +6,3 @@ venv/
 .pytest_cache/
 *.egg-info/
 media/
-quotations/
