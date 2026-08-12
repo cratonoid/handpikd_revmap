@@ -10,10 +10,19 @@
     --hp-ink: #1a1a1a;
   }
 
-  /* Page size/margins and the "Page X of Y" footer are supplied by
-     Chromium's print-to-PDF options instead of CSS @page here — see
-     app/services/pdf_renderer.py's render_html_to_pdf (margin) and
-     proforma_invoice_pdf.py's _FOOTER_TEMPLATE (page numbers). */
+  /* Page size and the "Page X of Y" footer are supplied by Chromium's
+     print-to-PDF options instead of CSS @page here — see
+     app/services/pdf_renderer.py's render_html_to_pdf and
+     proforma_invoice_pdf.py's _FOOTER_TEMPLATE (page numbers).
+
+     The page *margins*, unlike the tax-invoice template, are NOT Chromium's:
+     proforma_invoice_pdf.py renders this one with zero print margins so the
+     .corner-accent triangles can bleed to the physical sheet corners (a
+     Chromium print margin shrinks the document's whole coordinate space, so
+     a fixed element pinned to top:0/right:0 lands at the margin's inner
+     corner, and pulling it back out with negative offsets just gets clipped
+     at the content box). The margins are recreated inside the document by
+     .page-frame instead. */
 
   * { box-sizing: border-box; }
   body {
@@ -25,17 +34,31 @@
   table { border-collapse: collapse; width: 100%; }
   p { margin: 0; }
 
+  /* The document's page margins. Chromium prints this template with zero
+     margins (see the note above), so the sheet's whitespace is reserved here
+     instead: a table whose thead/tfoot Chromium repeats at the top/bottom of
+     every page, acting as fixed-height spacers so that interior pages get
+     the same breathing room as the first and last. Print-margin whitespace
+     has to be recreated with repeating table sections like this — CSS
+     padding on a wrapper would only inset the start and end of the flow, not
+     each page. The bottom spacer is taller to clear _FOOTER_TEMPLATE's page
+     number, which Chromium draws just above the sheet's bottom edge. */
+  .page-frame > thead > tr > td { height: 16mm; }
+  .page-frame > tfoot > tr > td { height: 18mm; }
+  .page-frame > tbody > tr > td { padding: 0 16mm; vertical-align: top; }
+
   /* Corner accent, mirroring the brand's diagonal-cut motif — kept as a
      small corner flourish rather than the large dominant triangles in the
-     hand-made sample, so it reads as an accent, not the whole page.
-     position:fixed here is relative to the page's own content box (the
-     margins are applied by Chromium's print pipeline, outside this
-     document's own coordinate space — see pdf_renderer.py), which is the
-     same top-right corner .contact-block's text sits flush against. Content
-     near either corner reserves clearance equal to ACCENT_SIZE below
-     (.contact-block's padding-right) rather than relying on z-index to
-     paint over it, since fixed-position stacking order for repeated
-     print-page decoration isn't consistently honored across renderers. */
+     hand-made sample, so it reads as an accent, not the whole page. With
+     zero print margins the fixed-position containing block is the physical
+     sheet, so top/right/bottom/left:0 puts these flush in the paper's
+     corners, bleeding past .page-frame's margins the way the brand's
+     reference quotations do. They therefore overlap the content column by
+     (accent size - page margin); content near a corner reserves clearance
+     for that overlap (.contact-block's padding-right) rather than relying on
+     z-index to paint over it, since fixed-position stacking order for
+     repeated print-page decoration isn't consistently honored across
+     renderers. */
   .corner-accent {
     position: fixed;
     width: 18mm;
@@ -86,10 +109,11 @@
     text-transform: uppercase;
     margin-top: 1mm;
   }
-  /* padding-right clears the top-right corner-accent's 18mm footprint so
-     its text never sits under/behind the triangle (see corner-accent
-     above). */
-  .contact-block { text-align: right; font-size: 8pt; color: var(--hp-navy); padding-right: 21mm; }
+  /* padding-right clears the part of the top-right corner-accent that
+     overhangs the content column (18mm accent - 16mm page margin, plus
+     slack) so its text never sits under/behind the triangle (see
+     corner-accent above). */
+  .contact-block { text-align: right; font-size: 8pt; color: var(--hp-navy); padding-right: 5mm; }
   .contact-block p { margin: 1px 0; }
 
   .title-row {
@@ -192,6 +216,9 @@
     text-align: right;
     font-size: 8.5pt;
     color: var(--hp-navy);
+    /* Keep "For <company>" and the signatory line together — without this a
+       page break lands between them when the last page fills up. */
+    break-inside: avoid;
   }
   .signoff .company { font-weight: bold; margin-top: 10mm; }
   .signoff .role { color: #777; font-size: 7.5pt; }
@@ -207,6 +234,11 @@
     <div class="tri-black"></div>
     <div class="tri-yellow"></div>
   </div>
+
+  <table class="page-frame">
+  <thead><tr><td></td></tr></thead>
+  <tfoot><tr><td></td></tr></tfoot>
+  <tbody><tr><td>
 
   <div class="letterhead">
     <div class="logo-block">
@@ -316,6 +348,9 @@
     <p class="company">For {{ company_name }}</p>
     <p class="role">Authorised Signatory</p>
   </div>
+
+  </td></tr></tbody>
+  </table>
 
 </body>
 </html>

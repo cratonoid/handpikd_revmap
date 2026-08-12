@@ -23,19 +23,6 @@ export default function CataloguePage() {
     <>
       <Header />
       <main className={sharedStyles.pageMain}>
-        <section className={styles.banner}>
-          <div className={styles.bannerInner}>
-            <h1 className={styles.bannerHeading}>
-              Corporate Gift Catalogue — Premium Business Gifts
-            </h1>
-            <p className={styles.bannerParagraph}>
-              Explore our full range of premium corporate gifts, branded merchandise, and
-              custom business gifting solutions for every occasion — serving Bangalore and
-              across India.
-            </p>
-          </div>
-        </section>
-
         <CataloguePageClient />
 
         <div className={styles.ctaWrap}>

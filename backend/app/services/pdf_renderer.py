@@ -34,12 +34,29 @@ async def stop_browser() -> None:
         _playwright = None
 
 
-async def render_html_to_pdf(html: str, *, footer_template: str | None = None) -> bytes:
+_DEFAULT_MARGIN = {"top": "16mm", "right": "16mm", "bottom": "18mm", "left": "16mm"}
+
+
+async def render_html_to_pdf(
+    html: str,
+    *,
+    footer_template: str | None = None,
+    margin: dict[str, str] | None = None,
+    layout_width_mm: float | None = None,
+) -> bytes:
     if _browser is None:
         raise RuntimeError("PDF renderer browser is not started — did app startup call start_browser()?")
 
     page = await _browser.new_page()
     try:
+        if layout_width_mm is not None:
+            # Templates that measure their own layout (invoice.html sizes its
+            # grid to the remaining page height) need the on-screen box they
+            # measure to match the one Chromium paginates, so lay the document
+            # out at the printable width rather than the default viewport's.
+            await page.set_viewport_size(
+                {"width": round(layout_width_mm * 96 / 25.4), "height": 1123}
+            )
         # No external resources to wait on — quotation_pdf.py bakes the logo
         # and product photos in as base64 data URIs and only uses system
         # fonts, so "load" is reached deterministically without a network
@@ -52,8 +69,10 @@ async def render_html_to_pdf(html: str, *, footer_template: str | None = None) -
             # rules when prefer_css_page_size is set, which then fights with
             # margin/displayHeaderFooter in ways that are finicky to get
             # right). Bottom is taller than the others to leave room for the
-            # footer_template's page-number line.
-            margin={"top": "16mm", "right": "16mm", "bottom": "18mm", "left": "16mm"},
+            # footer_template's page-number line. Callers whose layout needs
+            # more of the sheet (invoice_pdf.py's full-width ruled grid) pass
+            # their own margin.
+            margin=margin or _DEFAULT_MARGIN,
             print_background=True,  # Chromium omits background colors/images by default when printing
             display_header_footer=footer_template is not None,
             header_template="<div></div>",

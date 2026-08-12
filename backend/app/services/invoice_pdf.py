@@ -79,10 +79,21 @@ def _money(value: float) -> str:
     return f"Rs.{value:,.2f}"
 
 
+# Narrower than pdf_renderer's default so the invoice's ruled grid runs close
+# to the paper edge, the way a printed GST invoice does — the template is one
+# full-width bordered table, not a letterhead with breathing room. The
+# resulting content box is handed to the template too, which stretches its
+# line-item grid to fill the leftover height.
+_A4_WIDTH_MM, _A4_HEIGHT_MM = 210, 297
+_MARGIN_MM = {"top": 10, "right": 10, "bottom": 12, "left": 10}
+_PAGE_MARGIN = {side: f"{value}mm" for side, value in _MARGIN_MM.items()}
+_CONTENT_WIDTH_MM = _A4_WIDTH_MM - _MARGIN_MM["left"] - _MARGIN_MM["right"]
+_CONTENT_HEIGHT_MM = _A4_HEIGHT_MM - _MARGIN_MM["top"] - _MARGIN_MM["bottom"]
+
 # See quotation_pdf.py's _FOOTER_TEMPLATE for why this is a separate HTML
 # snippet rather than a CSS @page rule.
 _FOOTER_TEMPLATE = """
-<div style="width: 100%; font-family: Helvetica, Arial, sans-serif; font-size: 7.5px; color: #888; text-align: right; padding-right: 16mm;">
+<div style="width: 100%; font-family: Helvetica, Arial, sans-serif; font-size: 7.5px; color: #888; text-align: right; padding-right: 10mm;">
   Page <span class="pageNumber"></span> of <span class="totalPages"></span>
 </div>
 """
@@ -150,6 +161,7 @@ async def generate_invoice_pdf(
 
     template = _env.get_template("invoice.html")
     html_content = template.render(
+        content_height_mm=_CONTENT_HEIGHT_MM,
         logo_data_uri=_LOGO_DATA_URI,
         company_name=personal.get("company_name") or "Handpikd",
         personal=personal,
@@ -186,4 +198,9 @@ async def generate_invoice_pdf(
         signature_data_uri=signature_data_uri,
     )
 
-    return await render_html_to_pdf(html_content, footer_template=_FOOTER_TEMPLATE)
+    return await render_html_to_pdf(
+        html_content,
+        footer_template=_FOOTER_TEMPLATE,
+        margin=_PAGE_MARGIN,
+        layout_width_mm=_CONTENT_WIDTH_MM,
+    )

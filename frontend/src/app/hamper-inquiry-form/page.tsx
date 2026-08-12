@@ -1,10 +1,9 @@
 // Route: "/hamper-inquiry-form" (this file sits in an `app/hamper-inquiry-form/`
 // folder).
 //
-// A Server Component: the banner is static text, so it's rendered here
-// directly. The actual multi-step form (needs client state for the current
-// step, fetched hierarchy, and selections) lives in the separate Client
-// Component <HamperInquiryFormClient>.
+// A Server Component wrapper. The actual multi-step form (needs client state
+// for the current step, fetched hierarchy, and selections) lives in the
+// separate Client Component <HamperInquiryFormClient>.
 import type { Metadata } from "next";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
@@ -23,16 +22,6 @@ export default function HamperInquiryFormPage() {
     <>
       <Header />
       <main className={sharedStyles.pageMain}>
-        <section className={styles.banner}>
-          <div className={styles.bannerInner}>
-            <h1 className={styles.bannerHeading}>Hamper Inquiry Form</h1>
-            <p className={styles.bannerParagraph}>
-              Tell us a bit about what you need and we&apos;ll put together hamper options that fit your occasion
-              and budget.
-            </p>
-          </div>
-        </section>
-
         <div className={styles.pageInner}>
           <HamperInquiryFormClient />
         </div>

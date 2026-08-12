@@ -83,6 +83,14 @@ _FOOTER_TEMPLATE = """
 </div>
 """
 
+# Printed edge-to-edge so the template's corner accents can bleed into the
+# sheet's actual corners — a Chromium print margin would shrink the document's
+# coordinate space and strand them at the margin's inner corner instead. The
+# page margins are recreated inside the document by proforma_invoice.html's
+# .page-frame (its repeating thead/tfoot spacers), which is also what keeps
+# _FOOTER_TEMPLATE's page number off the content.
+_FULL_BLEED_MARGIN = {"top": "0", "right": "0", "bottom": "0", "left": "0"}
+
 
 async def generate_proforma_invoice_pdf(
     *,
@@ -142,4 +150,8 @@ async def generate_proforma_invoice_pdf(
         quotation_notes=[line.strip() for line in personal.get("quotation_notes", "").splitlines() if line.strip()],
     )
 
-    return await render_html_to_pdf(html_content, footer_template=_FOOTER_TEMPLATE)
+    return await render_html_to_pdf(
+        html_content,
+        footer_template=_FOOTER_TEMPLATE,
+        margin=_FULL_BLEED_MARGIN,
+    )
