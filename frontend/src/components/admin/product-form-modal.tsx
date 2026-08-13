@@ -298,6 +298,21 @@ export function ProductFormModal({
       return;
     }
 
+    if (Number(vendorRate) <= 0) {
+      setError("Vendor rate must be greater than 0.");
+      return;
+    }
+
+    if (Number(actualPrice) <= 0) {
+      setError("Actual price must be greater than 0.");
+      return;
+    }
+
+    if (Number(discountedPrice) <= 0) {
+      setError("Discounted price must be greater than 0.");
+      return;
+    }
+
     void submitPayload(!wasHidden);
   }
 

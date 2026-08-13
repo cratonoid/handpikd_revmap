@@ -104,7 +104,6 @@ export function PurchaseOrdersTab() {
               <th className={styles.tableHeadCell}>Vendor</th>
               <th className={styles.tableHeadCell}>Before tax</th>
               <th className={styles.tableHeadCell}>After tax</th>
-              <th className={styles.tableHeadCell}>Description</th>
             </tr>
           </thead>
           <tbody>
@@ -120,7 +119,6 @@ export function PurchaseOrdersTab() {
                 <td className={styles.tableCell}>{vendorsById.get(order.vendorId)?.registeredName ?? "—"}</td>
                 <td className={styles.tableCell}>₹{order.totalAmountBeforeTax.toFixed(2)}</td>
                 <td className={styles.tableCell}>₹{order.totalAmountAfterTax.toFixed(2)}</td>
-                <td className={styles.tableCell}>{order.description}</td>
               </tr>
             ))}
           </tbody>

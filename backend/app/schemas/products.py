@@ -1,14 +1,14 @@
 # Request/response bodies for the products module's endpoints.
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AddProductDetailsRequest(BaseModel):
     product_name: str
     hsn_code: str
     vendor_id: int
-    vendor_rate: float
-    actual_price: float
-    discounted_price: float
+    vendor_rate: float = Field(gt=0)
+    actual_price: float = Field(gt=0)
+    discounted_price: float = Field(gt=0)
     gst_perc: float
     category_ids: list[int]
     moq: int
@@ -51,9 +51,9 @@ class UpdateProductDetailsRequest(BaseModel):
     product_name: str
     hsn_code: str
     vendor_id: int
-    vendor_rate: float
-    actual_price: float
-    discounted_price: float
+    vendor_rate: float = Field(gt=0)
+    actual_price: float = Field(gt=0)
+    discounted_price: float = Field(gt=0)
     gst_perc: float
     category_ids: list[int]
     moq: int

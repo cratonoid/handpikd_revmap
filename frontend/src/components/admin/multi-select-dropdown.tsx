@@ -26,6 +26,12 @@ export type MultiSelectOption = {
   // parent category picks its whole subtree instead of leaving children
   // unselected. See lib/categories.ts's descendantIdsById.
   descendantIds?: string[];
+  // Every ancestor's value, root-first — when set, selecting this option
+  // also selects its full ancestor chain (so picking a sub-sub category
+  // picks its parent and grandparent too). Deselecting it drops those
+  // auto-added ancestors again, unless another still-selected option also
+  // descends from them. See lib/categories.ts's ancestorIdsById.
+  ancestorIds?: string[];
 };
 
 export function MultiSelectDropdown({
@@ -87,14 +93,32 @@ export function MultiSelectDropdown({
     // Selecting/deselecting a category with children carries its whole
     // subtree along with it, so a parent's checked state always matches
     // "all of its descendants are selected too."
-    const descendantIds = options.find((o) => o.value === value)?.descendantIds ?? [];
+    const option = options.find((o) => o.value === value);
+    const descendantIds = option?.descendantIds ?? [];
+    const ancestorIds = option?.ancestorIds ?? [];
     const group = [value, ...descendantIds];
 
     if (selectedSet.has(value)) {
       const groupSet = new Set(group);
-      onChange(selectedValues.filter((v) => !groupSet.has(v)));
+      let remaining = selectedValues.filter((v) => !groupSet.has(v));
+
+      // Drop auto-added ancestors too, nearest parent first, but only ones
+      // no other still-selected option still needs (i.e. nothing left
+      // selected descends from them).
+      for (let i = ancestorIds.length - 1; i >= 0; i--) {
+        const ancestorId = ancestorIds[i];
+        if (!remaining.includes(ancestorId)) continue;
+        const ancestorDescendantIds = new Set(options.find((o) => o.value === ancestorId)?.descendantIds ?? []);
+        const stillNeeded = remaining.some((v) => v !== ancestorId && ancestorDescendantIds.has(v));
+        if (!stillNeeded) {
+          remaining = remaining.filter((v) => v !== ancestorId);
+        }
+      }
+      onChange(remaining);
     } else {
-      onChange([...new Set([...selectedValues, ...group])]);
+      // Selecting a sub-sub category (or deeper) also selects every
+      // category above it up to the root.
+      onChange([...new Set([...selectedValues, ...group, ...ancestorIds])]);
     }
   }
 

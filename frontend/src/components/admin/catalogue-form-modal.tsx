@@ -323,6 +323,10 @@ export function CatalogueFormModal({
               label="Vendor"
               placeholder="Select a vendor"
               required
+              // vendorOptions is always active-only (see comment above), so
+              // the Active/Deleted toggle would just be a permanently-empty
+              // "Deleted" tab.
+              showStatusFilter={false}
               options={vendorOptions}
               selectedValue={vendorId}
               onChange={setVendorId}

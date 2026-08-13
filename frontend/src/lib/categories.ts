@@ -150,3 +150,19 @@ export function descendantIdsById(tree: CategoryNode[]): Map<string, string[]> {
   walk(tree);
   return map;
 }
+
+// Every node's chain of ancestor ids, ordered root-first / immediate-parent
+// last — used by the product form's category multiselect so picking a
+// sub-sub category (or deeper) also picks every category above it up to the
+// root (see MultiSelectOption.ancestorIds in multi-select-dropdown.tsx).
+export function ancestorIdsById(tree: CategoryNode[]): Map<string, string[]> {
+  const map = new Map<string, string[]>();
+  function walk(nodes: CategoryNode[], path: string[]) {
+    for (const node of nodes) {
+      map.set(node.id, path);
+      walk(node.children, [...path, node.id]);
+    }
+  }
+  walk(tree, []);
+  return map;
+}

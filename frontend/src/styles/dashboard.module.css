@@ -245,6 +245,26 @@
 }
 
 /* -----------------------------------------------------------------------
+   Date-range bulk download row (components/admin/invoices-tab.tsx)
+   ----------------------------------------------------------------------- */
+
+.bulkDownloadRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.bulkDownloadRow .formLabel {
+  margin-bottom: 0.35rem;
+}
+
+.bulkDownloadRow .formInput {
+  width: auto;
+}
+
+/* -----------------------------------------------------------------------
    Profile page card (components/admin/profile-page-client.tsx) — same
    bordered-card look as .statCard, sized for a form instead of a stat
    -----------------------------------------------------------------------
@@ -1087,6 +1107,7 @@
 
 .selectWrapper {
   position: relative;
+  align-self: start;
 }
 
 .selectTrigger {

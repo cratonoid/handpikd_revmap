@@ -48,6 +48,7 @@ from app.services.personal_details import get_personal_details
 from app.services.purchase_invoice_parser import parse_purchase_invoice_pdf
 from app.services.purchase_invoice_pdf import PurchaseInvoiceLineItem, generate_purchase_invoice_pdf
 from app.services.purchase_invoice_storage import read_uploaded_pdf, save_uploaded_pdf
+from app.services.storage import LocalUploadBlockedError
 
 router = APIRouter(prefix="/admin", tags=["purchase-invoices"])
 
@@ -181,7 +182,10 @@ async def attach_purchase_invoice_pdf(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="this invoice has no PDF to attach")
 
     pdf_bytes = await file.read()
-    purchase_invoice.uploaded_pdf_path = save_uploaded_pdf(pdf_bytes)
+    try:
+        purchase_invoice.uploaded_pdf_path = save_uploaded_pdf(pdf_bytes)
+    except LocalUploadBlockedError as error:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error))
     await purchase_invoice.save()
 
     return AttachPurchaseInvoicePdfResponse(message="PDF attached successfully")
