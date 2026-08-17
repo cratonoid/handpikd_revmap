@@ -212,9 +212,83 @@
 }
 
 /* -----------------------------------------------------------------------
+   Add to Cart button + quantity stepper (add-to-cart-button.tsx)
+   -----------------------------------------------------------------------
+   Both states occupy the same slot at the bottom of a card and share the
+   same height/pill shape, so a card doesn't resize when a product is added
+   to (or removed from) the cart. */
+
+.addToCartButton {
+  margin-top: 0.75rem;
+  display: flex;
+  min-height: 2.5rem;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--color-charcoal) 70%, transparent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  color: var(--color-charcoal);
+  transition: all 0.2s;
+}
+
+.addToCartButton:hover {
+  background-color: var(--color-charcoal);
+  color: var(--color-cream);
+}
+
+.addToCartButton:active {
+  transform: scale(0.98);
+}
+
+.quantityStepper {
+  margin-top: 0.75rem;
+  display: flex;
+  min-height: 2.5rem;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-charcoal);
+  background-color: var(--color-charcoal);
+  padding-inline: 0.25rem;
+  color: var(--color-cream);
+}
+
+.quantityStepperButton {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: inherit;
+  transition: background-color 0.2s;
+}
+
+.quantityStepperButton:hover {
+  background-color: color-mix(in srgb, var(--color-cream) 22%, transparent);
+}
+
+.quantityStepperValue {
+  flex: 1;
+  text-align: center;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -----------------------------------------------------------------------
    Get It Now button + popup enquiry form (get-it-now-button.tsx,
    get-it-now-modal.tsx)
-   ----------------------------------------------------------------------- */
+   -----------------------------------------------------------------------
+   Not used by the product grid any more (cards now use Add to Cart, above)
+   — kept for the popup enquiry form's planned reuse on other pages. */
 
 .getItNowButton {
   margin-top: 0.75rem;

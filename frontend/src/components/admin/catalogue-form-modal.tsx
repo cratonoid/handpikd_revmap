@@ -15,30 +15,36 @@
 // category, not a specific subcategory.
 //
 // Images: a catalogue's pages always come from converting an uploaded PDF
-// (uploadCataloguePdf, see lib/catalogues.ts) rather than individual image
-// uploads or pasted URLs — picking a PDF renders every page and appends the
-// resulting page images (as "data:" URIs, not yet stored anywhere) to the
-// grid below, where the admin can drop any pages that shouldn't be kept
-// before saving. A page removed here that was already persisted (part of
-// the catalogue's saved imagePaths when the form opened) is deleted from
-// the backend right away, same as product images. Save itself is two-phase
-// (see handleSubmit): the details call carries only already-persisted
-// pages, then each new "data:" page is uploaded with its own
-// addCatalogueImage call — bundling every page into one request routinely
-// exceeded the server's request size limit on multi-page catalogues.
+// rather than individual image uploads or pasted URLs. Picking a PDF stages
+// it server-side, then pulls its pages one request at a time, appending each
+// to the grid below as it arrives (see handlePdfFileChange) — a 107-page
+// catalogue is ~400MB of page images, so converting it in a single call is
+// not an option. Pages arrive as "blob:" object URLs, not yet stored
+// anywhere, which is also what keeps them out of JS memory; the admin can
+// drop any of them before saving. A page removed here that was already
+// persisted (part of the catalogue's saved imagePaths when the form opened)
+// is deleted from the backend right away, same as product images. Save
+// itself is two-phase (see handleSubmit): the details call carries only
+// already-persisted pages, then each new "blob:" page is uploaded with its
+// own addCatalogueImage call — bundling every page into one request
+// routinely exceeded the server's request size limit on multi-page
+// catalogues.
 //
 // Unlike products/vendors, catalogues have no soft-delete flag — the delete
 // action here (edit mode only) is a real, permanent delete of the catalogue
 // and all its page images, gated behind an inline confirm.
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch, resolveMediaUrl } from "@/lib/api";
 import {
   addCatalogueImage,
   deleteCatalogue,
   deleteCatalogueImage,
+  discardCataloguePdfSession,
+  fetchCataloguePdfPage,
   uploadCataloguePdf,
   type Catalogue,
+  type CataloguePdfSession,
 } from "@/lib/catalogues";
 import type { VendorOption } from "@/lib/vendors";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
@@ -95,9 +101,26 @@ export function CatalogueFormModal({
   const [pageDeleteError, setPageDeleteError] = useState<string | null>(null);
   const [isUploadingPdf, setIsUploadingPdf] = useState(false);
   const [pdfUploadError, setPdfUploadError] = useState<string | null>(null);
+  // How far through the current PDF's pages the conversion has got, so a long
+  // catalogue shows real progress instead of an indefinite spinner.
+  const [pdfProgress, setPdfProgress] = useState<{ done: number; total: number } | null>(null);
   // Set once any page is actually deleted server-side this session — see
   // onImagesChangedWithoutSave above.
   const [hasUnsavedImageDeletion, setHasUnsavedImageDeletion] = useState(false);
+
+  // Every object URL this modal created, so they can be released on unmount.
+  // A revoked URL can't be read again, so pages still sitting in imagePaths
+  // are only revoked once the modal is actually going away (or the page is
+  // removed) — never on a failed Save, which leaves them in the grid to
+  // retry.
+  const pageObjectUrlsRef = useRef<string[]>([]);
+  useEffect(
+    () => () => {
+      pageObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      pageObjectUrlsRef.current = [];
+    },
+    [],
+  );
 
   const isEdit = mode === "edit";
   const title = isEdit ? "Edit catalogue" : "Add new catalogue";
@@ -122,9 +145,13 @@ export function CatalogueFormModal({
     isDeleted: false,
   }));
 
-  // Renders every page of the chosen PDF into an image and appends the
-  // results to the grid — the admin can drop any of them (including ones
-  // from an earlier upload) before saving.
+  // Uploads the chosen PDF, then walks its pages one request at a time,
+  // appending each to the grid as it arrives so the admin watches the
+  // catalogue fill in rather than waiting on one long request. Pages are
+  // fetched sequentially: page order stays trivially correct and only one
+  // page's bytes are ever in flight. If a page fails partway through, the
+  // pages already converted stay in the grid — they're good, and the admin
+  // can drop them or re-upload from there.
   async function handlePdfFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -132,22 +159,40 @@ export function CatalogueFormModal({
 
     setIsUploadingPdf(true);
     setPdfUploadError(null);
+    setPdfProgress(null);
 
+    let session: CataloguePdfSession | null = null;
     try {
-      const newPaths = await uploadCataloguePdf(file);
-      setImagePaths((prev) => [...prev, ...newPaths]);
+      session = await uploadCataloguePdf(file);
+      setPdfProgress({ done: 0, total: session.pageCount });
+
+      for (let page = 0; page < session.pageCount; page += 1) {
+        const blob = await fetchCataloguePdfPage(session.sessionId, page);
+        const objectUrl = URL.createObjectURL(blob);
+        pageObjectUrlsRef.current.push(objectUrl);
+        setImagePaths((prev) => [...prev, objectUrl]);
+        setPdfProgress({ done: page + 1, total: session.pageCount });
+      }
     } catch (err) {
       setPdfUploadError(err instanceof Error ? err.message : "Couldn't convert PDF. Please try again.");
     } finally {
+      if (session) {
+        // The staged PDF is done with whether or not every page made it. The
+        // backend sweeps stale ones on a TTL anyway, so a failure here must
+        // not surface over the conversion the admin actually did.
+        void discardCataloguePdfSession(session.sessionId).catch(() => {});
+      }
       setIsUploadingPdf(false);
+      setPdfProgress(null);
     }
   }
 
   // If this page was already persisted (part of the catalogue's saved
   // imagePaths when the form opened), delete it from the backend right away
   // via delete_catalogue_image rather than waiting for a full form Save — a
-  // page from this session's own PDF upload just comes out of local state,
-  // since there's nothing to delete server-side yet.
+  // page from this session's own PDF conversion just comes out of local
+  // state (and has its object URL released), since there's nothing to delete
+  // server-side yet.
   async function removePage(index: number) {
     const path = imagePaths[index];
     const wasPersisted = isEdit && initialCatalogue != null && initialCatalogue.imagePaths.includes(path);
@@ -164,6 +209,11 @@ export function CatalogueFormModal({
       }
       setDeletingPageIndex(null);
       setHasUnsavedImageDeletion(true);
+    }
+
+    if (path.startsWith("blob:")) {
+      URL.revokeObjectURL(path);
+      pageObjectUrlsRef.current = pageObjectUrlsRef.current.filter((url) => url !== path);
     }
 
     setImagePaths((prev) => prev.filter((_, i) => i !== index));
@@ -190,12 +240,12 @@ export function CatalogueFormModal({
     setError(null);
 
     // Already-persisted pages go in the details save itself; pages from
-    // this session's PDF upload (still "data:" URIs, never yet stored) are
-    // saved one at a time afterward via addCatalogueImage — see the module
-    // comment in routes/catalogues.py for why bundling every page into one
-    // request doesn't scale.
-    const persistedPaths = imagePaths.filter((path) => !path.startsWith("data:"));
-    const pendingDataUris = imagePaths.filter((path) => path.startsWith("data:"));
+    // this session's PDF conversion (still "blob:" object URLs, never yet
+    // stored) are saved one at a time afterward via addCatalogueImage — see
+    // the module comment in routes/catalogues.py for why bundling every page
+    // into one request doesn't scale.
+    const persistedPaths = imagePaths.filter((path) => !path.startsWith("blob:"));
+    const pendingPageUrls = imagePaths.filter((path) => path.startsWith("blob:"));
 
     const detailsPayload = {
       ...(isEdit ? { id: initialCatalogue?.id } : {}),
@@ -231,8 +281,8 @@ export function CatalogueFormModal({
 
       const uploadedPaths: string[] = [];
       try {
-        for (const dataUri of pendingDataUris) {
-          uploadedPaths.push(await addCatalogueImage(catalogueId, dataUri));
+        for (const pageUrl of pendingPageUrls) {
+          uploadedPaths.push(await addCatalogueImage(catalogueId, pageUrl));
         }
       } catch {
         if (isEdit) {
@@ -240,10 +290,10 @@ export function CatalogueFormModal({
           // above — deleting the whole thing over one failed new page
           // would destroy real pre-existing data. Keep whatever uploaded
           // so far plus whichever pages never got attempted, still as
-          // pending "data:" URIs, so the admin can just hit Save again.
-          setImagePaths([...savedPersistedPaths, ...pendingDataUris.slice(uploadedPaths.length)]);
+          // pending object URLs, so the admin can just hit Save again.
+          setImagePaths([...savedPersistedPaths, ...pendingPageUrls.slice(uploadedPaths.length)]);
           setError(
-            `Saved, but only ${uploadedPaths.length} of ${pendingDataUris.length} new page(s) uploaded. Try saving again for the rest.`,
+            `Saved, but only ${uploadedPaths.length} of ${pendingPageUrls.length} new page(s) uploaded. Try saving again for the rest.`,
           );
         } else {
           // Nothing about this catalogue was visible before this Save
@@ -373,7 +423,11 @@ export function CatalogueFormModal({
                 htmlFor="cataloguePdfUpload"
                 className={`${styles.uploadPdfTrigger} ${isUploadingPdf ? styles.uploadPdfTriggerDisabled : ""}`}
               >
-                {isUploadingPdf ? "Converting…" : "+ Upload PDF"}
+                {isUploadingPdf
+                  ? pdfProgress
+                    ? `Converting page ${pdfProgress.done} of ${pdfProgress.total}…`
+                    : "Converting…"
+                  : "+ Upload PDF"}
               </label>
               <input
                 id="cataloguePdfUpload"
@@ -394,7 +448,15 @@ export function CatalogueFormModal({
                 <div key={path} className={styles.catalogueImageCard}>
                   <div className={styles.catalogueImageThumbWrap}>
                     {/* eslint-disable-next-line @next/next/no-img-element -- backend-relative path, not an optimizable static asset */}
-                    <img src={resolveMediaUrl(path)} alt={`Page ${index + 1}`} className={styles.imageThumb} />
+                    <img
+                      src={resolveMediaUrl(path)}
+                      alt={`Page ${index + 1}`}
+                      // A long catalogue is 100+ full-page images, and
+                      // decoding them all at once is what would push the tab
+                      // into swapping — only decode what's scrolled into view.
+                      loading="lazy"
+                      className={styles.imageThumb}
+                    />
                     <button
                       type="button"
                       onClick={() => void removePage(index)}

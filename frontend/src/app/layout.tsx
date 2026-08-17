@@ -16,6 +16,11 @@
 
 import type { Metadata } from "next";
 import { Fraunces, Manrope } from "next/font/google";
+// React context can't be created in a Server Component, so the cart's
+// provider is its own Client Component ("use client" at the top of
+// lib/cart.tsx) that this Server Component just renders around `children` —
+// the standard App Router pattern for app-wide client state.
+import { CartProvider } from "@/lib/cart";
 // Importing the global stylesheet here (once) is what makes it apply to the
 // entire app — see src/app/globals.css for what's actually in it.
 import "./globals.css";
@@ -174,8 +179,12 @@ export default function RootLayout({
 
         {/* Wherever this layout is used, `children` is the actual page
             content — e.g. everything rendered by src/app/page.tsx when
-            you're on "/". */}
-        {children}
+            you're on "/". It's wrapped in <CartProvider> so the header's
+            cart badge, every product card's Add to Cart button, and the
+            /cart page all read and write the same cart (see lib/cart.tsx).
+            Wrapping here rather than only around /products is what lets the
+            badge stay correct on every page. */}
+        <CartProvider>{children}</CartProvider>
       </body>
     </html>
   );

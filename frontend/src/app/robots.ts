@@ -17,10 +17,10 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      // Admin dashboard, customer account pages, the login form, and the
-      // backend API are all logged-in/functional surfaces with nothing for
-      // a search engine to index.
-      disallow: ["/admin", "/customer", "/login", "/api/"],
+      // Admin dashboard, customer account pages, the login form, the
+      // per-visitor cart, and the backend API are all logged-in/functional
+      // surfaces with nothing for a search engine to index.
+      disallow: ["/admin", "/customer", "/login", "/cart", "/api/"],
     },
     sitemap: "https://handpikd.co/sitemap.xml",
     host: "https://handpikd.co",

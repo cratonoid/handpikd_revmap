@@ -45,16 +45,29 @@ export async function fetchCatalogues(): Promise<Catalogue[]> {
   }));
 }
 
-// Converts an uploaded PDF into one image per page, in page order, via POST
-// /admin/upload_catalogue_pdf (backend/app/services/pdf.py renders each
-// page). Nothing is written to disk by this call — each page comes back as
-// base64 PNG bytes, turned into a data: URI the grid can render directly.
-// The caller holds these in its local imagePaths list alongside any
-// already-persisted "/media/..." paths; a page only actually gets stored
-// once Save calls addCatalogueImage for it (see catalogue-form-modal.tsx),
-// so a page that's uploaded but never saved never touches the backend's
-// disk at all.
-export async function uploadCataloguePdf(file: File): Promise<string[]> {
+// ---------------------------------------------------------------------------
+// PDF -> page images, one page per request
+// ---------------------------------------------------------------------------
+// A catalogue's pages come from converting an uploaded PDF, in three steps:
+// uploadCataloguePdf stages the PDF and reports its page count,
+// fetchCataloguePdfPage renders one page, and discardCataloguePdfSession
+// releases the staged PDF once the caller has every page it wants (see
+// catalogue-form-modal.tsx's handlePdfFileChange, and
+// backend/app/services/catalogue_pdf_staging.py for the staging side).
+//
+// The upload call used to return every rendered page at once, which real
+// catalogues broke: a 107-page PDF is ~400MB of page images, well past what
+// fits in one response or in the browser's memory as base64 strings.
+//
+// None of this writes to the catalogue's own storage — a page is only stored
+// for real once Save calls addCatalogueImage for it, so a PDF that's
+// converted but never saved leaves nothing behind.
+export type CataloguePdfSession = {
+  sessionId: string;
+  pageCount: number;
+};
+
+export async function uploadCataloguePdf(file: File): Promise<CataloguePdfSession> {
   const formData = new FormData();
   formData.append("file", file);
 
@@ -64,26 +77,61 @@ export async function uploadCataloguePdf(file: File): Promise<string[]> {
   });
 
   if (!response.ok) {
+    // 413 comes from nginx, not the backend, so it has no JSON body to read
+    // a detail out of (see client_max_body_size in deploy/nginx.conf) —
+    // without this the size limit surfaced as a bare "Failed to convert PDF".
+    if (response.status === 413) {
+      throw new Error("This PDF is too large for the server to accept. Please split it into smaller files.");
+    }
     const detail = await response.json().catch(() => null);
     throw new Error(detail?.detail ?? "Failed to convert PDF");
   }
 
-  const { page_images: pageImages }: { page_images: string[] } = await response.json();
-  return pageImages.map((base64) => `data:image/png;base64,${base64}`);
+  const { session_id: sessionId, page_count: pageCount }: { session_id: string; page_count: number } =
+    await response.json();
+  return { sessionId, pageCount };
 }
 
-// Persists one page (a data: URI held locally since uploadCataloguePdf,
-// never yet saved) against an already-saved catalogue via POST
+// Renders one 0-indexed page of a staged PDF. Returns the image blob itself
+// rather than a data: URI so the caller can hold it as an object URL, which
+// keeps a long catalogue's pages out of JS memory.
+export async function fetchCataloguePdfPage(sessionId: string, page: number): Promise<Blob> {
+  const query = new URLSearchParams({ session_id: sessionId, page: String(page) });
+  const response = await apiFetch(`/admin/get_catalogue_pdf_page?${query}`);
+
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null);
+    throw new Error(detail?.detail ?? `Failed to convert page ${page + 1}`);
+  }
+
+  return response.blob();
+}
+
+// Releases a staged PDF as soon as the caller is done with it. The backend
+// also sweeps stale staged PDFs on a TTL, so callers can fire and forget
+// this — failing to send it delays cleanup, it doesn't leak forever.
+export async function discardCataloguePdfSession(sessionId: string): Promise<void> {
+  await apiFetch("/admin/discard_catalogue_pdf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+}
+
+// Persists one page (a "blob:" object URL held locally since it was
+// converted, never yet saved) against an already-saved catalogue via POST
 // /admin/add_catalogue_image. Called once per new page during Save (see
 // catalogue-form-modal.tsx's handleSubmit) rather than bundling every
 // page's bytes into add/update_catalogue_details — a multi-page catalogue's
 // combined bytes routinely exceeded the server's request size limit when
 // this used to be one request carrying everything.
-export async function addCatalogueImage(catalogueId: number, dataUri: string): Promise<string> {
-  const blob = await (await fetch(dataUri)).blob();
+export async function addCatalogueImage(catalogueId: number, pageObjectUrl: string): Promise<string> {
+  const blob = await (await fetch(pageObjectUrl)).blob();
   const formData = new FormData();
+  // The filename is what the backend derives the stored file's extension
+  // from (see services/storage.py) — rendered pages are JPEG.
   formData.append("catalogue_id", String(catalogueId));
-  formData.append("file", blob, "page.png");
+  formData.append("file", blob, "page.jpg");
 
   const response = await apiFetch("/admin/add_catalogue_image", {
     method: "POST",

@@ -2,14 +2,14 @@
 // <ProductCard> — one item in the product grid
 // ---------------------------------------------------------------------------
 // A plain Server Component (no interactivity of its own) — the only
-// interactive piece, the "Get It Now" button (which opens a popup enquiry
-// form), is broken out into its own small Client Component (see
-// get-it-now-button.tsx) so this file and the grid around it don't need
-// "use client" just because of one button.
+// interactive piece, the "Add to Cart" button/quantity stepper, is broken
+// out into its own small Client Component (see add-to-cart-button.tsx) so
+// this file and the grid around it don't need "use client" just because of
+// one button.
 //
 // Styling lives in src/styles/products.module.css.
 import { formatInr, type Product } from "@/lib/public-products";
-import { GetItNowButton } from "@/components/products/get-it-now-button";
+import { AddToCartButton } from "@/components/products/add-to-cart-button";
 import styles from "@/styles/products.module.css";
 
 export function ProductCard({ product }: { product: Product }) {
@@ -59,7 +59,7 @@ export function ProductCard({ product }: { product: Product }) {
             <span className={styles.cardOriginalPrice}>{formatInr(product.originalPrice)}</span>
           )}
         </div>
-        <GetItNowButton productName={product.name} />
+        <AddToCartButton product={product} />
       </div>
     </article>
   );

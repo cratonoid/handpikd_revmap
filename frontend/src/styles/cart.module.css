@@ -1,0 +1,291 @@
+/* =============================================================================
+   /cart page styles (src/app/cart/page.tsx, src/components/cart/*)
+   =============================================================================
+   Same CSS Module approach as home-page.module.css / products.module.css —
+   see the big comment at the top of home-page.module.css for how this works
+   and why colors reference `var(--color-*)` / `color-mix(...)` instead of
+   hex values.
+
+   The inquiry form at the bottom of the page does NOT define its own field
+   styles: it reuses home-page.module.css's `.form*` classes (the same ones
+   the homepage's Connect With Us form and the Get It Now popup use), so
+   every form on the site keeps looking identical. Only the cart-specific
+   parts — the line items, the totals block, and the page shell — live here.
+   ============================================================================= */
+
+.pageInner {
+  margin-inline: auto;
+  max-width: 56rem;
+  padding-inline: 1.25rem;
+  padding-block: 2.5rem 4rem;
+}
+
+@media (min-width: 640px) {
+  .pageInner {
+    padding-inline: 2rem;
+    padding-block: 3.5rem 5rem;
+  }
+}
+
+.pageHeading {
+  font-family: var(--font-display);
+  font-size: 1.875rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+@media (min-width: 640px) {
+  .pageHeading {
+    font-size: 2.25rem;
+  }
+}
+
+.pageSubtext {
+  margin-top: 0.5rem;
+  font-size: 0.9375rem;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+}
+
+/* -----------------------------------------------------------------------
+   Empty / loading states
+   ----------------------------------------------------------------------- */
+
+.emptyWrap {
+  margin-top: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  border: 1px dashed var(--color-border);
+  border-radius: 1rem;
+  padding: 3rem 1.5rem;
+  text-align: center;
+}
+
+.emptyHeading {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.emptyText {
+  max-width: 26rem;
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--color-ink) 65%, transparent);
+}
+
+/* -----------------------------------------------------------------------
+   Line items
+   ----------------------------------------------------------------------- */
+
+.itemList {
+  margin-top: 2rem;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--color-border);
+}
+
+/* Mobile-first: image on the left, everything else stacked to its right.
+   From `sm` up this becomes a single row with the line total pushed to the
+   far end (see the media query below). */
+.item {
+  display: flex;
+  gap: 1rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-block: 1.25rem;
+}
+
+.itemImage {
+  height: 5rem;
+  width: 5rem;
+  flex-shrink: 0;
+  border-radius: 0.75rem;
+  object-fit: cover;
+  background-color: var(--color-cream-deep);
+}
+
+.itemMain {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .itemMain {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+  }
+}
+
+.itemName {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.itemUnitPrice {
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+}
+
+.itemControls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .itemControls {
+    flex-shrink: 0;
+  }
+}
+
+/* The −/qty/+ control. Same shape as the product card's stepper
+   (products.module.css `.quantityStepper`) but in the page's light palette,
+   since here it sits on the cream background rather than inside a card. */
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  padding: 0.1875rem;
+}
+
+.stepperButton {
+  display: flex;
+  height: 1.875rem;
+  width: 1.875rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: var(--color-charcoal);
+  transition: background-color 0.2s;
+}
+
+.stepperButton:hover {
+  background-color: var(--color-cream-deep);
+}
+
+.stepperValue {
+  min-width: 1.75rem;
+  text-align: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-charcoal);
+}
+
+.itemLineTotal {
+  min-width: 5rem;
+  text-align: right;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-charcoal);
+}
+
+.removeButton {
+  display: flex;
+  height: 2.25rem;
+  width: 2.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+  transition: all 0.2s;
+}
+
+.removeButton:hover {
+  background-color: color-mix(in srgb, var(--color-red) 10%, transparent);
+  color: var(--color-red);
+}
+
+/* -----------------------------------------------------------------------
+   Totals
+   ----------------------------------------------------------------------- */
+
+.summary {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-left: auto;
+  width: 100%;
+  max-width: 22rem;
+}
+
+.summaryRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+}
+
+.summaryTotalRow {
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.summaryTotalValue {
+  font-family: var(--font-display);
+  font-size: 1.375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.summaryNote {
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+}
+
+.clearCartRow {
+  margin-top: 1rem;
+}
+
+.clearCartButton {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.2s;
+}
+
+.clearCartButton:hover {
+  color: var(--color-red);
+}
+
+/* -----------------------------------------------------------------------
+   Inquiry form block
+   ----------------------------------------------------------------------- */
+
+.formSection {
+  margin-top: 3rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 2.5rem;
+}
+
+.formHeading {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.formSubtext {
+  margin-top: 0.5rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--color-ink) 65%, transparent);
+}

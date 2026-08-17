@@ -77,13 +77,22 @@ class DeleteCatalogueImageResponse(BaseModel):
 
 
 class UploadCataloguePdfResponse(BaseModel):
-    # One base64-encoded PNG per PDF page, in page order (see
-    # services/pdf.py) — nothing is written to disk here. The frontend shows
-    # each as a data: URI thumbnail and lets the admin drop pages it doesn't
-    # want; a kept page is only actually stored once Save calls
-    # add_catalogue_image for it, so an abandoned upload never leaves a file
-    # behind.
-    page_images: list[str]
+    # Uploading a PDF only stages it and counts its pages — no page image is
+    # rendered yet. The frontend then pulls pages one at a time via
+    # get_catalogue_pdf_page(session_id, page) for page in range(page_count).
+    # Returning every page here (as base64 PNGs, which this used to do) is
+    # what made large catalogues impossible: a 107-page catalogue renders to
+    # ~400MB of images. See services/catalogue_pdf_staging.py.
+    session_id: str
+    page_count: int
+
+
+class DiscardCataloguePdfRequest(BaseModel):
+    session_id: str
+
+
+class DiscardCataloguePdfResponse(BaseModel):
+    message: str
 
 
 # ---------------------------------------------------------------------------

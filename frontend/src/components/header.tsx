@@ -19,7 +19,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/button";
-import { MenuIcon, XMarkIcon } from "@/components/icons";
+import { MenuIcon, ShoppingCartIcon, XMarkIcon } from "@/components/icons";
+import { useCart } from "@/lib/cart";
 import { siteConfig } from "@/lib/brand";
 import styles from "@/styles/shared.module.css";
 
@@ -34,6 +35,12 @@ export function Header() {
   const [open, setOpen] = useState(false); // is the mobile hamburger menu open?
   const [compact, setCompact] = useState(false); // has the user scrolled past COMPACT_THRESHOLD?
   const [hidden, setHidden] = useState(false); // should the header be slid up out of view right now?
+
+  // How many products are sitting in the cart, for the badge on the cart
+  // icon below. `hydrated` guards against rendering a count before the cart
+  // has been read out of localStorage (see lib/cart.tsx) — without it, the
+  // badge would briefly render server-side-empty and then pop in.
+  const { totalItems, hydrated } = useCart();
 
   // Why a ref AND state for the same thing (`open`)? The scroll event
   // listener below is set up ONCE (empty dependency array) and keeps
@@ -140,23 +147,41 @@ export function Header() {
           ))}
         </nav>
 
-        <div className={styles.desktopCta}>
-          <Button href="/#connect" variant="primary">
-            Get Started
-          </Button>
-        </div>
+        {/* Everything on the right-hand end of the bar, grouped so the cart
+            icon sits next to the CTA on desktop and next to the hamburger
+            on mobile (where the CTA itself is hidden). */}
+        <div className={styles.headerActions}>
+          {/* The cart is reachable from EVERY page, not just /products —
+              a visitor who collected products and then browsed on to the
+              blog still needs a way back to send their inquiry. */}
+          <Link
+            href="/cart"
+            onClick={() => setOpen(false)}
+            className={styles.cartLink}
+            aria-label={hydrated && totalItems > 0 ? `Cart, ${totalItems} items` : "Cart"}
+          >
+            <ShoppingCartIcon className="h-5 w-5" />
+            {hydrated && totalItems > 0 && <span className={styles.cartBadge}>{totalItems}</span>}
+          </Link>
 
-        {/* Hamburger / close toggle button — only visible below `lg`. */}
-        <button
-          type="button"
-          className={styles.mobileMenuButton}
-          aria-label={open ? "Close menu" : "Open menu"} // announced by screen readers instead of relying on the icon alone
-          aria-expanded={open} // tells assistive tech whether the menu this button controls is currently open
-          aria-controls="mobile-nav" // links this button to the panel it opens/closes, by id
-          onClick={() => setOpen((v) => !v)} // flip `open` to its opposite value
-        >
-          {open ? <XMarkIcon className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
-        </button>
+          <div className={styles.desktopCta}>
+            <Button href="/#connect" variant="primary">
+              Get Started
+            </Button>
+          </div>
+
+          {/* Hamburger / close toggle button — only visible below `lg`. */}
+          <button
+            type="button"
+            className={styles.mobileMenuButton}
+            aria-label={open ? "Close menu" : "Open menu"} // announced by screen readers instead of relying on the icon alone
+            aria-expanded={open} // tells assistive tech whether the menu this button controls is currently open
+            aria-controls="mobile-nav" // links this button to the panel it opens/closes, by id
+            onClick={() => setOpen((v) => !v)} // flip `open` to its opposite value
+          >
+            {open ? <XMarkIcon className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
+          </button>
+        </div>
       </div>
 
       {/* The mobile menu panel itself. `{open && (...)}` is a common React

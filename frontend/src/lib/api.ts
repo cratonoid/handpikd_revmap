@@ -22,10 +22,13 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://loca
 const MEDIA_BASE_URL = process.env.NEXT_PUBLIC_MEDIA_BASE_URL ?? "http://localhost:8000";
 
 export function resolveMediaUrl(path: string): string {
-  // A "data:" URI is a page/image uploaded this session that hasn't been
-  // saved yet (see catalogue-form-modal.tsx / product-form-modal.tsx) — it's
-  // already a complete, renderable source, never a backend-relative path.
-  return path.startsWith("http") || path.startsWith("data:") ? path : `${MEDIA_BASE_URL}${path}`;
+  // An image held in this session but not yet saved is already a complete,
+  // renderable source rather than a backend-relative path: product images
+  // arrive as "data:" URIs (product-form-modal.tsx), and catalogue pages as
+  // "blob:" object URLs pulled from a staged PDF (catalogue-form-modal.tsx).
+  return path.startsWith("http") || path.startsWith("data:") || path.startsWith("blob:")
+    ? path
+    : `${MEDIA_BASE_URL}${path}`;
 }
 
 import { clearSession, getAccessToken } from "@/lib/auth";

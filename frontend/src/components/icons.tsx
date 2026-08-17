@@ -292,6 +292,31 @@ export function PlusIcon(props: IconProps) {
   );
 }
 
+export function MinusIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
+export function TrashIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 7h16M10 11v6M14 11v6M5.5 7l.75 12A2 2 0 0 0 8.25 21h7.5a2 2 0 0 0 2-1.9L18.5 7M9 7V4.5A1.5 1.5 0 0 1 10.5 3h3A1.5 1.5 0 0 1 15 4.5V7" />
+    </svg>
+  );
+}
+
+export function InboxIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3.75 13.5h4.5l1.5 2.25h4.5l1.5-2.25h4.5" />
+      <path d="M5.7 4.5h12.6l1.95 9v4.5a1.5 1.5 0 0 1-1.5 1.5H5.25a1.5 1.5 0 0 1-1.5-1.5v-4.5l1.95-9Z" />
+    </svg>
+  );
+}
+
 export function ArrowUpTrayIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>

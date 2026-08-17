@@ -114,6 +114,61 @@
   transform: scaleX(1);
 }
 
+/* The right-hand cluster of the header bar: cart icon + (on desktop) the
+   Get Started CTA + (on mobile) the hamburger button. */
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+@media (min-width: 1024px) {
+  .headerActions {
+    gap: 0.75rem;
+  }
+}
+
+/* `position: relative` is what the item-count badge below anchors itself to. */
+.cartLink {
+  position: relative;
+  display: flex;
+  height: 2.75rem;
+  width: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: var(--color-charcoal);
+  transition: background-color 0.2s;
+}
+
+.cartLink:hover {
+  background-color: color-mix(in srgb, var(--color-charcoal) 8%, transparent);
+}
+
+.cartLink:focus-visible {
+  outline: 2px solid var(--color-button-primary);
+  outline-offset: 2px;
+}
+
+.cartBadge {
+  position: absolute;
+  top: 0.375rem;
+  right: 0.25rem;
+  display: flex;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background-color: var(--color-red);
+  padding-inline: 0.25rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--color-white);
+  font-variant-numeric: tabular-nums;
+}
+
 .desktopCta {
   display: none;
 }

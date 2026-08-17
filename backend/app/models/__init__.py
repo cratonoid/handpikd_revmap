@@ -27,6 +27,8 @@ from app.models.product_details import ProductDetails
 from app.models.product_id_counter import ProductIdCounter
 from app.models.product_image_details import ProductImageDetails
 from app.models.product_image_id_counter import ProductImageIdCounter
+from app.models.product_inquiry import ProductInquiry, ProductInquiryItem
+from app.models.product_inquiry_id_counter import ProductInquiryIdCounter
 from app.models.proforma_invoice_no_counter_master import ProformaInvoiceNoCounterMaster
 from app.models.proforma_invoice_summary import ProformaInvoiceSummary
 from app.models.proforma_invoice_summary_id_counter import ProformaInvoiceSummaryIdCounter
@@ -89,6 +91,9 @@ __all__ = [
     "ProductIdCounter",
     "ProductImageDetails",
     "ProductImageIdCounter",
+    "ProductInquiry",
+    "ProductInquiryItem",
+    "ProductInquiryIdCounter",
     "ProformaInvoiceNoCounterMaster",
     "ProformaInvoiceSummary",
     "ProformaInvoiceSummaryIdCounter",
