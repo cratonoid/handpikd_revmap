@@ -235,12 +235,11 @@ export function VendorFormModal({
 
             <div>
               <label htmlFor="gst" className={styles.formLabel}>
-                GST number<span className={styles.requiredMark}>*</span>
+                GST number
               </label>
               <input
                 id="gst"
                 type="text"
-                required
                 value={gst}
                 onChange={(e) => setGst(e.target.value.toUpperCase())}
                 className={styles.formInput}

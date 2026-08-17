@@ -47,11 +47,15 @@ type VendorDetailItem = {
 export type VendorOption = {
   id: number;
   name: string;
+  // "" if the vendor has no GST number on file — see product-form-modal.tsx,
+  // which filters these down to GST-only for its vendor picker.
+  gst: string;
 };
 
 type VendorListItem = {
   vendor_id: number;
   vendor_name: string;
+  gst: string;
 };
 
 // Lightweight id+name list for vendor-picker dropdowns (product and purchase
@@ -64,7 +68,7 @@ export async function fetchVendorsList(): Promise<VendorOption[]> {
   }
 
   const items: VendorListItem[] = await response.json();
-  return items.map((item) => ({ id: item.vendor_id, name: item.vendor_name }));
+  return items.map((item) => ({ id: item.vendor_id, name: item.vendor_name, gst: item.gst }));
 }
 
 export async function fetchVendors(): Promise<Vendor[]> {

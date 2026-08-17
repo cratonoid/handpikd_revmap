@@ -119,11 +119,18 @@ export function ProductFormModal({
   // vendors comes from GET /admin/get_vendors_list, which only returns active
   // vendors — isDeleted is always false here (a since-deleted vendor on an
   // older product just won't resolve to a label in the picker anymore).
-  const vendorOptions: SingleSelectOption[] = vendors.map((vendor) => ({
-    value: String(vendor.id),
-    label: vendor.name,
-    isDeleted: false,
-  }));
+  // Further filtered to GST-registered vendors only: a product's vendor
+  // needs to be GST-invoiceable, whereas gst itself is optional on
+  // VendorDetails (see vendor-form-modal.tsx) so a vendor can still be added
+  // without one. Same "won't resolve to a label anymore" caveat applies to
+  // an older product whose vendor has since had its GST number cleared.
+  const vendorOptions: SingleSelectOption[] = vendors
+    .filter((vendor) => vendor.gst !== "")
+    .map((vendor) => ({
+      value: String(vendor.id),
+      label: vendor.name,
+      isDeleted: false,
+    }));
 
   function updateImagePath(index: number, value: string) {
     setImagePaths((prev) => prev.map((path, i) => (i === index ? value : path)));

@@ -26,11 +26,26 @@ from app.schemas.sales_orders import (
     UpdateSalesOrderDetailsResponse,
 )
 from app.services.counters import get_next_id
-from app.services.inventory import get_current_quantities, record_sale_fulfilled
+from app.services.inventory import (
+    STOCK_OUT,
+    apply_sales_order_stock,
+    clear_sales_order_stock,
+    compute_stock_deltas,
+    find_stock_shortfalls,
+    get_applied_sales_quantities,
+    totals_by_product,
+)
 
 router = APIRouter(prefix="/admin", tags=["sales_orders"])
 
 _NEW_STATUS_NAME = "New"
+
+# Stock only leaves #inventory once a sales order reaches "Delivered", and
+# stays out through "Completed" downstream of it. "New" and "Processing"
+# record intent only — an order can be raised and edited for more than is on
+# hand without moving stock, and availability is checked at the point of
+# delivery instead (see _reject_stock_going_negative).
+_STOCK_DEDUCTED_STATUS_NAMES = ("Delivered", "Completed")
 
 
 async def _validate_customer_exists(cust_id: int) -> None:
@@ -59,25 +74,24 @@ async def _validate_purchase_orders_exist(purchase_order_ids: list[int]) -> None
             )
 
 
-async def _validate_sufficient_stock(product_ids: list[int], quantities: list[int]) -> None:
-    # A product can appear more than once across a single order's line
-    # items — quantities are summed per product before comparing against
-    # what's on hand, rather than checking each line item in isolation.
-    requested_by_product_id: dict[int, int] = {}
-    for product_id, quantity in zip(product_ids, quantities):
-        requested_by_product_id[product_id] = requested_by_product_id.get(product_id, 0) + quantity
+async def _reject_stock_going_negative(stock_deltas: dict[int, int]) -> None:
+    # Reached when an order is being marked delivered, or when a delivered
+    # order's line items are edited upwards — either way the extra stock has
+    # to actually exist. The delta is what this change takes out on top of
+    # whatever the order already holds, so re-saving a delivered order
+    # unchanged can never trip this.
+    shortfalls = await find_stock_shortfalls(stock_deltas)
+    if not shortfalls:
+        return
 
-    available_by_product_id = await get_current_quantities(list(requested_by_product_id))
-    shortages = [
-        f"product {product_id} (available {available_by_product_id.get(product_id, 0)}, requested {requested})"
-        for product_id, requested in requested_by_product_id.items()
-        if requested > available_by_product_id.get(product_id, 0)
-    ]
-    if shortages:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"insufficient stock for: {', '.join(shortages)}",
-        )
+    details = ", ".join(
+        f"product {product_id} (on hand {on_hand}, needs {-delta} more)"
+        for product_id, on_hand, delta in shortfalls
+    )
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"insufficient stock for: {details}",
+    )
 
 
 async def _validate_order_status_exists(order_status_id: int) -> None:
@@ -91,6 +105,15 @@ async def _get_new_status_id() -> int:
     if new_status is None:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="order statuses not seeded")
     return new_status.id
+
+
+async def _get_stock_deducted_status_ids() -> set[int]:
+    statuses = await OrderStatusMaster.find(
+        In(OrderStatusMaster.status_name, list(_STOCK_DEDUCTED_STATUS_NAMES))
+    ).to_list()
+    if len(statuses) != len(_STOCK_DEDUCTED_STATUS_NAMES):
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="order statuses not seeded")
+    return {status_row.id for status_row in statuses}
 
 
 def _compute_line_items_and_totals(
@@ -139,7 +162,6 @@ async def create_new_sales_order(
     await _validate_customer_exists(payload.cust_id)
     await _validate_products_exist(payload.product_ids)
     await _validate_purchase_orders_exist(payload.related_purchase_order_ids)
-    await _validate_sufficient_stock(payload.product_ids, payload.quantities)
 
     line_totals_before_tax, tax_amounts, total_before_tax, total_tax, total_after_tax = (
         _compute_line_items_and_totals(payload.quantities, payload.rates, payload.tax_percs)
@@ -172,7 +194,9 @@ async def create_new_sales_order(
         tax_amounts,
         line_totals_before_tax,
     )
-    await record_sale_fulfilled(sales_order_id, payload.product_ids, payload.quantities)
+    # No inventory movement here — a new order is always created as "New",
+    # and stock is only taken out once it is moved to "Delivered" via
+    # update_sales_order_details.
 
     return CreateNewSalesOrderResponse(message="sales order successfully created")
 
@@ -238,6 +262,22 @@ async def update_sales_order_details(
         _compute_line_items_and_totals(payload.quantities, payload.rates, payload.tax_percs)
     )
 
+    # A soft-deleted order holds no stock even if it was delivered, so
+    # deleting one credits its quantities back exactly like moving it out of
+    # "Delivered" does.
+    holds_stock = payload.order_status_id in await _get_stock_deducted_status_ids() and not payload.is_deleted
+    stock_deltas: dict[int, int] = {}
+    if holds_stock:
+        # Delta against what this order already has out of #inventory: the
+        # full order on the move into "Delivered", and only the difference
+        # when an already-delivered order's line items are edited.
+        stock_deltas = compute_stock_deltas(
+            await get_applied_sales_quantities(sales_order.id),
+            totals_by_product(payload.product_ids, payload.quantities),
+            STOCK_OUT,
+        )
+        await _reject_stock_going_negative(stock_deltas)
+
     sales_order.order_status_id = payload.order_status_id
     sales_order.cust_id = payload.cust_id
     sales_order.date = payload.date
@@ -259,6 +299,11 @@ async def update_sales_order_details(
         tax_amounts,
         line_totals_before_tax,
     )
+
+    if holds_stock:
+        await apply_sales_order_stock(sales_order.id, payload.product_ids, payload.quantities, stock_deltas)
+    else:
+        await clear_sales_order_stock(sales_order.id)
 
     return UpdateSalesOrderDetailsResponse(message="sales order updated successfully")
 

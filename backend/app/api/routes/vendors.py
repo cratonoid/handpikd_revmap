@@ -51,10 +51,14 @@ async def get_vendors_list(
 ) -> list[VendorListItem]:
     # Lightweight id+name list for vendor-picker dropdowns (e.g. the product
     # and purchase order popups) — unlike get_vendor_details, this excludes
-    # soft-deleted vendors and skips the address/GST/POC lookups those popups
-    # don't need.
+    # soft-deleted vendors and skips the address/POC lookups those popups
+    # don't need. gst rides along (rather than being skipped like
+    # address/POC) so the product form's picker can filter down to
+    # GST-invoiceable vendors only — see product-form-modal.tsx.
     vendors = await VendorDetails.find(VendorDetails.is_deleted == False).to_list()
-    return [VendorListItem(vendor_id=vendor.id, vendor_name=vendor.registered_name) for vendor in vendors]
+    return [
+        VendorListItem(vendor_id=vendor.id, vendor_name=vendor.registered_name, gst=vendor.gst) for vendor in vendors
+    ]
 
 
 @router.get("/get_vendor_details", response_model=list[VendorDetailItem])

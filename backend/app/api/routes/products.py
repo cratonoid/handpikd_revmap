@@ -13,7 +13,7 @@
 # bytes into a single request doesn't scale.
 import base64
 
-from beanie.operators import In, NE
+from beanie.operators import In
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from app.api.routes.admin import require_admin
@@ -51,17 +51,30 @@ router = APIRouter(prefix="/admin", tags=["products"])
 public_router = APIRouter(prefix="/products", tags=["products-public"])
 
 
-async def _validate_hsn_code_product_name(hsn_code: str, product_name: str, exclude_id: int | None = None) -> None:
-    query = [ProductDetails.hsn_code == hsn_code, NE(ProductDetails.product_name, product_name)]
-    if exclude_id is not None:
-        query.append(NE(ProductDetails.id, exclude_id))
+def _normalised_product_name(product_name: str) -> str:
+    # Used for duplicate detection only — the name is stored exactly as the
+    # admin typed it.
+    return " ".join(product_name.split()).casefold()
 
-    conflicting_product = await ProductDetails.find_one(*query)
-    if conflicting_product is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="this hsn code is already used by a product with a different name",
-        )
+
+async def _validate_hsn_code_product_name(hsn_code: str, product_name: str, exclude_id: int | None = None) -> None:
+    # An HSN code is a tax classification, not an identity, so any number of
+    # products can share one — what they can't share is the pair. Two products
+    # filed under the same HSN code have to be told apart by name, since that
+    # pair is all an invoice line shows. Names are compared ignoring case and
+    # surrounding/repeated whitespace so "Blue Mug" and "blue  mug" count as
+    # the same product rather than as two.
+    products_on_hsn_code = await ProductDetails.find(ProductDetails.hsn_code == hsn_code).to_list()
+    incoming_name = _normalised_product_name(product_name)
+
+    for existing_product in products_on_hsn_code:
+        if existing_product.id == exclude_id:
+            continue
+        if _normalised_product_name(existing_product.product_name) == incoming_name:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="a product with this name already exists under this hsn code",
+            )
 
 
 async def _replace_image_paths(product_id: int, image_paths: list[str]) -> None:

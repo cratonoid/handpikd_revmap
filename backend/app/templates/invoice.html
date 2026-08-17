@@ -70,6 +70,7 @@
   .title-bar .copy-tag { text-align: right; font-size: 8pt; font-weight: bold; white-space: nowrap; }
 
   /* Party details (left) / invoice meta (right). */
+  .party { table-layout: fixed; }
   .party > tbody > tr > td { padding: 0; }
   .party .half { width: 50%; }
   .party .inner td { padding: 1.1mm 2mm; font-size: 8.3pt; }
@@ -82,8 +83,14 @@
     border-bottom: 0.8pt solid #000;
   }
 
-  /* Line items. */
-  .items { margin-top: -0.8pt; border: 0.8pt solid #000; }
+  /* Line items. The column widths in the <colgroup> below are only honoured
+     exactly under fixed layout — auto layout treats them as hints and lets
+     content nudge the rules, which knocks the column break off the 50% mark
+     the party/totals blocks above and below divide on. */
+  .items { margin-top: -0.8pt; border: 0.8pt solid #000; table-layout: fixed; }
+  /* Fixed columns can't grow for an over-long value, so let one wrap inside
+     its cell rather than spill across the rule. */
+  .items th, .items td { overflow-wrap: anywhere; }
   .items th {
     border: 0.8pt solid #000;
     background: #f0f0f0;
@@ -115,7 +122,7 @@
   }
 
   /* Totals / bank / signature block. */
-  .bottom { page-break-inside: avoid; }
+  .bottom { page-break-inside: avoid; table-layout: fixed; }
   .bottom .half { width: 50%; }
   /* Let each column's inner table fill its cell so the two sides of a row end
      level and "Authorised Signatory" stays pinned to the bottom rule. A cell
@@ -203,21 +210,42 @@
   {% set tax_cols = 4 if intra_state else 2 %}
   {% set col_count = 7 + tax_cols %}
   <table class="items" id="items">
+    {# Widths live here rather than on the header cells because a colspan'd
+       header ("CGST" over % + Amount) can't size the columns underneath it,
+       and because these are what fixed layout reads. Each set adds up to 100
+       with a column edge landing exactly on 50, so the grid's middle rule
+       continues the one splitting the blocks above and below it. #}
+    <colgroup>
+      {% if intra_state %}
+      <col style="width: 4.5%;" /><col style="width: 20%;" /><col style="width: 11%;" />
+      <col style="width: 6%;" /><col style="width: 8.5%;" />
+      <col style="width: 11%;" />
+      <col style="width: 5%;" /><col style="width: 8%;" />
+      <col style="width: 5%;" /><col style="width: 8%;" />
+      <col style="width: 13%;" />
+      {% else %}
+      <col style="width: 5%;" /><col style="width: 27%;" /><col style="width: 11%;" />
+      <col style="width: 7%;" />
+      <col style="width: 10%;" /><col style="width: 12%;" />
+      <col style="width: 6%;" /><col style="width: 11%;" />
+      <col style="width: 11%;" />
+      {% endif %}
+    </colgroup>
     <thead>
       <tr>
-        <th rowspan="2" style="width: {{ '4.5%' if intra_state else '5%' }};">Sr.<br/>No.</th>
-        <th rowspan="2" style="width: {{ '24%' if intra_state else '28%' }};">Name of Product / Service</th>
-        <th rowspan="2" style="width: {{ '9%' if intra_state else '10%' }};">HSN /<br/>SAC</th>
-        <th rowspan="2" style="width: 7%;">Qty</th>
-        <th rowspan="2" style="width: {{ '9%' if intra_state else '10%' }};">Rate</th>
-        <th rowspan="2" style="width: {{ '10.5%' if intra_state else '12%' }};">Taxable<br/>Value</th>
+        <th rowspan="2">Sr.<br/>No.</th>
+        <th rowspan="2">Name of Product / Service</th>
+        <th rowspan="2">HSN /<br/>SAC</th>
+        <th rowspan="2">Qty</th>
+        <th rowspan="2">Rate</th>
+        <th rowspan="2">Taxable<br/>Value</th>
         {% if intra_state %}
-        <th colspan="2" style="width: 12.5%;">CGST</th>
-        <th colspan="2" style="width: 12.5%;">SGST</th>
+        <th colspan="2">CGST</th>
+        <th colspan="2">SGST</th>
         {% else %}
-        <th colspan="2" style="width: 17%;">IGST</th>
+        <th colspan="2">IGST</th>
         {% endif %}
-        <th rowspan="2" style="width: {{ '11%' if intra_state else '11%' }};">Total</th>
+        <th rowspan="2">Total</th>
       </tr>
       <tr>
         <th>%</th><th>Amount</th>

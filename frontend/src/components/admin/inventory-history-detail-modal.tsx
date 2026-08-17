@@ -7,8 +7,9 @@
 // The history table itself only shows enough to identify a ledger entry
 // (reference no., type, date) — this modal surfaces the rest (date, product
 // name, HSN, transaction type, quantity) on demand. There's nothing to
-// edit: InventoryHistory rows are an append-only ledger written by
-// app/services/inventory.py, never mutated after the fact.
+// edit here: InventoryHistory rows are written by app/services/inventory.py
+// as the record of what stock each order currently holds, and are rewritten
+// wholesale when that order is edited — never patched from this screen.
 import { Button } from "@/components/button";
 import { XMarkIcon } from "@/components/icons";
 import type { InventoryHistoryEntry } from "@/lib/inventory";

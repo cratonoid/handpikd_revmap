@@ -23,7 +23,14 @@ from app.schemas.purchase_orders import (
     UpdatePurchaseOrderDetailsResponse,
 )
 from app.services.counters import get_next_id
-from app.services.inventory import record_purchase_received
+from app.services.inventory import (
+    STOCK_IN,
+    apply_purchase_order_stock,
+    compute_stock_deltas,
+    find_stock_shortfalls,
+    get_applied_purchase_quantities,
+    totals_by_product,
+)
 
 router = APIRouter(prefix="/admin", tags=["orders"])
 
@@ -53,6 +60,24 @@ def _compute_totals(
     tax_perc = (sgst_perc or 0) + (cgst_perc or 0) + (igst_perc or 0)
     total_after_tax = total_before_tax * (1 + tax_perc / 100)
     return total_before_tax, total_after_tax
+
+
+async def _reject_stock_going_negative(stock_deltas: dict[int, int]) -> None:
+    # An edit that cuts a purchased quantity below what has since been sold
+    # on would drive #inventory negative — the admin has to correct the
+    # sales side first rather than have stock silently floored or inverted.
+    shortfalls = await find_stock_shortfalls(stock_deltas)
+    if not shortfalls:
+        return
+
+    details = ", ".join(
+        f"product {product_id} (on hand {on_hand}, this edit removes {-delta})"
+        for product_id, on_hand, delta in shortfalls
+    )
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"this edit would take stock negative for: {details}",
+    )
 
 
 async def _insert_purchase_summary_rows(
@@ -105,7 +130,14 @@ async def create_new_purchase_order(
     await purchase_order.insert()
 
     await _insert_purchase_summary_rows(purchase_order_id, payload.product_ids, payload.quantities, payload.rates)
-    await record_purchase_received(purchase_order_id, payload.product_ids, payload.quantities)
+    # Nothing is applied yet for a brand new order, so the deltas are just
+    # the ordered quantities — all of them stock coming in, never negative.
+    await apply_purchase_order_stock(
+        purchase_order_id,
+        payload.product_ids,
+        payload.quantities,
+        totals_by_product(payload.product_ids, payload.quantities),
+    )
 
     return CreateNewPurchaseOrderResponse(message="purchase order successfully created")
 
@@ -206,10 +238,24 @@ async def update_purchase_order_details(
     purchase_order.cgst_perc = payload.cgst_perc
     purchase_order.igst_perc = payload.igst_perc
     purchase_order.total_amount_after_tax = total_amount_after_tax
+    # Stock moves by the difference between what this order has already added
+    # to #inventory and what it adds after the edit, so raising a quantity
+    # tops the product up and lowering one takes it back. Validated before
+    # anything is written so a rejected edit leaves the order untouched.
+    stock_deltas = compute_stock_deltas(
+        await get_applied_purchase_quantities(purchase_order.id),
+        totals_by_product(payload.product_ids, payload.quantities),
+        STOCK_IN,
+    )
+    await _reject_stock_going_negative(stock_deltas)
+
     purchase_order.description = payload.description
     await purchase_order.save()
 
     await PurchaseSummary.find(PurchaseSummary.purchase_order_id == purchase_order.id).delete()
     await _insert_purchase_summary_rows(purchase_order.id, payload.product_ids, payload.quantities, payload.rates)
+    await apply_purchase_order_stock(
+        purchase_order.id, payload.product_ids, payload.quantities, stock_deltas
+    )
 
     return UpdatePurchaseOrderDetailsResponse(message="purchase order updated successfully")

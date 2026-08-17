@@ -4,7 +4,7 @@ from pydantic import BaseModel, model_validator
 
 class AddVendorDetailsRequest(BaseModel):
     registered_name: str
-    gst: str
+    gst: str = ""
     address: str
     description: str
     is_deleted: bool = False
@@ -40,6 +40,7 @@ class ConvertVendorQrResponse(BaseModel):
 class VendorListItem(BaseModel):
     vendor_id: int
     vendor_name: str
+    gst: str
 
 
 class VendorDetailItem(BaseModel):
@@ -57,7 +58,7 @@ class VendorDetailItem(BaseModel):
 class UpdateVendorDetailsRequest(BaseModel):
     id: int
     registered_name: str
-    gst: str
+    gst: str = ""
     address: str
     qr_code: str = ""
     description: str

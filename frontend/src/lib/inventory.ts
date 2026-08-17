@@ -9,8 +9,11 @@
 // endpoints in this app which return raw FK ids for the frontend to resolve.
 //
 // fetchInventoryHistory hits GET /admin/get_inventory_history, the ledger
-// written by app/services/inventory.py on every create_new_purchase_order /
-// create_new_sales_order call. It only returns raw product_id/purchase_order_id
+// written by app/services/inventory.py whenever a purchase order is created
+// or edited, and whenever a sales order enters or leaves "Delivered". Editing
+// an order rewrites its rows rather than appending to them, so the ledger
+// always reflects the stock those orders currently hold. It only returns raw
+// product_id/purchase_order_id
 // /sales_order_id FKs, so the history tab resolves product/order names
 // itself against fetchProducts()/fetchPurchaseOrders()/fetchSalesOrders(),
 // same convention as sales-orders-tab.tsx.

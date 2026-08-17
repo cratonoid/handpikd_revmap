@@ -1,7 +1,9 @@
 # Inventory module: read-only visibility into current stock (#inventory)
 # and the InventoryHistory ledger, both written by routes/orders.py and
-# routes/sales_orders.py (see app/services/inventory.py). Restricted to
-# admins, matching the rest of the admin API.
+# routes/sales_orders.py (see app/services/inventory.py). Purchase orders
+# move stock as soon as they are created or edited; sales orders only do so
+# once they reach "Delivered". Restricted to admins, matching the rest of
+# the admin API.
 from fastapi import APIRouter, Depends
 
 from app.api.routes.admin import require_admin
