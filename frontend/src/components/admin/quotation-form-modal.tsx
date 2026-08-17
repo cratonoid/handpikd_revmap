@@ -7,8 +7,10 @@
 // picker auto-fills rate/tax % from the product but both stay editable, "+
 // Add line item" / per-row remove). Two dates instead of one:
 //   - date       -> issue date, defaults to "now"
-//   - validTill  -> defaults to issue date + 10 days (addDaysToDatetimeLocalValue)
+//   - validTill  -> defaults to issue date + 10 days (addDaysToDateValue)
 // Both stay freely editable afterward, same as every other date field here.
+// Date-only (no time-of-day) — unlike the order/invoice forms' datetime-local
+// fields, quotations only ever need the calendar date.
 //
 //   - mode "add"  -> POST /admin/create_new_quotation, then immediately
 //                    downloads the generated PDF (createQuotation returns the
@@ -24,12 +26,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
-import {
-  addDaysToDatetimeLocalValue,
-  fromDatetimeLocalValue,
-  nowAsDatetimeLocalValue,
-  toDatetimeLocalValue,
-} from "@/lib/datetime-input";
+import { addDaysToDateValue, nowAsDateValue, toDateValue } from "@/lib/datetime-input";
 import type { Quotation, QuotationStatus } from "@/lib/quotations";
 import { createQuotation, downloadQuotationPdf, updateQuotation } from "@/lib/quotations";
 import type { CustomerOption } from "@/lib/customers";
@@ -97,12 +94,12 @@ export function QuotationFormModal({
     initialQuotation ? String(initialQuotation.custId) : null,
   );
   const [date, setDate] = useState(
-    initialQuotation ? toDatetimeLocalValue(initialQuotation.date) : nowAsDatetimeLocalValue(),
+    initialQuotation ? toDateValue(initialQuotation.date) : nowAsDateValue(),
   );
   const [validTill, setValidTill] = useState(
     initialQuotation
-      ? toDatetimeLocalValue(initialQuotation.validTill)
-      : addDaysToDatetimeLocalValue(nowAsDatetimeLocalValue(), VALID_TILL_DAYS),
+      ? toDateValue(initialQuotation.validTill)
+      : addDaysToDateValue(nowAsDateValue(), VALID_TILL_DAYS),
   );
   const [quotationStatus, setQuotationStatus] = useState<QuotationStatus>(initialQuotation?.status ?? "draft");
   const [lineItems, setLineItems] = useState<LineItem[]>(
@@ -183,8 +180,8 @@ export function QuotationFormModal({
         status: quotationStatus,
         isDeleted: isDeletedValue,
         custId: Number(custId),
-        date: fromDatetimeLocalValue(date),
-        validTill: fromDatetimeLocalValue(validTill),
+        date,
+        validTill,
         description,
         lineItems: buildLineItemsPayload(),
       });
@@ -215,8 +212,8 @@ export function QuotationFormModal({
     try {
       const { id, quotationNo } = await createQuotation({
         custId: Number(custId),
-        date: fromDatetimeLocalValue(date),
-        validTill: fromDatetimeLocalValue(validTill),
+        date,
+        validTill,
         description,
         lineItems: buildLineItemsPayload(),
       });
@@ -313,7 +310,7 @@ export function QuotationFormModal({
               </label>
               <input
                 id="quotationDate"
-                type="datetime-local"
+                type="date"
                 required
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
@@ -327,7 +324,7 @@ export function QuotationFormModal({
               </label>
               <input
                 id="validTill"
-                type="datetime-local"
+                type="date"
                 required
                 value={validTill}
                 onChange={(e) => setValidTill(e.target.value)}

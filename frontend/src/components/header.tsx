@@ -19,9 +19,12 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { Button } from "@/components/button";
-import { MenuIcon, XMarkIcon } from "@/components/icons";
+import { MenuIcon, ShoppingCartIcon, XMarkIcon } from "@/components/icons";
 import { siteConfig } from "@/lib/brand";
+import { useCart } from "@/lib/cart";
+import { CartModal } from "@/components/cart/cart-modal";
 import styles from "@/styles/shared.module.css";
+import cartStyles from "@/styles/cart.module.css";
 
 // Named constants instead of "magic numbers" scattered through the logic
 // below — makes it obvious what each number means and gives one place to
@@ -34,6 +37,8 @@ export function Header() {
   const [open, setOpen] = useState(false); // is the mobile hamburger menu open?
   const [compact, setCompact] = useState(false); // has the user scrolled past COMPACT_THRESHOLD?
   const [hidden, setHidden] = useState(false); // should the header be slid up out of view right now?
+  const [cartOpen, setCartOpen] = useState(false); // is the cart modal (cart-modal.tsx) open?
+  const { count } = useCart();
 
   // Why a ref AND state for the same thing (`open`)? The scroll event
   // listener below is set up ONCE (empty dependency array) and keeps
@@ -146,6 +151,19 @@ export function Header() {
           </Button>
         </div>
 
+        {/* Cart icon — visible at every breakpoint (unlike the hamburger menu
+            or the desktop-only "Get Started" CTA next to it), since the cart
+            needs to stay reachable regardless of screen size. */}
+        <button
+          type="button"
+          onClick={() => setCartOpen(true)}
+          aria-label={`Open cart${count > 0 ? ` (${count} item${count === 1 ? "" : "s"})` : ""}`}
+          className={cartStyles.headerCartButton}
+        >
+          <ShoppingCartIcon className="h-5 w-5" />
+          {count > 0 && <span className={cartStyles.headerCartBadge}>{count}</span>}
+        </button>
+
         {/* Hamburger / close toggle button — only visible below `lg`. */}
         <button
           type="button"
@@ -188,6 +206,8 @@ export function Header() {
           </Button>
         </nav>
       )}
+
+      {cartOpen && <CartModal onClose={() => setCartOpen(false)} />}
     </header>
   );
 }

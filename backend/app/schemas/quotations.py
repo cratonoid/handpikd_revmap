@@ -1,5 +1,5 @@
 # Request/response bodies for the quotations module's endpoints.
-from datetime import datetime
+from datetime import date
 
 from pydantic import BaseModel, model_validator
 
@@ -8,8 +8,8 @@ from app.models.quotation_details import QuotationStatus
 
 class CreateNewQuotationRequest(BaseModel):
     cust_id: int
-    date: datetime
-    valid_till: datetime
+    date: date
+    valid_till: date
     # Parallel arrays, one entry per line item — same convention as
     # CreateNewSalesOrderRequest's product_ids/quantities/rates/tax_percs.
     product_ids: list[int]
@@ -37,8 +37,8 @@ class CreateNewQuotationResponse(BaseModel):
 class QuotationDetailItem(BaseModel):
     id: int
     quotation_no: int
-    date: datetime
-    valid_till: datetime
+    date: date
+    valid_till: date
     cust_id: int
     status: QuotationStatus
     product_ids: list[int]
@@ -60,8 +60,8 @@ class UpdateQuotationDetailsRequest(BaseModel):
     status: QuotationStatus
     is_deleted: bool = False
     cust_id: int
-    date: datetime
-    valid_till: datetime
+    date: date
+    valid_till: date
     product_ids: list[int]
     quantities: list[int]
     rates: list[float]

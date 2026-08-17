@@ -11,6 +11,7 @@ from app.models import (
     PurchaseOrders,
     PurchaseSummary,
     PurchaseSummaryIdCounter,
+    SalesOrders,
     User,
     VendorDetails,
 )
@@ -53,6 +54,21 @@ def _compute_totals(
     tax_perc = (sgst_perc or 0) + (cgst_perc or 0) + (igst_perc or 0)
     total_after_tax = total_before_tax * (1 + tax_perc / 100)
     return total_before_tax, total_after_tax
+
+
+async def _flag_related_sales_orders(purchase_order_id: int) -> None:
+    # Notifies (doesn't auto-sync) any sales order that references this PO —
+    # see SalesOrders.po_updated_flag's docstring for why: the two orders'
+    # line items/totals are deliberately kept independent, so an edited PO
+    # just raises a flag for the admin to review the linked sales order(s)
+    # against, rather than silently overwriting their data.
+    related_orders = await SalesOrders.find(
+        SalesOrders.related_purchase_order_ids == purchase_order_id,
+        SalesOrders.is_deleted == False,
+    ).to_list()
+    for sales_order in related_orders:
+        sales_order.po_updated_flag = True
+        await sales_order.save()
 
 
 async def _insert_purchase_summary_rows(
@@ -211,5 +227,6 @@ async def update_purchase_order_details(
 
     await PurchaseSummary.find(PurchaseSummary.purchase_order_id == purchase_order.id).delete()
     await _insert_purchase_summary_rows(purchase_order.id, payload.product_ids, payload.quantities, payload.rates)
+    await _flag_related_sales_orders(purchase_order.id)
 
     return UpdatePurchaseOrderDetailsResponse(message="purchase order updated successfully")

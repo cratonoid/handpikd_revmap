@@ -10,6 +10,7 @@
 // Styling lives in src/styles/products.module.css.
 import { formatInr, type Product } from "@/lib/public-products";
 import { GetItNowButton } from "@/components/products/get-it-now-button";
+import { AddToCartButton } from "@/components/products/add-to-cart-button";
 import styles from "@/styles/products.module.css";
 
 export function ProductCard({ product }: { product: Product }) {
@@ -59,7 +60,16 @@ export function ProductCard({ product }: { product: Product }) {
             <span className={styles.cardOriginalPrice}>{formatInr(product.originalPrice)}</span>
           )}
         </div>
-        <GetItNowButton productName={product.name} />
+        <div className={styles.cardActionsRow}>
+          <AddToCartButton
+            productId={product.id}
+            name={product.name}
+            price={product.price}
+            originalPrice={product.originalPrice}
+            image={product.image}
+          />
+          <GetItNowButton productName={product.name} />
+        </div>
       </div>
     </article>
   );

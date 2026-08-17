@@ -29,6 +29,7 @@ export type PurchaseInvoice = {
   date: string;
   vendorId: number;
   poId: number | null;
+  poNumberText: string | null;
   source: PurchaseInvoiceSource;
   hasUploadedPdf: boolean;
   // Only populated for source == "pdf_upload" — po_dropdown invoices' line
@@ -56,6 +57,7 @@ type PurchaseInvoiceDetailItem = {
   date: string;
   vendor_id: number;
   po_id: number | null;
+  po_number_text: string | null;
   source: PurchaseInvoiceSource;
   has_uploaded_pdf: boolean;
   line_items: BackendLineItem[];
@@ -73,6 +75,7 @@ function toPurchaseInvoice(item: PurchaseInvoiceDetailItem): PurchaseInvoice {
     date: item.date,
     vendorId: item.vendor_id,
     poId: item.po_id,
+    poNumberText: item.po_number_text,
     source: item.source,
     hasUploadedPdf: item.has_uploaded_pdf,
     lineItems: item.line_items.map((lineItem) => ({
@@ -104,6 +107,7 @@ export type CreatePurchaseInvoicePayload = {
   vendorId: number;
   source: PurchaseInvoiceSource;
   poId?: number;
+  poNumberText?: string;
   lineItems?: PurchaseInvoiceLineItem[];
 };
 
@@ -131,6 +135,7 @@ export async function createPurchaseInvoice(payload: CreatePurchaseInvoicePayloa
       vendor_id: payload.vendorId,
       source: payload.source,
       po_id: payload.poId ?? null,
+      po_number_text: payload.poNumberText ?? null,
       line_items: lineItemsToPayload(payload.lineItems),
     }),
   });

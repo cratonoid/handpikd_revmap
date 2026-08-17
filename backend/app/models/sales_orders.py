@@ -15,6 +15,14 @@ class SalesOrders(Document):
     total_amount_after_tax: float
     description: str
     related_purchase_order_ids: list[int] = []  # FK -> PurchaseOrders.id (array)
+    # Set whenever a related purchase order (see related_purchase_order_ids)
+    # is edited after this sales order was created — a notice for the admin
+    # to review, not an automatic data sync (the two orders' line
+    # items/totals stay fully independent). Cleared the next time this sales
+    # order itself is saved via update_sales_order_details, which counts as
+    # the admin having reviewed it. See routes/orders.py's
+    # update_purchase_order_details.
+    po_updated_flag: bool = False
     is_deleted: bool = False
 
     class Settings:

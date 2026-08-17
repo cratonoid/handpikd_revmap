@@ -23,6 +23,9 @@ class CreateNewPurchaseInvoiceRequest(BaseModel):
     # source == pdf_upload (admin can still tie an uploaded vendor PDF back
     # to a known PO for reference).
     po_id: int | None = None
+    # Free-typed order number when the frontend's order-number field didn't
+    # match an existing PurchaseOrders row — see PurchaseInvoiceDetails.
+    po_number_text: str | None = None
     # Only used when source == pdf_upload — po_dropdown line items are
     # always derived live from the linked PurchaseOrders/PurchaseSummary
     # instead (see routes/purchase_invoices.py). The vendor PDF itself never
@@ -56,6 +59,7 @@ class PurchaseInvoiceDetailItem(BaseModel):
     date: datetime
     vendor_id: int
     po_id: int | None
+    po_number_text: str | None
     source: PurchaseInvoiceSource
     has_uploaded_pdf: bool
     # Only populated for source == pdf_upload (folded in from

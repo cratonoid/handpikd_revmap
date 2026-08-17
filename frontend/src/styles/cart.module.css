@@ -1,0 +1,188 @@
+/* =============================================================================
+   Cart modal (components/cart/cart-modal.tsx) + header cart button
+   =============================================================================
+   Reuses products.module.css's .getItNowOverlay/.getItNowScroll/.getItNowHeader
+   shell and home-page.module.css's .form* fields for the contact-details
+   step — this file only has the parts unique to the cart itself: the item
+   list, quantity stepper, and subtotal row.
+   ============================================================================= */
+
+.emptyCart {
+  padding-block: 1.5rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+}
+
+.cartList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.cartRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  padding: 0.6rem;
+}
+
+.cartThumb {
+  height: 3rem;
+  width: 3rem;
+  flex-shrink: 0;
+  border-radius: 0.5rem;
+  object-fit: cover;
+  background-color: var(--color-cream-deep);
+}
+
+.cartRowBody {
+  min-width: 0;
+  flex: 1 1 0%;
+}
+
+.cartRowName {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-charcoal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cartRowPrice {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+}
+
+.qtyStepper {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  padding: 0.2rem;
+}
+
+.qtyButton {
+  display: flex;
+  height: 1.5rem;
+  width: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: var(--color-charcoal);
+  transition: background-color 0.2s;
+}
+
+.qtyButton:hover {
+  background-color: var(--color-cream-deep);
+}
+
+.qtyValue {
+  min-width: 1.25rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.removeButton {
+  display: flex;
+  flex-shrink: 0;
+  height: 2rem;
+  width: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+}
+
+.removeButton:hover {
+  background-color: var(--color-cream-deep);
+  color: var(--color-red);
+}
+
+.subtotalRow {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.75rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.cartCta {
+  margin-top: 1rem;
+  width: 100%;
+  justify-content: center;
+}
+
+.formActionsRow {
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.backButton {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--color-ink) 65%, transparent);
+  transition: color 0.2s;
+}
+
+.backButton:hover {
+  color: var(--color-charcoal);
+}
+
+/* -----------------------------------------------------------------------
+   Header cart button (header.tsx)
+   ----------------------------------------------------------------------- */
+
+.headerCartButton {
+  position: relative;
+  display: flex;
+  height: 2.5rem;
+  width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: var(--color-charcoal);
+  transition: background-color 0.2s;
+}
+
+.headerCartButton:hover {
+  background-color: var(--color-cream-deep);
+}
+
+.headerCartBadge {
+  position: absolute;
+  top: 0.1rem;
+  right: 0.1rem;
+  display: flex;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background-color: var(--color-red);
+  padding-inline: 0.2rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: var(--color-cream);
+}

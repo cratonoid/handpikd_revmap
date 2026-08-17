@@ -16,6 +16,12 @@ class PurchaseInvoiceDetails(Document):
     date: datetime
     vendor_id: int  # FK -> VendorDetails.id
     po_id: int | None = None  # FK -> PurchaseOrders.id, optional either way
+    # Free-typed order number when the admin didn't pick an existing
+    # PurchaseOrders row from the dropdown (e.g. a vendor's own PO number
+    # that isn't in our system) — purely a reference tag, unlike po_id it's
+    # never resolved against PurchaseOrders. Only meaningful when po_id is
+    # unset.
+    po_number_text: str | None = None
     source: PurchaseInvoiceSource
     # Only set when source == pdf_upload: relative path to the original
     # vendor PDF, served back as-is (see purchase_invoice_storage.py). Our

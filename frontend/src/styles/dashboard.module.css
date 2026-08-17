@@ -566,6 +566,20 @@
   color: var(--color-red);
 }
 
+/* Review notice banner (sales-order-form-modal.tsx) — shown when a related
+   purchase order was edited since this sales order was last saved. Amber
+   rather than .formError's red since it's a heads-up, not a failure. */
+.poUpdatedNotice {
+  margin-bottom: 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, #b45309 35%, transparent);
+  background-color: color-mix(in srgb, #b45309 10%, transparent);
+  padding: 0.75rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #92400e;
+}
+
 .formTextarea {
   width: 100%;
   resize: vertical;
@@ -1284,6 +1298,15 @@
   padding: 0.85rem;
   font-size: 0.8125rem;
   color: var(--color-ink);
+}
+
+/* Nested indentation for components/admin/category-tree-select.tsx's
+   drill-down tree — same left-border idea as .treeChildren above, one level
+   per checked category. */
+.categoryTreeNested {
+  margin-left: 1rem;
+  padding-left: 0.75rem;
+  border-left: 1px dashed var(--color-border);
 }
 
 /* -----------------------------------------------------------------------

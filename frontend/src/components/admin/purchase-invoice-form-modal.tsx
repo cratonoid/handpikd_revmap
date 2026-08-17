@@ -3,22 +3,30 @@
 // ---------------------------------------------------------------------------
 // <PurchaseInvoiceFormModal> — add/edit popup on the Purchase Invoices tab
 // ---------------------------------------------------------------------------
-// Two creation paths, picked via a small source toggle (add mode only —
-// fixed once raised, shown read-only in edit mode):
-//   - "po_dropdown": pick an existing PurchaseOrders record; vendor and
-//     totals are derived from it (live preview here, re-derived
-//     authoritatively by the backend). No line-item entry — mirrors
-//     invoice-form-modal.tsx borrowing a sales order's line items.
-//   - "pdf_upload": upload a vendor PDF, best-effort parsed locally (see
-//     purchase_invoice_parser.py — no LLM, every field stays editable) via
-//     parsePurchaseInvoicePdf, which doesn't store anything — the picked
-//     File itself is held in state and attached (attachPurchaseInvoicePdf)
-//     once Save creates the invoice row, same two-phase pattern as
-//     catalogue-form-modal.tsx (see its header comment for why: bundling a
-//     file into the create request risked the same request-size blowup
-//     fixed for catalogues). Carries its own free-text line items (no
-//     product_id FK — a vendor's line items don't reliably map to our
-//     catalogue).
+// Add mode has a single "Purchase order" section with just two inputs — no
+// more po_dropdown/pdf_upload tab split:
+//   - Order number: a free-typeable field (backed by a <datalist> of
+//     existing PurchaseOrders for typeahead). Typing/selecting a value that
+//     matches an existing PO sets poId (and its vendor); anything else is
+//     kept as a free-text reference (poNumberText) — for a vendor's own PO
+//     number that isn't in our system.
+//   - Purchase order PDF: upload it and it's best-effort parsed locally (see
+//     purchase_invoice_parser.py — no LLM) via parsePurchaseInvoicePdf to
+//     fill vendor/date/line items. The picked File itself is held in state
+//     and attached (attachPurchaseInvoicePdf) once Save creates the invoice
+//     row — same two-phase pattern as catalogue-form-modal.tsx (see its
+//     header comment for why: bundling a file into the create request
+//     risked the same request-size blowup fixed for catalogues).
+// Either input alone is enough to save. Vendor/date/line items/totals are
+// auto-filled and stay hidden; a vendor picker only appears if neither input
+// supplied one (PO match with no PDF that lacks a resolvable vendor, or a
+// PDF whose vendor couldn't be auto-detected). If both order number and PDF
+// are given, the PDF's parsed data wins for vendor/date/line items/totals —
+// the order number is then just a reference tag.
+// Edit mode is unchanged: source/poId/the uploaded PDF stay immutable once
+// raised, shown read-only (po_dropdown) or still editable (pdf_upload, whose
+// line items carry no product_id FK — a vendor's line items don't reliably
+// map to our catalogue).
 // mode "add" -> POST /admin/create_new_purchase_invoice, then (pdf_upload
 //               only) POST /admin/attach_purchase_invoice_pdf
 // mode "edit" -> POST /admin/update_purchase_invoice_details (source/poId/
@@ -26,7 +34,7 @@
 //                for the pdf_upload source, since po_dropdown's keep coming
 //                live from the linked PurchaseOrders).
 // All three live in backend/app/api/routes/purchase_invoices.py.
-import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue } from "@/lib/datetime-input";
@@ -88,12 +96,15 @@ export function PurchaseInvoiceFormModal({
   onSaved: () => void;
 }) {
   const isEdit = mode === "edit";
-  const [source, setSource] = useState<PurchaseInvoiceSource>(initialPurchaseInvoice?.source ?? "po_dropdown");
+  const [source] = useState<PurchaseInvoiceSource>(initialPurchaseInvoice?.source ?? "po_dropdown");
   const [vendorId, setVendorId] = useState<string | null>(
     initialPurchaseInvoice ? String(initialPurchaseInvoice.vendorId) : null,
   );
   const [poId, setPoId] = useState<string | null>(
     initialPurchaseInvoice?.poId ? String(initialPurchaseInvoice.poId) : null,
+  );
+  const [poNumberText, setPoNumberText] = useState<string | null>(
+    initialPurchaseInvoice?.poNumberText ?? null,
   );
   const [date, setDate] = useState(
     initialPurchaseInvoice ? toDatetimeLocalValue(initialPurchaseInvoice.date) : nowAsDatetimeLocalValue(),
@@ -111,25 +122,36 @@ export function PurchaseInvoiceFormModal({
 
   const wasDeleted = initialPurchaseInvoice?.isDeleted ?? false;
   const title = isEdit ? "Edit purchase invoice" : "New purchase invoice";
-  const isPoDropdown = source === "po_dropdown";
+
+  // Add mode has no source toggle any more — the source is derived from
+  // whether a PDF was uploaded. Edit mode keeps whatever it was raised as.
+  const effectiveSource: PurchaseInvoiceSource = isEdit ? source : pdfFile ? "pdf_upload" : "po_dropdown";
+  const isPoDropdown = effectiveSource === "po_dropdown";
 
   const vendorOptions: SingleSelectOption[] = vendors.map((vendor) => ({
     value: String(vendor.id),
     label: vendor.name,
     isDeleted: false,
   }));
-  const vendorsById = useMemo(() => new Map(vendors.map((v) => [v.id, v])), [vendors]);
-  const poOptions: SingleSelectOption[] = purchaseOrders.map((po) => ({
-    value: String(po.id),
-    label: `PO-${po.purchaseOrderNo} · ${vendorsById.get(po.vendorId)?.name ?? "Unknown vendor"}`,
-    isDeleted: false,
-  }));
+  const vendorsById = new Map(vendors.map((v) => [v.id, v]));
   const selectedPo = purchaseOrders.find((po) => String(po.id) === poId) ?? null;
+  const orderNumberValue = selectedPo ? `PO-${selectedPo.purchaseOrderNo}` : (poNumberText ?? "");
 
-  function handlePoChange(newPoId: string | null) {
-    setPoId(newPoId);
-    const po = purchaseOrders.find((p) => String(p.id) === newPoId);
-    if (po) setVendorId(String(po.vendorId));
+  function handleOrderNumberChange(rawValue: string) {
+    const trimmed = rawValue.trim();
+    const matched = purchaseOrders.find((po) => `PO-${po.purchaseOrderNo}`.toLowerCase() === trimmed.toLowerCase());
+    if (matched) {
+      setPoId(String(matched.id));
+      setPoNumberText(null);
+      setVendorId(String(matched.vendorId));
+    } else {
+      setPoId(null);
+      setPoNumberText(trimmed || null);
+      // Only clear an auto-filled vendor if nothing else (a parsed PDF)
+      // already supplied one — otherwise editing the order number away from
+      // a match would blank out a vendor the PDF parse already found.
+      if (!pdfFile) setVendorId(null);
+    }
   }
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -153,6 +175,11 @@ export function PurchaseInvoiceFormModal({
             taxPerc: "0",
           })),
         );
+      } else {
+        // Line items aren't editable in add mode any more, so a parse that
+        // found none needs to surface right away rather than fail
+        // confusingly at submit time.
+        setError("Couldn't read any line items from this PDF — try a different file.");
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to parse the uploaded PDF.");
@@ -220,8 +247,9 @@ export function PurchaseInvoiceFormModal({
       const createResponse = await createPurchaseInvoice({
         date: fromDatetimeLocalValue(date),
         vendorId: Number(vendorId),
-        source,
+        source: effectiveSource,
         poId: poId ? Number(poId) : undefined,
+        poNumberText: poNumberText ?? undefined,
         lineItems: isPoDropdown ? undefined : parsedLineItems,
       });
 
@@ -267,20 +295,24 @@ export function PurchaseInvoiceFormModal({
     event.preventDefault();
     const form = event.currentTarget;
 
+    if (!isEdit && !poId && !pdfFile) {
+      setError("Please select an order number or upload the purchase order PDF.");
+      return;
+    }
     if (!vendorId) {
-      setError("Please select a vendor.");
-      return;
-    }
-    if (!isEdit && isPoDropdown && !poId) {
-      setError("Please select a purchase order.");
-      return;
-    }
-    if (!isEdit && !isPoDropdown && !pdfFile) {
-      setError("Please upload a vendor PDF.");
+      setError(
+        isEdit
+          ? "Please select a vendor."
+          : "Couldn't detect a vendor from the order number or PDF. Please fix the order number or try a different PDF.",
+      );
       return;
     }
     if (!isPoDropdown && parsedLineItems.some((item) => !item.description || item.quantity <= 0 || item.rate <= 0)) {
-      setError("Every line item needs a description, quantity, and rate.");
+      setError(
+        isEdit
+          ? "Every line item needs a description, quantity, and rate."
+          : "Some details from the uploaded PDF could not be read. Please try a different file.",
+      );
       return;
     }
 
@@ -316,125 +348,107 @@ export function PurchaseInvoiceFormModal({
         </div>
 
         <form onSubmit={handleSubmit} className={styles.modalForm}>
-          {!isEdit && (
-            <div className={styles.viewToggle} role="tablist" aria-label="Purchase invoice source">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={isPoDropdown}
-                onClick={() => setSource("po_dropdown")}
-                className={`${styles.viewToggleButton} ${isPoDropdown ? styles.viewToggleButtonActive : ""}`}
-              >
-                From purchase order
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={!isPoDropdown}
-                onClick={() => setSource("pdf_upload")}
-                className={`${styles.viewToggleButton} ${!isPoDropdown ? styles.viewToggleButtonActive : ""}`}
-              >
-                From uploaded PDF
-              </button>
-            </div>
-          )}
-
-          <div className={styles.formGrid}>
-            {isEdit ? (
+          {isEdit ? (
+            <div className={styles.formGrid}>
               <div>
                 <span className={styles.formLabel}>Purchase invoice no.</span>
                 <p className={styles.pageSubtext}>{initialPurchaseInvoice?.purchaseInvoiceNoDisplay}</p>
               </div>
-            ) : (
+
+              {isPoDropdown ? (
+                <div>
+                  <span className={styles.formLabel}>Purchase order</span>
+                  <p className={styles.pageSubtext}>{selectedPo ? `PO-${selectedPo.purchaseOrderNo}` : "—"}</p>
+                </div>
+              ) : (
+                <div>
+                  <span className={styles.formLabel}>Vendor PDF</span>
+                  <p className={styles.pageSubtext}>{initialPurchaseInvoice?.hasUploadedPdf ? "Uploaded" : "—"}</p>
+                </div>
+              )}
+
+              {isPoDropdown ? (
+                <div>
+                  <span className={styles.formLabel}>Vendor</span>
+                  <p className={styles.pageSubtext}>{vendorsById.get(Number(vendorId))?.name ?? "—"}</p>
+                </div>
+              ) : (
+                <SingleSelectDropdown
+                  label="Vendor"
+                  placeholder="Select a vendor"
+                  entityLabel="vendors"
+                  required
+                  showStatusFilter={false}
+                  options={vendorOptions}
+                  selectedValue={vendorId}
+                  onChange={setVendorId}
+                />
+              )}
+
+              <div>
+                <label htmlFor="purchaseInvoiceDate" className={styles.formLabel}>
+                  Date<span className={styles.requiredMark}>*</span>
+                </label>
+                <input
+                  id="purchaseInvoiceDate"
+                  type="datetime-local"
+                  required
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className={styles.formInput}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className={styles.formGrid}>
               <div>
                 <span className={styles.formLabel}>Purchase invoice no.</span>
                 <p className={styles.pageSubtext}>Assigned automatically on save</p>
               </div>
-            )}
 
-            {isPoDropdown ? (
-              isEdit ? (
-                <div>
-                  <span className={styles.formLabel}>Purchase order</span>
-                  <p className={styles.pageSubtext}>
-                    {selectedPo ? `PO-${selectedPo.purchaseOrderNo}` : "—"}
-                  </p>
-                </div>
-              ) : (
-                <SingleSelectDropdown
-                  label="Purchase order"
-                  placeholder="Select a purchase order"
-                  entityLabel="purchase orders"
-                  required
-                  showStatusFilter={false}
-                  options={poOptions}
-                  selectedValue={poId}
-                  onChange={handlePoChange}
+              <div>
+                <label htmlFor="purchaseOrderNumber" className={styles.formLabel}>
+                  Order number
+                </label>
+                <input
+                  id="purchaseOrderNumber"
+                  type="text"
+                  list="purchase-order-number-options"
+                  placeholder="Select or type an order number"
+                  value={orderNumberValue}
+                  onChange={(e) => handleOrderNumberChange(e.target.value)}
+                  className={styles.formInput}
                 />
-              )
-            ) : (
-              <div>
-                <span className={styles.formLabel}>
-                  Vendor PDF{!isEdit && <span className={styles.requiredMark}>*</span>}
-                </span>
-                {isEdit ? (
-                  <p className={styles.pageSubtext}>
-                    {initialPurchaseInvoice?.hasUploadedPdf ? "Uploaded" : "—"}
-                  </p>
-                ) : (
-                  <>
-                    <label className={styles.triggerButtonBase} style={{ display: "inline-block", cursor: "pointer" }}>
-                      {parsing ? "Parsing…" : pdfFile ? "Replace file" : "Choose PDF"}
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        onChange={handleFileChange}
-                        disabled={parsing}
-                        style={{ display: "none" }}
-                      />
-                    </label>
-                    {pdfFile && !parsing && (
-                      <p className={styles.pageSubtext}>Uploaded — fields prefilled below where possible.</p>
-                    )}
-                  </>
-                )}
+                <datalist id="purchase-order-number-options">
+                  {purchaseOrders.map((po) => (
+                    <option key={po.id} value={`PO-${po.purchaseOrderNo}`} />
+                  ))}
+                </datalist>
               </div>
-            )}
 
-            {isPoDropdown ? (
               <div>
-                <span className={styles.formLabel}>Vendor</span>
-                <p className={styles.pageSubtext}>{vendorsById.get(Number(vendorId))?.name ?? "—"}</p>
+                <span className={styles.formLabel}>Purchase order PDF</span>
+                <div>
+                  <label className={styles.triggerButtonBase} style={{ display: "inline-block", cursor: "pointer" }}>
+                    {parsing ? "Parsing…" : pdfFile ? "Replace file" : "Choose PDF"}
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      onChange={handleFileChange}
+                      disabled={parsing}
+                      style={{ display: "none" }}
+                    />
+                  </label>
+                  {pdfFile && !parsing && (
+                    <p className={styles.pageSubtext}>Uploaded — vendor, items and totals filled in automatically.</p>
+                  )}
+                </div>
               </div>
-            ) : (
-              <SingleSelectDropdown
-                label="Vendor"
-                placeholder="Select a vendor"
-                entityLabel="vendors"
-                required
-                showStatusFilter={false}
-                options={vendorOptions}
-                selectedValue={vendorId}
-                onChange={setVendorId}
-              />
-            )}
 
-            <div>
-              <label htmlFor="purchaseInvoiceDate" className={styles.formLabel}>
-                Date<span className={styles.requiredMark}>*</span>
-              </label>
-              <input
-                id="purchaseInvoiceDate"
-                type="datetime-local"
-                required
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className={styles.formInput}
-              />
             </div>
-          </div>
+          )}
 
-          {!isPoDropdown && (
+          {isEdit && !isPoDropdown && (
             <div className={styles.lineItemsSection}>
               <div className={styles.contactsHeader}>
                 <span className={styles.formLabel}>Line items</span>
@@ -540,20 +554,22 @@ export function PurchaseInvoiceFormModal({
             </div>
           )}
 
-          <div className={styles.totalsRow}>
-            <div className={styles.totalsRowItem}>
-              <p className={styles.totalsRowLabel}>Total before tax</p>
-              <p className={styles.totalsRowValue}>₹{totalAmountBeforeTax.toFixed(2)}</p>
+          {isEdit && (
+            <div className={styles.totalsRow}>
+              <div className={styles.totalsRowItem}>
+                <p className={styles.totalsRowLabel}>Total before tax</p>
+                <p className={styles.totalsRowValue}>₹{totalAmountBeforeTax.toFixed(2)}</p>
+              </div>
+              <div className={styles.totalsRowItem}>
+                <p className={styles.totalsRowLabel}>Total tax</p>
+                <p className={styles.totalsRowValue}>₹{totalTaxAmount.toFixed(2)}</p>
+              </div>
+              <div className={styles.totalsRowItem}>
+                <p className={styles.totalsRowLabel}>Total after tax</p>
+                <p className={styles.totalsRowValue}>₹{totalAmountAfterTax.toFixed(2)}</p>
+              </div>
             </div>
-            <div className={styles.totalsRowItem}>
-              <p className={styles.totalsRowLabel}>Total tax</p>
-              <p className={styles.totalsRowValue}>₹{totalTaxAmount.toFixed(2)}</p>
-            </div>
-            <div className={styles.totalsRowItem}>
-              <p className={styles.totalsRowLabel}>Total after tax</p>
-              <p className={styles.totalsRowValue}>₹{totalAmountAfterTax.toFixed(2)}</p>
-            </div>
-          </div>
+          )}
 
           {error && (
             <p role="alert" aria-live="polite" className={styles.formError}>

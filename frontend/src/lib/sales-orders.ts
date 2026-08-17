@@ -36,6 +36,12 @@ export type SalesOrder = {
   totalAmountAfterTax: number;
   description: string;
   relatedPurchaseOrderIds: number[];
+  // True once a related purchase order (relatedPurchaseOrderIds) has been
+  // edited since this sales order was last saved — a review notice, not an
+  // automatic data sync; see backend/app/models/sales_orders.py's
+  // po_updated_flag docstring. Cleared server-side the next time this sales
+  // order is saved via update_sales_order_details.
+  poUpdatedFlag: boolean;
   isDeleted: boolean;
 };
 
@@ -55,6 +61,7 @@ type SalesOrderDetailItem = {
   total_amount_after_tax: number;
   description: string;
   related_purchase_order_ids: number[];
+  po_updated_flag: boolean;
   is_deleted: boolean;
 };
 
@@ -74,6 +81,7 @@ function toSalesOrder(item: SalesOrderDetailItem): SalesOrder {
     totalAmountAfterTax: item.total_amount_after_tax,
     description: item.description,
     relatedPurchaseOrderIds: item.related_purchase_order_ids,
+    poUpdatedFlag: item.po_updated_flag,
     isDeleted: item.is_deleted,
   };
 }

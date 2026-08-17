@@ -267,6 +267,13 @@ export function SalesOrderFormModal({
         </div>
 
         <form onSubmit={handleSubmit} className={styles.modalForm}>
+          {isEdit && initialOrder?.poUpdatedFlag && (
+            <p className={styles.poUpdatedNotice}>
+              A related purchase order was edited since this sales order was last saved. Review the line items/totals
+              below and Save to clear this notice.
+            </p>
+          )}
+
           <div className={styles.formGrid}>
             {isEdit ? (
               <div>

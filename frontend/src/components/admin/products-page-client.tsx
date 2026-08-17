@@ -21,19 +21,14 @@
 // just renamed to match the field it's actually driving. Clicking a row
 // opens the popup in "edit" mode, pre-filled with that row's data; "+ Add
 // new product" opens it in "add" mode.
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/button";
 import { resolveMediaUrl } from "@/lib/api";
 import { ProductFormModal } from "@/components/admin/product-form-modal";
+import { CategoryTreeSelect } from "@/components/admin/category-tree-select";
 import { fetchProducts, type Product } from "@/lib/products";
 import { fetchVendors, fetchVendorsList, type Vendor, type VendorOption } from "@/lib/vendors";
-import {
-  ancestorIdsById,
-  descendantIdsById,
-  fetchCategories,
-  flattenCategories,
-  type FlatCategory,
-} from "@/lib/categories";
+import { fetchCategories, descendantIdsById, type CategoryNode } from "@/lib/categories";
 import { CubeIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
@@ -45,28 +40,46 @@ export function ProductsPageClient() {
   const [products, setProducts] = useState<Product[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [vendorOptions, setVendorOptions] = useState<VendorOption[]>([]);
-  const [flatCategories, setFlatCategories] = useState<FlatCategory[]>([]);
-  const [categoryDescendants, setCategoryDescendants] = useState<Map<string, string[]>>(new Map());
-  const [categoryAncestors, setCategoryAncestors] = useState<Map<string, string[]>>(new Map());
+  const [categoryTree, setCategoryTree] = useState<CategoryNode[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
   const [view, setView] = useState<View>("active");
 
-  const visibleProducts = products.filter((p) => (view === "hidden" ? !p.isVisible : p.isVisible));
+  // Unfolding category filter above the table — same expand-on-check tree
+  // as the product form's "Categories" field (category-tree-select.tsx),
+  // reused here for browsing/filtering instead of tagging. Picking a
+  // category still only picks that one node (see category-tree-select.tsx's
+  // module comment), but matching below expands it out to its full subtree
+  // via descendantIdsById, mirroring the storefront filter's
+  // expandedAppliedCategoryIds (products-page-client.tsx under
+  // components/products) so picking a parent still surfaces products only
+  // tagged with one of its children.
+  const [categoryFilterIds, setCategoryFilterIds] = useState<string[]>([]);
+  const descendantsById = useMemo(() => descendantIdsById(categoryTree), [categoryTree]);
+  const expandedFilterIds = useMemo(() => {
+    const expanded = new Set<string>();
+    categoryFilterIds.forEach((id) => {
+      expanded.add(id);
+      (descendantsById.get(id) ?? []).forEach((descendantId) => expanded.add(descendantId));
+    });
+    return expanded;
+  }, [categoryFilterIds, descendantsById]);
+
+  const visibleProducts = products
+    .filter((p) => (view === "hidden" ? !p.isVisible : p.isVisible))
+    .filter((p) => categoryFilterIds.length === 0 || p.categoryIds.some((id) => expandedFilterIds.has(id)));
   const vendorsById = new Map(vendors.map((v) => [v.id, v]));
 
   useEffect(() => {
     let cancelled = false;
 
     Promise.all([fetchProducts(), fetchVendors(), fetchVendorsList(), fetchCategories()])
-      .then(([productData, vendorData, vendorOptionData, categoryTree]) => {
+      .then(([productData, vendorData, vendorOptionData, categories]) => {
         if (cancelled) return;
         setProducts(productData);
         setVendors(vendorData);
         setVendorOptions(vendorOptionData);
-        setFlatCategories(flattenCategories(categoryTree));
-        setCategoryDescendants(descendantIdsById(categoryTree));
-        setCategoryAncestors(ancestorIdsById(categoryTree));
+        setCategoryTree(categories);
         setLoadState("loaded");
       })
       .catch(() => {
@@ -108,14 +121,6 @@ export function ProductsPageClient() {
       });
   }
 
-  const categoryOptions = flatCategories.map((c) => ({
-    value: c.id,
-    label: c.name,
-    depth: c.depth,
-    descendantIds: categoryDescendants.get(c.id) ?? [],
-    ancestorIds: categoryAncestors.get(c.id) ?? [],
-  }));
-
   return (
     <>
       <div className={styles.pageHeaderRow}>
@@ -147,6 +152,23 @@ export function ProductsPageClient() {
         >
           Hidden products
         </button>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        <div className="max-w-xs flex-1 min-w-[14rem]">
+          <CategoryTreeSelect
+            label="Filter by category"
+            placeholder="All categories"
+            tree={categoryTree}
+            selectedValues={categoryFilterIds}
+            onChange={setCategoryFilterIds}
+          />
+        </div>
+        {categoryFilterIds.length > 0 && (
+          <Button type="button" variant="tertiary" onClick={() => setCategoryFilterIds([])}>
+            Clear category filter
+          </Button>
+        )}
       </div>
 
       <div className={styles.tableWrap}>
@@ -215,7 +237,7 @@ export function ProductsPageClient() {
           mode={modalState.mode}
           initialProduct={modalState.mode === "edit" ? modalState.product : undefined}
           vendors={vendorOptions}
-          categoryOptions={categoryOptions}
+          categoryTree={categoryTree}
           onClose={() => setModalState(null)}
           onImagesChangedWithoutSave={handleImagesChangedWithoutSave}
           onSaved={handleSaved}
