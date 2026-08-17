@@ -117,12 +117,18 @@ export function PurchaseOrderFormModal({
   const title = isEdit ? "Edit purchase order" : "New purchase order";
 
   // vendors comes from GET /admin/get_vendors_list, which only returns active
-  // vendors, so isDeleted is always false here.
-  const vendorOptions: SingleSelectOption[] = vendors.map((vendor) => ({
-    value: String(vendor.id),
-    label: vendor.name,
-    isDeleted: false,
-  }));
+  // vendors, so isDeleted is always false here. Further filtered to
+  // GST-registered vendors only — a purchase order needs to be
+  // GST-invoiceable, same reasoning as product-form-modal.tsx's identical
+  // filter; the backend rejects a non-GST vendor_id too (see
+  // _require_vendor_has_gst in routes/orders.py) as defense in depth.
+  const vendorOptions: SingleSelectOption[] = vendors
+    .filter((vendor) => vendor.gst !== "")
+    .map((vendor) => ({
+      value: String(vendor.id),
+      label: vendor.name,
+      isDeleted: false,
+    }));
 
   // A purchase order is placed with a single vendor, so line items can only
   // draw from that vendor's own products — until a vendor is picked, the

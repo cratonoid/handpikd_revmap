@@ -21,6 +21,7 @@ import { Fraunces, Manrope } from "next/font/google";
 // lib/cart.tsx) that this Server Component just renders around `children` —
 // the standard App Router pattern for app-wide client state.
 import { CartProvider } from "@/lib/cart";
+import { FloatingInquiryButton } from "@/components/floating-inquiry-button";
 // Importing the global stylesheet here (once) is what makes it apply to the
 // entire app — see src/app/globals.css for what's actually in it.
 import "./globals.css";
@@ -184,7 +185,15 @@ export default function RootLayout({
             /cart page all read and write the same cart (see lib/cart.tsx).
             Wrapping here rather than only around /products is what lets the
             badge stay correct on every page. */}
-        <CartProvider>{children}</CartProvider>
+        {/* <FloatingInquiryButton> sits alongside `children` (not inside any
+            one page) so it can float over whatever storefront page a
+            visitor is on, not just /products — see its own file for exactly
+            when it hides itself (empty cart, /cart itself, admin/customer
+            dashboards). */}
+        <CartProvider>
+          {children}
+          <FloatingInquiryButton />
+        </CartProvider>
       </body>
     </html>
   );

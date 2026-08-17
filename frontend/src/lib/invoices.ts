@@ -3,12 +3,13 @@
 // ---------------------------------------------------------------------------
 // Mirrors lib/sales-orders.ts. Fetches from GET /admin/get_invoice_details
 // (backend/app/api/routes/invoices.py), which only ever returns active
-// (non-deleted) invoices. Standard invoices are raised against an existing
-// sales order (salesId) and have no line items of their own here. Proforma
-// invoices are raised by hand, like a quotation — own customer (custId) and
-// own line items (productIds/quantities/rates/taxPercs, parallel arrays,
-// empty for standard invoices) — see lib/quotations.ts for the identical
-// shape. `type` is immutable once an invoice exists.
+// (non-deleted) invoices. Standard invoices are raised against one or more
+// existing sales orders (salesIds, all belonging to the same customer) and
+// have no line items of their own here. Proforma invoices are raised by
+// hand, like a quotation — own customer (custId) and own line items
+// (productIds/quantities/rates/taxPercs, parallel arrays, empty for standard
+// invoices) — see lib/quotations.ts for the identical shape. `type` is
+// immutable once an invoice exists, and so is salesIds.
 import { apiFetch } from "@/lib/api";
 
 export type InvoiceType = "proforma" | "standard";
@@ -20,7 +21,7 @@ export type Invoice = {
   invoiceNo: number;
   invoiceNoDisplay: string;
   date: string;
-  salesId: number | null;
+  salesIds: number[];
   quotationId: number | null;
   custId: number | null;
   type: InvoiceType;
@@ -45,7 +46,7 @@ type InvoiceDetailItem = {
   invoice_no: number;
   invoice_no_display: string;
   date: string;
-  sales_id: number | null;
+  sales_ids: number[];
   quotation_id: number | null;
   cust_id: number | null;
   type: InvoiceType;
@@ -70,7 +71,7 @@ function toInvoice(item: InvoiceDetailItem): Invoice {
     invoiceNo: item.invoice_no,
     invoiceNoDisplay: item.invoice_no_display,
     date: item.date,
-    salesId: item.sales_id,
+    salesIds: item.sales_ids,
     quotationId: item.quotation_id,
     custId: item.cust_id,
     type: item.type,
@@ -103,7 +104,7 @@ export async function fetchInvoices(): Promise<Invoice[]> {
 // Manual creation via this function is standard-only — proforma invoices
 // are created through createProformaInvoice below instead.
 export type CreateInvoicePayload = {
-  salesId: number;
+  salesIds: number[];
   date: string;
   dueDate: string;
   onlineOrOffline: OnlineOrOffline;
@@ -115,7 +116,7 @@ export async function createInvoice(payload: CreateInvoicePayload): Promise<Resp
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      sales_id: payload.salesId,
+      sales_ids: payload.salesIds,
       date: payload.date,
       due_date: payload.dueDate,
       online_or_offline: payload.onlineOrOffline,

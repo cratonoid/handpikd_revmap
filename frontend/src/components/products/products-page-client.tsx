@@ -185,10 +185,23 @@ export function ProductsPageClient() {
   // The applied category selection, expanded out to every id it should
   // match against (each checked id's own id + all of its descendants) —
   // computed once here rather than per-product inside the filter below.
+  //
+  // "Most specific wins": if a checked id has one of ITS OWN descendants
+  // also checked (e.g. "Mugs" is checked and so is "Glass" underneath it),
+  // "Mugs" no longer contributes its full subtree — only "Glass"'s own
+  // expansion does. Without this, checking "Glass" while "Mugs" is still
+  // checked (which it stays, so "Glass" remains visible/expanded) would
+  // keep matching every product under "Mugs" (Ceramic, Steel, etc.) instead
+  // of narrowing down to Glass alone.
   const expandedAppliedCategoryIds = useMemo(() => {
     const expanded = new Set<string>();
     appliedCheckedIds.forEach((id) => {
-      (descendantIndex.get(id) ?? [id]).forEach((matchId) => expanded.add(matchId));
+      const descendants = descendantIndex.get(id) ?? [id];
+      const hasCheckedDescendant = descendants.some(
+        (descendantId) => descendantId !== id && appliedCheckedIds.has(descendantId),
+      );
+      if (hasCheckedDescendant) return;
+      descendants.forEach((matchId) => expanded.add(matchId));
     });
     return expanded;
   }, [appliedCheckedIds, descendantIndex]);

@@ -36,6 +36,19 @@ from app.services.inventory import (
 router = APIRouter(prefix="/admin", tags=["orders"])
 
 
+def _require_vendor_has_gst(vendor: VendorDetails) -> None:
+    # A purchase order needs to be GST-invoiceable, so it can only be placed
+    # against a vendor with a GST number on file — mirrors the product form's
+    # vendor picker (see routes/vendors.py's get_vendors_list comment), but
+    # enforced here too since the PO endpoints are reachable independently of
+    # that frontend filter.
+    if not vendor.gst:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="selected vendor has no GST number on file — add one before placing a purchase order",
+        )
+
+
 async def _validate_products_belong_to_vendor(product_ids: list[int], vendor_id: int) -> None:
     products = await ProductDetails.find(In(ProductDetails.id, product_ids)).to_list()
     products_by_id = {product.id: product for product in products}
@@ -118,6 +131,7 @@ async def create_new_purchase_order(
     vendor = await VendorDetails.get(payload.vendor_id)
     if vendor is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="vendor not found")
+    _require_vendor_has_gst(vendor)
 
     existing_order = await PurchaseOrders.find_one(PurchaseOrders.purchase_order_no == payload.purchase_order_no)
     if existing_order is not None:
@@ -234,6 +248,7 @@ async def update_purchase_order_details(
     vendor = await VendorDetails.get(payload.vendor_id)
     if vendor is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="vendor not found")
+    _require_vendor_has_gst(vendor)
 
     existing_order = await PurchaseOrders.find_one(PurchaseOrders.purchase_order_no == payload.purchase_order_no)
     if existing_order is not None and existing_order.id != payload.id:

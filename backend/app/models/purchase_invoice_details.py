@@ -1,40 +1,29 @@
 # Schema for the #purchase_invoice_details collection.
 from datetime import datetime
-from enum import Enum
 
 from beanie import Document
-
-
-class PurchaseInvoiceSource(str, Enum):
-    po_dropdown = "po_dropdown"
-    pdf_upload = "pdf_upload"
 
 
 class PurchaseInvoiceDetails(Document):
     id: int
     purchase_invoice_no: int
     date: datetime
-    vendor_id: int  # FK -> VendorDetails.id
-    po_id: int | None = None  # FK -> PurchaseOrders.id, optional either way
-    # Free-typed order number when the admin didn't pick an existing
-    # PurchaseOrders row from the dropdown (e.g. a vendor's own PO number
-    # that isn't in our system) — purely a reference tag, unlike po_id it's
-    # never resolved against PurchaseOrders. Only meaningful when po_id is
-    # unset.
-    po_number_text: str | None = None
-    source: PurchaseInvoiceSource
-    # Only set when source == pdf_upload: relative path to the original
-    # vendor PDF, served back as-is (see purchase_invoice_storage.py). Our
-    # own rendered PDF is generated on demand, not cached, same as
+    vendor_id: int  # FK -> VendorDetails.id, snapshotted from the linked PurchaseOrders at create time
+    po_id: int  # FK -> PurchaseOrders.id — every purchase invoice is raised against a purchase order
+    # Original vendor PDF for this invoice, if one has been uploaded (see
+    # purchase_invoice_storage.py). Optional and independent of the rest of
+    # the record: an invoice can be raised from its PO alone and have a PDF
+    # attached later, or never. Re-uploading replaces this (the old file is
+    # hard-deleted from disk — see attach_purchase_invoice_pdf in
+    # routes/purchase_invoices.py) rather than keeping history. Our own
+    # rendered PDF is generated on demand, not cached, same as
     # InvoiceDetails/invoice_pdf.py.
     uploaded_pdf_path: str | None = None
-    # Snapshotted at create/update time, same convention as
-    # InvoiceDetails/SalesOrders/PurchaseOrders. Line items themselves are
-    # NOT stored here for source == po_dropdown (derived live from
+    # Snapshotted at create time from the linked PurchaseOrders — same
+    # convention as InvoiceDetails/SalesOrders/PurchaseOrders. Line items
+    # themselves are never stored here; they're derived live from
     # PurchaseSummary via po_id, same as InvoiceDetails borrows from
-    # SalesSummary); for source == pdf_upload they live in
-    # PurchaseInvoiceSummary since there's no source-of-truth order to
-    # re-derive from.
+    # SalesSummary.
     total_amount_before_tax: float
     total_tax_amount: float
     total_amount_after_tax: float

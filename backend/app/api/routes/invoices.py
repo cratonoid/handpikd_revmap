@@ -50,11 +50,33 @@ from app.services.proforma_invoice_pdf import ProformaInvoiceLineItem, generate_
 router = APIRouter(prefix="/admin", tags=["invoices"])
 
 
-async def _get_sales_order_or_404(sales_id: int) -> SalesOrders:
-    sales_order = await SalesOrders.get(sales_id)
-    if sales_order is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="sales order not found")
-    return sales_order
+async def _get_sales_orders_or_404(sales_ids: list[int]) -> list[SalesOrders]:
+    sales_orders = await SalesOrders.find(In(SalesOrders.id, sales_ids)).to_list()
+    orders_by_id = {order.id: order for order in sales_orders}
+    missing = [sales_id for sales_id in sales_ids if sales_id not in orders_by_id]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"sales order(s) not found: {missing}"
+        )
+    # Preserve the caller-supplied order for deterministic totals/line-item ordering.
+    return [orders_by_id[sales_id] for sales_id in sales_ids]
+
+
+def _sum_sales_order_totals(sales_orders: list[SalesOrders]) -> tuple[float, float, float]:
+    total_before_tax = sum(order.total_amount_before_tax for order in sales_orders)
+    total_tax = sum(order.total_tax_amount for order in sales_orders)
+    total_after_tax = sum(order.total_amount_after_tax for order in sales_orders)
+    return total_before_tax, total_tax, total_after_tax
+
+
+def _check_same_customer(sales_orders: list[SalesOrders]) -> None:
+    # An invoice shows one customer name/address on its PDF, so every linked
+    # sales order must belong to the same customer.
+    if len({order.cust_id for order in sales_orders}) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="all selected sales orders must belong to the same customer",
+        )
 
 
 async def _validate_customer_exists(cust_id: int) -> None:
@@ -116,7 +138,9 @@ async def create_new_invoice(
     payload: CreateNewInvoiceRequest,
     _: User | None = Depends(require_admin),
 ) -> CreateNewInvoiceResponse:
-    sales_order = await _get_sales_order_or_404(payload.sales_id)
+    sales_orders = await _get_sales_orders_or_404(payload.sales_ids)
+    _check_same_customer(sales_orders)
+    total_before_tax, total_tax, total_after_tax = _sum_sales_order_totals(sales_orders)
 
     invoice_no = await get_next_id(StandardInvoiceNoCounterMaster, "next_invoice_no", InvoiceDetails)
     invoice_id = await get_next_id(InvoiceIdCounter, "next_invoice_id", InvoiceDetails)
@@ -125,11 +149,11 @@ async def create_new_invoice(
         id=invoice_id,
         invoice_no=invoice_no,
         date=payload.date,
-        sales_id=payload.sales_id,
+        sales_ids=payload.sales_ids,
         quotation_id=None,
-        total_amount_before_tax=sales_order.total_amount_before_tax,
-        total_tax_amount=sales_order.total_tax_amount,
-        total_amount_after_tax=sales_order.total_amount_after_tax,
+        total_amount_before_tax=total_before_tax,
+        total_tax_amount=total_tax,
+        total_amount_after_tax=total_after_tax,
         type=InvoiceType.standard,
         due_date=payload.due_date,
         online_or_offline=payload.online_or_offline,
@@ -159,7 +183,6 @@ async def create_new_proforma_invoice(
         id=invoice_id,
         invoice_no=invoice_no,
         date=payload.date,
-        sales_id=None,
         quotation_id=None,
         cust_id=payload.cust_id,
         total_amount_before_tax=total_before_tax,
@@ -201,7 +224,7 @@ def _to_invoice_detail_item(
         invoice_no=invoice.invoice_no,
         invoice_no_display=format_sales_invoice_no(invoice.invoice_no, invoice.type),
         date=invoice.date,
-        sales_id=invoice.sales_id,
+        sales_ids=invoice.sales_ids,
         quotation_id=invoice.quotation_id,
         cust_id=invoice.cust_id,
         type=invoice.type,
@@ -258,15 +281,16 @@ async def update_invoice_details(
             detail="use update_proforma_invoice_details for proforma invoices",
         )
 
-    # Re-snapshot totals from the linked sales order, in case it's changed
-    # since the invoice was created/generated — same recompute-on-edit
+    # Re-snapshot totals from the linked sales orders, in case any have
+    # changed since the invoice was created/generated — same recompute-on-edit
     # pattern as update_sales_order_details.
-    sales_order = await _get_sales_order_or_404(invoice.sales_id)
+    sales_orders = await _get_sales_orders_or_404(invoice.sales_ids)
+    total_before_tax, total_tax, total_after_tax = _sum_sales_order_totals(sales_orders)
 
     invoice.date = payload.date
-    invoice.total_amount_before_tax = sales_order.total_amount_before_tax
-    invoice.total_tax_amount = sales_order.total_tax_amount
-    invoice.total_amount_after_tax = sales_order.total_amount_after_tax
+    invoice.total_amount_before_tax = total_before_tax
+    invoice.total_tax_amount = total_tax
+    invoice.total_amount_after_tax = total_after_tax
     invoice.due_date = payload.due_date
     invoice.online_or_offline = payload.online_or_offline
     invoice.transport = payload.transport
@@ -394,10 +418,15 @@ async def _build_proforma_invoice_pdf_inputs(summaries: list[ProformaInvoiceSumm
 
 async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict[str, str]) -> tuple[bytes, str]:
     invoice_no_display = format_sales_invoice_no(invoice.invoice_no, invoice.type)
-    sales_order = await _get_sales_order_or_404(invoice.sales_id)
-    summaries = await SalesSummary.find(SalesSummary.sales_order_id == sales_order.id).to_list()
+    sales_orders = await _get_sales_orders_or_404(invoice.sales_ids)
+    # All linked sales orders share one customer (enforced in
+    # create_new_invoice), so any of them gives the right cust_id.
+    cust_id = sales_orders[0].cust_id
+    summaries = await SalesSummary.find(
+        In(SalesSummary.sales_order_id, invoice.sales_ids)
+    ).to_list()
     line_items, customer_name, customer_address, customer_phone, customer_gstin = (
-        await _build_standard_invoice_pdf_inputs(summaries, sales_order.cust_id)
+        await _build_standard_invoice_pdf_inputs(summaries, cust_id)
     )
 
     pdf_bytes = await generate_invoice_pdf(

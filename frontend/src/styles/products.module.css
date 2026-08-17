@@ -277,10 +277,23 @@
 
 .quantityStepperValue {
   flex: 1;
+  min-width: 0;
+  height: 2rem;
+  border: none;
+  border-radius: 9999px;
+  /* Light center against the dark charcoal pill/buttons around it, so it
+     reads as its own editable field rather than plain display text. */
+  background-color: var(--color-cream);
+  color: var(--color-charcoal);
   text-align: center;
   font-size: 0.8125rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+.quantityStepperValue:focus {
+  outline: 2px solid var(--color-cream);
+  outline-offset: 2px;
 }
 
 /* -----------------------------------------------------------------------

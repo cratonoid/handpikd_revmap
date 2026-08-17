@@ -21,27 +21,30 @@ export function InvoicesPageClient() {
   return (
     <>
       <h1 className={styles.pageHeading}>Invoices</h1>
-      <p className={styles.pageSubtext}>Generate, send, and track payment status of sales and purchase invoices.</p>
 
-      <div className={styles.viewToggle} role="tablist" aria-label="Invoices section">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "sales"}
-          onClick={() => setTab("sales")}
-          className={`${styles.viewToggleButton} ${tab === "sales" ? styles.viewToggleButtonActive : ""}`}
-        >
-          Sales invoices
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "purchase"}
-          onClick={() => setTab("purchase")}
-          className={`${styles.viewToggleButton} ${tab === "purchase" ? styles.viewToggleButtonActive : ""}`}
-        >
-          Purchase invoices
-        </button>
+      <div className={styles.invoicesToolbar}>
+        <p className={styles.pageSubtext}>Generate, send, and track payment status of sales and purchase invoices.</p>
+
+        <div className={styles.viewToggle} role="tablist" aria-label="Invoices section">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "sales"}
+            onClick={() => setTab("sales")}
+            className={`${styles.viewToggleButton} ${tab === "sales" ? styles.viewToggleButtonActive : ""}`}
+          >
+            Sales invoices
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "purchase"}
+            onClick={() => setTab("purchase")}
+            className={`${styles.viewToggleButton} ${tab === "purchase" ? styles.viewToggleButtonActive : ""}`}
+          >
+            Purchase invoices
+          </button>
+        </div>
       </div>
 
       {tab === "sales" ? <InvoicesTab /> : <PurchaseInvoicesTab />}

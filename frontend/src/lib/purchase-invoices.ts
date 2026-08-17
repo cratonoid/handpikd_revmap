@@ -3,24 +3,13 @@
 // ---------------------------------------------------------------------------
 // Mirrors lib/invoices.ts. Fetches from GET /admin/get_purchase_invoice_details
 // (backend/app/api/routes/purchase_invoices.py), which only ever returns
-// active (non-deleted) purchase invoices. A purchase invoice is raised
-// either against an existing PurchaseOrders record (source "po_dropdown",
-// no line items of its own — same borrowing convention as sales invoices
-// riding on a sales order) or from an uploaded vendor PDF (source
-// "pdf_upload", best-effort parsed via uploadAndParsePurchaseInvoicePdf,
-// carries its own free-text line items). source/poId/hasUploadedPdf are
-// immutable once raised.
+// active (non-deleted) purchase invoices. A purchase invoice is always
+// raised against an existing PurchaseOrders record — vendor and totals are
+// snapshotted from it at create time, same borrowing convention as sales
+// invoices riding on a sales order. poId/vendorId are immutable once raised;
+// a vendor PDF can optionally be attached (and later replaced) independently
+// of that via attachPurchaseInvoicePdf.
 import { apiFetch } from "@/lib/api";
-
-export type PurchaseInvoiceSource = "po_dropdown" | "pdf_upload";
-
-export type PurchaseInvoiceLineItem = {
-  description: string;
-  hsnCode: string;
-  quantity: number;
-  rate: number;
-  taxPerc: number;
-};
 
 export type PurchaseInvoice = {
   id: number;
@@ -28,13 +17,8 @@ export type PurchaseInvoice = {
   purchaseInvoiceNoDisplay: string;
   date: string;
   vendorId: number;
-  poId: number | null;
-  poNumberText: string | null;
-  source: PurchaseInvoiceSource;
+  poId: number;
   hasUploadedPdf: boolean;
-  // Only populated for source == "pdf_upload" — po_dropdown invoices' line
-  // items live on the linked PurchaseOrders instead.
-  lineItems: PurchaseInvoiceLineItem[];
   totalAmountBeforeTax: number;
   totalTaxAmount: number;
   totalAmountAfterTax: number;
@@ -42,25 +26,14 @@ export type PurchaseInvoice = {
 };
 
 // Shape returned by the backend's PurchaseInvoiceDetailItem schema.
-type BackendLineItem = {
-  description: string;
-  hsn_code: string;
-  quantity: number;
-  rate: number;
-  tax_perc: number;
-};
-
 type PurchaseInvoiceDetailItem = {
   id: number;
   purchase_invoice_no: number;
   purchase_invoice_no_display: string;
   date: string;
   vendor_id: number;
-  po_id: number | null;
-  po_number_text: string | null;
-  source: PurchaseInvoiceSource;
+  po_id: number;
   has_uploaded_pdf: boolean;
-  line_items: BackendLineItem[];
   total_amount_before_tax: number;
   total_tax_amount: number;
   total_amount_after_tax: number;
@@ -75,16 +48,7 @@ function toPurchaseInvoice(item: PurchaseInvoiceDetailItem): PurchaseInvoice {
     date: item.date,
     vendorId: item.vendor_id,
     poId: item.po_id,
-    poNumberText: item.po_number_text,
-    source: item.source,
     hasUploadedPdf: item.has_uploaded_pdf,
-    lineItems: item.line_items.map((lineItem) => ({
-      description: lineItem.description,
-      hsnCode: lineItem.hsn_code,
-      quantity: lineItem.quantity,
-      rate: lineItem.rate,
-      taxPerc: lineItem.tax_perc,
-    })),
     totalAmountBeforeTax: item.total_amount_before_tax,
     totalTaxAmount: item.total_tax_amount,
     totalAmountAfterTax: item.total_amount_after_tax,
@@ -104,48 +68,30 @@ export async function fetchPurchaseInvoices(): Promise<PurchaseInvoice[]> {
 
 export type CreatePurchaseInvoicePayload = {
   date: string;
-  vendorId: number;
-  source: PurchaseInvoiceSource;
-  poId?: number;
-  poNumberText?: string;
-  lineItems?: PurchaseInvoiceLineItem[];
+  poId: number;
 };
 
-function lineItemsToPayload(lineItems: PurchaseInvoiceLineItem[] | undefined) {
-  return (lineItems ?? []).map((item) => ({
-    description: item.description,
-    hsn_code: item.hsnCode,
-    quantity: item.quantity,
-    rate: item.rate,
-    tax_perc: item.taxPerc,
-  }));
-}
-
-// Raises the invoice itself (date/vendor/line items) — the vendor PDF, for
-// source == "pdf_upload", is attached separately once this returns an id
-// (see attachPurchaseInvoicePdf and purchase-invoice-form-modal.tsx's
-// handleSubmit). Returns the raw Response so the caller can both check
-// .ok/.status for its existing error handling and read the id on success.
+// Raises the invoice itself (date + linked PO — vendor/amounts are
+// snapshotted server-side from that PO). A vendor PDF, if any, is attached
+// separately once this returns an id (see attachPurchaseInvoicePdf and
+// purchase-invoice-form-modal.tsx's handleSubmit). Returns the raw Response
+// so the caller can both check .ok/.status for its existing error handling
+// and read the id on success.
 export async function createPurchaseInvoice(payload: CreatePurchaseInvoicePayload): Promise<Response> {
   return apiFetch("/admin/create_new_purchase_invoice", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       date: payload.date,
-      vendor_id: payload.vendorId,
-      source: payload.source,
-      po_id: payload.poId ?? null,
-      po_number_text: payload.poNumberText ?? null,
-      line_items: lineItemsToPayload(payload.lineItems),
+      po_id: payload.poId,
     }),
   });
 }
 
-// Attaches the vendor PDF to an already-created pdf_upload invoice via POST
-// /admin/attach_purchase_invoice_pdf. Sends the original File the admin
-// picked (held in the modal's state since uploadAndParsePurchaseInvoicePdf)
-// directly — no base64 round-trip needed, since nothing else touches it
-// in between.
+// Attaches a vendor PDF to a purchase invoice via POST
+// /admin/attach_purchase_invoice_pdf, or replaces the one already attached —
+// the backend hard-deletes the old file from disk once the new one is saved,
+// so there's no history/versions kept.
 export async function attachPurchaseInvoicePdf(purchaseInvoiceId: number, file: File): Promise<void> {
   const formData = new FormData();
   formData.append("purchase_invoice_id", String(purchaseInvoiceId));
@@ -164,8 +110,6 @@ export async function attachPurchaseInvoicePdf(purchaseInvoiceId: number, file: 
 export type UpdatePurchaseInvoicePayload = {
   id: number;
   date: string;
-  vendorId: number;
-  lineItems?: PurchaseInvoiceLineItem[];
   isDeleted: boolean;
 };
 
@@ -176,62 +120,9 @@ export async function updatePurchaseInvoice(payload: UpdatePurchaseInvoicePayloa
     body: JSON.stringify({
       id: payload.id,
       date: payload.date,
-      vendor_id: payload.vendorId,
-      line_items: lineItemsToPayload(payload.lineItems),
       is_deleted: payload.isDeleted,
     }),
   });
-}
-
-export type ParsedPurchaseInvoice = {
-  vendorName: string | null;
-  vendorGstin: string | null;
-  suggestedVendorId: number | null;
-  date: string | null;
-  totalAmountAfterTax: number | null;
-  lineItems: { description: string; quantity: number | null; rate: number | null }[];
-};
-
-// Uploads a vendor PDF and runs best-effort local text extraction to
-// prefill the purchase-invoice form (see purchase_invoice_parser.py — no
-// LLM involved, every field stays editable). Nothing is written to disk by
-// this call, and the file itself never comes back either — the caller
-// already has the original File it passed in (from the <input
-// type="file">) and holds onto that directly for attachPurchaseInvoicePdf,
-// so parsing a PDF and then abandoning the form leaves no file behind.
-export async function parsePurchaseInvoicePdf(file: File): Promise<ParsedPurchaseInvoice> {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const response = await apiFetch("/admin/parse_purchase_invoice_pdf", {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const detail = await response.json().catch(() => null);
-    throw new Error(detail?.detail ?? "Failed to parse purchase invoice PDF");
-  }
-
-  const data: {
-    parsed: {
-      vendor_name: string | null;
-      vendor_gstin: string | null;
-      suggested_vendor_id: number | null;
-      date: string | null;
-      total_amount_after_tax: number | null;
-      line_items: { description: string; quantity: number | null; rate: number | null }[];
-    };
-  } = await response.json();
-
-  return {
-    vendorName: data.parsed.vendor_name,
-    vendorGstin: data.parsed.vendor_gstin,
-    suggestedVendorId: data.parsed.suggested_vendor_id,
-    date: data.parsed.date,
-    totalAmountAfterTax: data.parsed.total_amount_after_tax,
-    lineItems: data.parsed.line_items,
-  };
 }
 
 async function downloadPdf(path: string, filename: string): Promise<void> {

@@ -7,15 +7,25 @@ from app.models.invoice_details import InvoiceStatus, InvoiceType, OnlineOrOffli
 
 
 class CreateNewInvoiceRequest(BaseModel):
-    # Manual creation here is standard-only — sales_id is the only linkage
+    # Manual creation here is standard-only — sales_ids is the only linkage
     # accepted; type is implied and validated server-side as
     # InvoiceType.standard. Proforma invoices are created via
     # CreateNewProformaInvoiceRequest/create_new_proforma_invoice instead.
-    sales_id: int
+    # All referenced sales orders must belong to the same customer — enforced
+    # in create_new_invoice, since the PDF shows a single customer.
+    sales_ids: list[int]
     date: datetime
     due_date: datetime
     online_or_offline: OnlineOrOffline
     transport: str = ""
+
+    @model_validator(mode="after")
+    def _check_sales_ids(self) -> "CreateNewInvoiceRequest":
+        if not self.sales_ids:
+            raise ValueError("at least one sales order is required")
+        if len(set(self.sales_ids)) != len(self.sales_ids):
+            raise ValueError("sales_ids must not contain duplicates")
+        return self
 
 
 class CreateNewInvoiceResponse(BaseModel):
@@ -27,7 +37,7 @@ class InvoiceDetailItem(BaseModel):
     invoice_no: int
     invoice_no_display: str
     date: datetime
-    sales_id: int | None
+    sales_ids: list[int]
     quotation_id: int | None
     cust_id: int | None
     type: InvoiceType
@@ -52,8 +62,8 @@ class InvoiceDetailItem(BaseModel):
 
 class UpdateInvoiceDetailsRequest(BaseModel):
     id: int
-    # sales_id/type are intentionally not editable — a standard invoice
-    # always stays tied to the sales order it was raised against. This
+    # sales_ids/type are intentionally not editable — a standard invoice
+    # always stays tied to the sales orders it was raised against. This
     # endpoint is standard-only; proforma invoices are edited via
     # UpdateProformaInvoiceDetailsRequest/update_proforma_invoice_details.
     date: datetime

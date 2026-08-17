@@ -157,34 +157,28 @@ export function InvoicesTab() {
 
   return (
     <>
-      <div className={styles.viewToggle} role="tablist" aria-label="Invoice type">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={invoiceType === "standard"}
-          onClick={() => setInvoiceType("standard")}
-          className={`${styles.viewToggleButton} ${invoiceType === "standard" ? styles.viewToggleButtonActive : ""}`}
-        >
-          Standard
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={invoiceType === "proforma"}
-          onClick={() => setInvoiceType("proforma")}
-          className={`${styles.viewToggleButton} ${invoiceType === "proforma" ? styles.viewToggleButtonActive : ""}`}
-        >
-          Proforma
-        </button>
-      </div>
-
-      <div className={styles.pageHeaderRow}>
-        <p className={styles.pageSubtext}>
-          {invoiceType === "standard"
-            ? "Raise invoices against existing sales orders."
-            : "Raise proforma invoices by hand, before a sales order or shipment exists."}
-        </p>
-        <div className={styles.modalActionsRight}>
+      <div className={styles.invoicesToolbar}>
+        <div className={styles.viewToggle} role="tablist" aria-label="Invoice type">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={invoiceType === "standard"}
+            onClick={() => setInvoiceType("standard")}
+            className={`${styles.viewToggleButton} ${invoiceType === "standard" ? styles.viewToggleButtonActive : ""}`}
+          >
+            Standard
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={invoiceType === "proforma"}
+            onClick={() => setInvoiceType("proforma")}
+            className={`${styles.viewToggleButton} ${invoiceType === "proforma" ? styles.viewToggleButtonActive : ""}`}
+          >
+            Proforma
+          </button>
+        </div>
+        <div className={styles.invoicesToolbarActions}>
           <Button type="button" variant="tertiary" onClick={() => setShowCompanyDetails(true)}>
             Company details
           </Button>
@@ -194,6 +188,12 @@ export function InvoicesTab() {
         </div>
       </div>
 
+      <p className={styles.pageSubtext}>
+        {invoiceType === "standard"
+          ? "Raise invoices against existing sales orders."
+          : "Raise proforma invoices by hand, before a sales order or shipment exists."}
+      </p>
+
       {downloadError && (
         <p role="alert" aria-live="polite" className={styles.formError}>
           {downloadError}
@@ -201,7 +201,7 @@ export function InvoicesTab() {
       )}
 
       {invoiceType === "standard" && (
-        <div className={styles.bulkDownloadRow}>
+        <div className={`${styles.bulkDownloadRow} ${styles.invoicesFilterRow}`}>
           <div>
             <label htmlFor="bulkFromDate" className={styles.formLabel}>
               From
@@ -260,8 +260,10 @@ export function InvoicesTab() {
           </thead>
           <tbody>
             {visibleInvoices.map((invoice, index) => {
-              const salesOrder = invoice.salesId ? salesOrdersById.get(invoice.salesId) : undefined;
-              const custId = salesOrder?.custId ?? invoice.custId ?? undefined;
+              const linkedSalesOrders = invoice.salesIds
+                .map((id) => salesOrdersById.get(id))
+                .filter((order): order is SalesOrder => !!order);
+              const custId = linkedSalesOrders[0]?.custId ?? invoice.custId ?? undefined;
               const customerName = custId !== undefined ? customersById.get(custId)?.name : undefined;
               return (
                 <tr
@@ -273,7 +275,11 @@ export function InvoicesTab() {
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{invoice.invoiceNoDisplay}</td>
                   <td className={styles.tableCell}>{new Date(invoice.date).toLocaleDateString()}</td>
                   {invoiceType === "standard" && (
-                    <td className={styles.tableCell}>{salesOrder ? `SO-${salesOrder.orderNo}` : "—"}</td>
+                    <td className={styles.tableCell}>
+                      {linkedSalesOrders.length > 0
+                        ? linkedSalesOrders.map((order) => `SO-${order.orderNo}`).join(", ")
+                        : "—"}
+                    </td>
                   )}
                   <td className={styles.tableCell}>{customerName ?? "—"}</td>
                   {invoiceType === "proforma" && (

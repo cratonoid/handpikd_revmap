@@ -32,11 +32,9 @@ from app.models.product_inquiry_id_counter import ProductInquiryIdCounter
 from app.models.proforma_invoice_no_counter_master import ProformaInvoiceNoCounterMaster
 from app.models.proforma_invoice_summary import ProformaInvoiceSummary
 from app.models.proforma_invoice_summary_id_counter import ProformaInvoiceSummaryIdCounter
-from app.models.purchase_invoice_details import PurchaseInvoiceDetails, PurchaseInvoiceSource
+from app.models.purchase_invoice_details import PurchaseInvoiceDetails
 from app.models.purchase_invoice_id_counter import PurchaseInvoiceIdCounter
 from app.models.purchase_invoice_no_counter_master import PurchaseInvoiceNoCounterMaster
-from app.models.purchase_invoice_summary import PurchaseInvoiceSummary
-from app.models.purchase_invoice_summary_id_counter import PurchaseInvoiceSummaryIdCounter
 from app.models.purchase_order_id_counter import PurchaseOrderIdCounter
 from app.models.purchase_orders import PurchaseOrders
 from app.models.purchase_summary import PurchaseSummary
@@ -98,11 +96,8 @@ __all__ = [
     "ProformaInvoiceSummary",
     "ProformaInvoiceSummaryIdCounter",
     "PurchaseInvoiceDetails",
-    "PurchaseInvoiceSource",
     "PurchaseInvoiceIdCounter",
     "PurchaseInvoiceNoCounterMaster",
-    "PurchaseInvoiceSummary",
-    "PurchaseInvoiceSummaryIdCounter",
     "PurchaseOrderIdCounter",
     "PurchaseOrders",
     "PurchaseSummary",

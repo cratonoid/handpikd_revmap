@@ -52,3 +52,12 @@ def read_uploaded_pdf(key: str) -> bytes | None:
     if not path.is_file():
         return None
     return path.read_bytes()
+
+
+# Hard delete: used when a newly-uploaded PDF replaces this one (see
+# attach_purchase_invoice_pdf in routes/purchase_invoices.py) — the old file
+# is not recoverable afterwards. missing_ok since a record's uploaded_pdf_path
+# pointing at an already-missing file shouldn't turn a replace into an error.
+def delete_uploaded_pdf(key: str) -> None:
+    path = _purchase_invoice_root() / key
+    path.unlink(missing_ok=True)

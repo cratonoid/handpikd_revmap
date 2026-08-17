@@ -63,11 +63,15 @@ export function PurchaseInvoicesTab() {
     };
   }, []);
 
-  function handleSaved() {
-    setModalState(null);
+  function refreshPurchaseInvoices() {
     fetchPurchaseInvoices()
       .then(setPurchaseInvoices)
       .catch(() => {});
+  }
+
+  function handleSaved() {
+    setModalState(null);
+    refreshPurchaseInvoices();
   }
 
   async function handleDownload(purchaseInvoice: PurchaseInvoice) {
@@ -95,7 +99,7 @@ export function PurchaseInvoicesTab() {
     <>
       <div className={styles.pageHeaderRow}>
         <p className={styles.pageSubtext}>
-          Raise purchase invoices against existing purchase orders, or from an uploaded vendor PDF.
+          Raise purchase invoices against existing purchase orders, then optionally attach the vendor&apos;s PDF.
         </p>
         <div className={styles.modalActionsRight}>
           <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
@@ -181,11 +185,11 @@ export function PurchaseInvoicesTab() {
         <PurchaseInvoiceFormModal
           mode={modalState.mode}
           initialPurchaseInvoice={modalState.mode === "edit" ? modalState.purchaseInvoice : undefined}
-          initialLineItems={modalState.mode === "edit" ? modalState.purchaseInvoice.lineItems : undefined}
           vendors={vendors}
           purchaseOrders={purchaseOrders}
           onClose={() => setModalState(null)}
           onSaved={handleSaved}
+          onPdfAttached={refreshPurchaseInvoices}
         />
       )}
     </>

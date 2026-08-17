@@ -265,6 +265,57 @@
 }
 
 /* -----------------------------------------------------------------------
+   Compact invoices toolbar (components/admin/invoices-page-client.tsx,
+   components/admin/invoices-tab.tsx) — the invoices page used to stack a
+   section tab, a type tab, a header row and a date-range row on top of
+   each other, each carrying its own margin-top, which pushed the table
+   far down the page. These scoped rules fold the toggle/subtext/actions
+   onto shared lines and shrink the date-range row, without touching the
+   shared .viewToggle/.pageHeaderRow/.bulkDownloadRow classes that other
+   pages still use at full size.
+   ----------------------------------------------------------------------- */
+
+.invoicesToolbar {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.invoicesToolbar .viewToggle {
+  margin-top: 0;
+}
+
+.invoicesToolbar .pageSubtext {
+  margin-top: 0;
+}
+
+.invoicesToolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.invoicesFilterRow {
+  margin-top: 0.6rem;
+}
+
+.invoicesFilterRow .formLabel {
+  margin-bottom: 0.2rem;
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.invoicesFilterRow .formInput {
+  width: auto;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8125rem;
+}
+
+/* -----------------------------------------------------------------------
    Profile page card (components/admin/profile-page-client.tsx) — same
    bordered-card look as .statCard, sized for a form instead of a stat
    -----------------------------------------------------------------------
@@ -538,6 +589,10 @@
   transition: border-color 0.2s;
 }
 
+.formInput:hover {
+  border-color: color-mix(in srgb, var(--color-charcoal) 45%, var(--color-border));
+}
+
 .formInput:focus {
   border-color: var(--color-charcoal);
 }
@@ -546,6 +601,24 @@
   cursor: not-allowed;
   opacity: 0.6;
   background-color: color-mix(in srgb, var(--color-border) 12%, transparent);
+}
+
+/* Native <select> elements reuse .formInput for their box, but the browser's
+   default arrow reads as dated next to the custom dropdowns above — swap it
+   for a matching flat chevron. */
+select.formInput {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.5rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%231a1a1a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 0.65rem;
+}
+
+select.formInput:disabled {
+  cursor: not-allowed;
 }
 
 /* Read-only field value in a .formGrid layout — same box/spacing as
@@ -763,6 +836,25 @@
 
 .restoreTriggerButton:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--color-charcoal) 80%, white);
+}
+
+/* "Choose PDF" file trigger (components/admin/purchase-invoice-form-modal.tsx)
+   — .triggerButtonBase alone has no border or fill, so on its own this
+   control had no visible boundary at all. This modifier gives it the same
+   bordered-box treatment as .qrFileButton/.formInput instead of styling
+   .triggerButtonBase itself, which stays shared with the borderless
+   colored buttons (delete/restore/download) elsewhere. */
+.pdfUploadButton {
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  color: var(--color-charcoal);
+  transition:
+    background-color 0.2s,
+    border-color 0.2s;
+}
+
+.pdfUploadButton:hover {
+  border-color: var(--color-charcoal);
 }
 
 .deleteConfirmRow {
@@ -1136,11 +1228,20 @@
   background-color: var(--color-cream);
   padding: 0.5rem 0.75rem;
   text-align: left;
-  transition: border-color 0.2s;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-charcoal) 4%, transparent);
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 
-.selectTriggerOpen {
+.selectTrigger:hover {
+  border-color: color-mix(in srgb, var(--color-charcoal) 45%, var(--color-border));
+}
+
+.selectTriggerOpen,
+.selectTriggerOpen:hover {
   border-color: var(--color-charcoal);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-charcoal) 10%, transparent);
 }
 
 .selectTriggerChevron {
@@ -1202,7 +1303,19 @@
   border-radius: 0.75rem;
   border: 1px solid var(--color-border);
   background-color: var(--color-cream);
-  box-shadow: 0 12px 24px -8px color-mix(in srgb, var(--color-charcoal) 30%, transparent);
+  box-shadow: 0 16px 32px -12px color-mix(in srgb, var(--color-charcoal) 28%, transparent);
+  animation: selectPanelIn 0.12s ease-out;
+}
+
+@keyframes selectPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(-0.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .selectSearchInput {
@@ -1273,17 +1386,20 @@
   cursor: pointer;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.55rem 0.85rem;
+  margin: 0.15rem 0.4rem;
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.65rem;
   font-size: 0.8125rem;
   color: var(--color-charcoal);
+  transition: background-color 0.15s;
 }
 
 .selectOption:hover {
-  background-color: color-mix(in srgb, var(--color-border) 15%, transparent);
+  background-color: color-mix(in srgb, var(--color-border) 22%, transparent);
 }
 
 .selectOptionSelected {
-  background-color: color-mix(in srgb, var(--color-charcoal) 6%, transparent);
+  background-color: color-mix(in srgb, var(--color-charcoal) 8%, transparent);
   font-weight: 600;
 }
 

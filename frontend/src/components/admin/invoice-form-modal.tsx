@@ -3,14 +3,19 @@
 // ---------------------------------------------------------------------------
 // <InvoiceFormModal> — add/edit popup on the Standard view of the Sales Invoices tab
 // ---------------------------------------------------------------------------
-// Standard-only — an invoice always raises against an existing sales order —
-// there's no line-item entry here (unlike sales-order-form-modal.tsx);
-// totals are just read from the selected sales order (lib/sales-orders.ts)
-// and previewed live. Proforma invoices have their own dedicated modal
+// Standard-only — an invoice always raises against one or more existing
+// sales orders — there's no line-item entry here (unlike
+// sales-order-form-modal.tsx); totals are just summed from the selected
+// sales orders (lib/sales-orders.ts) and previewed live. All selected sales
+// orders must belong to the same customer (an invoice PDF only has room for
+// one customer name/address) — picking the first sales order locks the
+// picker to that customer's other orders, mirroring how
+// purchase-order-form-modal.tsx scopes its product picker to one vendor.
+// Proforma invoices have their own dedicated modal
 // (proforma-invoice-form-modal.tsx), since they carry their own line items
 // instead of a sales-order link.
 //   - mode "add"  -> POST /admin/create_new_invoice
-//   - mode "edit" -> POST /admin/update_invoice_details (sales_id is
+//   - mode "edit" -> POST /admin/update_invoice_details (salesIds is
 //                    immutable once raised — shown read-only)
 // Both live in backend/app/api/routes/invoices.py.
 import { useMemo, useState, type FormEvent } from "react";
@@ -20,6 +25,7 @@ import type { Invoice, InvoiceStatus, OnlineOrOffline } from "@/lib/invoices";
 import { createInvoice, updateInvoice } from "@/lib/invoices";
 import type { SalesOrder } from "@/lib/sales-orders";
 import type { CustomerOption } from "@/lib/customers";
+import { MultiSelectDropdown, type MultiSelectOption } from "@/components/admin/multi-select-dropdown";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
 import { XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
@@ -47,8 +53,8 @@ export function InvoiceFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [salesId, setSalesId] = useState<string | null>(
-    initialInvoice?.salesId ? String(initialInvoice.salesId) : null,
+  const [salesIds, setSalesIds] = useState<string[]>(
+    initialInvoice ? initialInvoice.salesIds.map(String) : [],
   );
   const [date, setDate] = useState(
     initialInvoice ? toDatetimeLocalValue(initialInvoice.date) : nowAsDatetimeLocalValue(),
@@ -70,18 +76,25 @@ export function InvoiceFormModal({
   const title = isEdit ? "Edit invoice" : "New invoice";
 
   const customersById = useMemo(() => new Map(customers.map((c) => [c.id, c])), [customers]);
-  const salesOrderOptions: SingleSelectOption[] = useMemo(
+  const selectedSalesOrders = useMemo(
+    () => salesIds.map((id) => salesOrders.find((order) => String(order.id) === id)).filter((o): o is SalesOrder => !!o),
+    [salesIds, salesOrders],
+  );
+  // Locks the picker to one customer once the first sales order is chosen —
+  // an invoice PDF only shows one customer name/address (see
+  // _check_same_customer in routes/invoices.py, which enforces this
+  // server-side too).
+  const lockedCustId = selectedSalesOrders[0]?.custId ?? null;
+  const salesOrderOptions: MultiSelectOption[] = useMemo(
     () =>
       salesOrders
-        .filter((order) => !order.isDeleted)
+        .filter((order) => !order.isDeleted && (lockedCustId === null || order.custId === lockedCustId))
         .map((order) => ({
           value: String(order.id),
           label: `SO-${order.orderNo} · ${customersById.get(order.custId)?.name ?? "Unknown customer"}`,
-          isDeleted: false,
         })),
-    [salesOrders, customersById],
+    [salesOrders, customersById, lockedCustId],
   );
-  const selectedSalesOrder = salesOrders.find((order) => String(order.id) === salesId) ?? null;
 
   async function submitPayload(isDeletedValue: boolean) {
     setStatus("saving");
@@ -99,7 +112,7 @@ export function InvoiceFormModal({
             isDeleted: isDeletedValue,
           })
         : await createInvoice({
-            salesId: Number(salesId),
+            salesIds: salesIds.map(Number),
             date: fromDatetimeLocalValue(date),
             dueDate: fromDatetimeLocalValue(dueDate),
             onlineOrOffline,
@@ -124,8 +137,8 @@ export function InvoiceFormModal({
     event.preventDefault();
     const form = event.currentTarget;
 
-    if (!isEdit && !salesId) {
-      setError("Please select a sales order.");
+    if (!isEdit && salesIds.length === 0) {
+      setError("Please select at least one sales order.");
       return;
     }
 
@@ -176,21 +189,24 @@ export function InvoiceFormModal({
 
             {isEdit ? (
               <div>
-                <span className={styles.formLabel}>Sales order</span>
+                <span className={styles.formLabel}>Sales order{selectedSalesOrders.length > 1 ? "s" : ""}</span>
                 <p className={styles.pageSubtext}>
-                  SO-{selectedSalesOrder?.orderNo} · {customersById.get(selectedSalesOrder?.custId ?? -1)?.name ?? "—"}
+                  {selectedSalesOrders.length > 0
+                    ? selectedSalesOrders.map((order) => `SO-${order.orderNo}`).join(", ")
+                    : "—"}
+                  {" · "}
+                  {customersById.get(selectedSalesOrders[0]?.custId ?? -1)?.name ?? "—"}
                 </p>
               </div>
             ) : (
-              <SingleSelectDropdown
-                label="Sales order"
-                placeholder="Select a sales order"
-                entityLabel="sales orders"
-                required
-                showStatusFilter={false}
+              <MultiSelectDropdown
+                label="Sales orders"
+                placeholder="Select sales orders"
+                searchPlaceholder="Search sales orders…"
+                emptyMessage="No sales orders match."
                 options={salesOrderOptions}
-                selectedValue={salesId}
-                onChange={setSalesId}
+                selectedValues={salesIds}
+                onChange={setSalesIds}
               />
             )}
 
@@ -265,19 +281,25 @@ export function InvoiceFormModal({
             </div>
           </div>
 
-          {!isEdit && selectedSalesOrder && (
+          {!isEdit && selectedSalesOrders.length > 0 && (
             <div className={styles.totalsRow}>
               <div className={styles.totalsRowItem}>
                 <p className={styles.totalsRowLabel}>Total before tax</p>
-                <p className={styles.totalsRowValue}>₹{selectedSalesOrder.totalAmountBeforeTax.toFixed(2)}</p>
+                <p className={styles.totalsRowValue}>
+                  ₹{selectedSalesOrders.reduce((sum, o) => sum + o.totalAmountBeforeTax, 0).toFixed(2)}
+                </p>
               </div>
               <div className={styles.totalsRowItem}>
                 <p className={styles.totalsRowLabel}>Total tax</p>
-                <p className={styles.totalsRowValue}>₹{selectedSalesOrder.totalTaxAmount.toFixed(2)}</p>
+                <p className={styles.totalsRowValue}>
+                  ₹{selectedSalesOrders.reduce((sum, o) => sum + o.totalTaxAmount, 0).toFixed(2)}
+                </p>
               </div>
               <div className={styles.totalsRowItem}>
                 <p className={styles.totalsRowLabel}>Total after tax</p>
-                <p className={styles.totalsRowValue}>₹{selectedSalesOrder.totalAmountAfterTax.toFixed(2)}</p>
+                <p className={styles.totalsRowValue}>
+                  ₹{selectedSalesOrders.reduce((sum, o) => sum + o.totalAmountAfterTax, 0).toFixed(2)}
+                </p>
               </div>
             </div>
           )}

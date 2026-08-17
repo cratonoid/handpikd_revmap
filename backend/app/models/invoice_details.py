@@ -25,12 +25,13 @@ class InvoiceDetails(Document):
     id: int
     invoice_no: int
     date: datetime
-    # Standard invoices ride on a SalesOrders row (sales_id); their
-    # customer/line items are derived from that row. Proforma invoices are
-    # raised by hand, like a quotation — own line items (ProformaInvoiceSummary,
-    # keyed by invoice_id) and own cust_id, no sales order or quotation
-    # involved.
-    sales_id: int | None = None  # FK -> SalesOrders.id (standard only)
+    # Standard invoices ride on one or more SalesOrders rows (sales_ids);
+    # their customer/line items are derived from those rows (all of which
+    # must share the same cust_id — enforced in create_new_invoice). Proforma
+    # invoices are raised by hand, like a quotation — own line items
+    # (ProformaInvoiceSummary, keyed by invoice_id) and own cust_id, no sales
+    # order or quotation involved.
+    sales_ids: list[int] = []  # FK -> SalesOrders.id (array, standard only)
     # Legacy-only: earlier proforma invoices were auto-generated from an
     # accepted QuotationDetails row and this pointed at it. New proforma
     # invoices never set it.
