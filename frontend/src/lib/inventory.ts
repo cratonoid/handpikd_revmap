@@ -3,8 +3,9 @@
 // history" tabs
 // ---------------------------------------------------------------------------
 // fetchInventory hits GET /admin/get_inventory (backend/app/api/routes/
-// inventory.py), which returns one row per product — including products
-// that have never been purchased or sold, defaulted to quantity 0 — already
+// inventory.py), which returns one row per product currently in stock —
+// products with no Inventory row (never purchased/sold, or sold down to 0
+// and dropped, see services/inventory.py) are left out entirely — already
 // joined with product_name/hsn_code server-side, unlike most other list
 // endpoints in this app which return raw FK ids for the frontend to resolve.
 //

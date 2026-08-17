@@ -244,3 +244,29 @@ export async function downloadInvoicePdf(invoiceId: number, invoiceNoDisplay: st
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+// Bulk-downloads every standard invoice raised within [startDate, endDate]
+// (both "YYYY-MM-DD") as a single .zip of individual invoice PDFs — same
+// blob-and-throwaway-link approach as downloadInvoicePdf above, since this
+// endpoint needs the Authorization header too.
+export async function downloadInvoicesZip(startDate: string, endDate: string): Promise<void> {
+  const response = await apiFetch(
+    `/admin/get_invoices_pdf_zip?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`,
+  );
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error("No invoices found in that date range.");
+    }
+    throw new Error("Failed to generate invoices zip");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `invoices-${startDate}-to-${endDate}.zip`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}

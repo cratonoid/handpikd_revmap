@@ -5,6 +5,10 @@
 # both, and generating their PDFs. Restricted to admins (bypassed entirely
 # when settings.auth_enabled is False, matching require_admin in
 # routes/admin.py).
+import io
+import zipfile
+from datetime import date, datetime, time
+
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
@@ -388,6 +392,35 @@ async def _build_proforma_invoice_pdf_inputs(summaries: list[ProformaInvoiceSumm
     return line_items, customer.registered_name, customer.address, customer_phone, customer.company_gst
 
 
+async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict[str, str]) -> tuple[bytes, str]:
+    invoice_no_display = format_sales_invoice_no(invoice.invoice_no, invoice.type)
+    sales_order = await _get_sales_order_or_404(invoice.sales_id)
+    summaries = await SalesSummary.find(SalesSummary.sales_order_id == sales_order.id).to_list()
+    line_items, customer_name, customer_address, customer_phone, customer_gstin = (
+        await _build_standard_invoice_pdf_inputs(summaries, sales_order.cust_id)
+    )
+
+    pdf_bytes = await generate_invoice_pdf(
+        invoice_no=invoice_no_display,
+        invoice_date=invoice.date,
+        due_date=invoice.due_date,
+        transport=invoice.transport,
+        line_items=line_items,
+        total_amount_before_tax=invoice.total_amount_before_tax,
+        total_tax_amount=invoice.total_tax_amount,
+        total_amount_after_tax=invoice.total_amount_after_tax,
+        customer_name=customer_name,
+        customer_address=customer_address,
+        customer_phone=customer_phone,
+        customer_gstin=customer_gstin,
+        personal=personal,
+        title_text="TAX INVOICE",
+        show_signature=invoice.online_or_offline == OnlineOrOffline.offline,
+    )
+    filename = f"invoice-{invoice_no_display}.pdf"
+    return pdf_bytes, filename
+
+
 @router.get("/get_invoice_pdf")
 async def get_invoice_pdf(
     invoice_id: int,
@@ -401,30 +434,7 @@ async def get_invoice_pdf(
     personal = await get_personal_details()
 
     if invoice.type == InvoiceType.standard:
-        sales_order = await _get_sales_order_or_404(invoice.sales_id)
-        summaries = await SalesSummary.find(SalesSummary.sales_order_id == sales_order.id).to_list()
-        line_items, customer_name, customer_address, customer_phone, customer_gstin = (
-            await _build_standard_invoice_pdf_inputs(summaries, sales_order.cust_id)
-        )
-
-        pdf_bytes = await generate_invoice_pdf(
-            invoice_no=invoice_no_display,
-            invoice_date=invoice.date,
-            due_date=invoice.due_date,
-            transport=invoice.transport,
-            line_items=line_items,
-            total_amount_before_tax=invoice.total_amount_before_tax,
-            total_tax_amount=invoice.total_tax_amount,
-            total_amount_after_tax=invoice.total_amount_after_tax,
-            customer_name=customer_name,
-            customer_address=customer_address,
-            customer_phone=customer_phone,
-            customer_gstin=customer_gstin,
-            personal=personal,
-            title_text="TAX INVOICE",
-            show_signature=invoice.online_or_offline == OnlineOrOffline.offline,
-        )
-        filename = f"invoice-{invoice_no_display}.pdf"
+        pdf_bytes, filename = await _generate_standard_invoice_pdf(invoice, personal)
     else:
         summaries = await ProformaInvoiceSummary.find(ProformaInvoiceSummary.invoice_id == invoice.id).to_list()
         line_items, customer_name, customer_address, customer_phone, customer_gstin = (
@@ -450,4 +460,42 @@ async def get_invoice_pdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/get_invoices_pdf_zip")
+async def get_invoices_pdf_zip(
+    start_date: date,
+    end_date: date,
+    _: User | None = Depends(require_admin),
+) -> Response:
+    # Standard invoices only, bounded by invoice date (not due date) —
+    # bulk download is a "give me everything I raised this month" tool,
+    # not something proforma invoices need yet.
+    start_dt = datetime.combine(start_date, time.min)
+    end_dt = datetime.combine(end_date, time.max)
+
+    invoices = await InvoiceDetails.find(
+        InvoiceDetails.type == InvoiceType.standard,
+        InvoiceDetails.is_deleted == False,
+        InvoiceDetails.date >= start_dt,
+        InvoiceDetails.date <= end_dt,
+    ).to_list()
+
+    if not invoices:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no invoices found in that date range")
+
+    personal = await get_personal_details()
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for invoice in invoices:
+            pdf_bytes, filename = await _generate_standard_invoice_pdf(invoice, personal)
+            archive.writestr(filename, pdf_bytes)
+
+    zip_filename = f"invoices-{start_date.isoformat()}-to-{end_date.isoformat()}.zip"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
     )

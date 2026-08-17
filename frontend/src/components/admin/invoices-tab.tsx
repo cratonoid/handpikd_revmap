@@ -23,7 +23,14 @@ import { Button } from "@/components/button";
 import { InvoiceFormModal } from "@/components/admin/invoice-form-modal";
 import { ProformaInvoiceFormModal } from "@/components/admin/proforma-invoice-form-modal";
 import { PersonalDetailsModal } from "@/components/admin/personal-details-modal";
-import { downloadInvoicePdf, fetchInvoices, type Invoice, type InvoiceStatus, type InvoiceType } from "@/lib/invoices";
+import {
+  downloadInvoicePdf,
+  downloadInvoicesZip,
+  fetchInvoices,
+  type Invoice,
+  type InvoiceStatus,
+  type InvoiceType,
+} from "@/lib/invoices";
 import { fetchPersonalDetails } from "@/lib/personal-details";
 import { fetchSalesOrders, type SalesOrder } from "@/lib/sales-orders";
 import { fetchProducts, type Product } from "@/lib/products";
@@ -51,6 +58,10 @@ export function InvoicesTab() {
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [invoiceType, setInvoiceType] = useState<InvoiceType>("standard");
+  const [bulkFromDate, setBulkFromDate] = useState("");
+  const [bulkToDate, setBulkToDate] = useState("");
+  const [bulkDownloading, setBulkDownloading] = useState(false);
+  const [bulkDownloadError, setBulkDownloadError] = useState<string | null>(null);
 
   const salesOrdersById = new Map(salesOrders.map((order) => [order.id, order]));
   const customersById = new Map(customers.map((c) => [c.id, c]));
@@ -132,6 +143,18 @@ export function InvoicesTab() {
     }
   }
 
+  async function handleBulkDownload() {
+    setBulkDownloadError(null);
+    setBulkDownloading(true);
+    try {
+      await downloadInvoicesZip(bulkFromDate, bulkToDate);
+    } catch (err) {
+      setBulkDownloadError(err instanceof Error ? err.message : "Couldn't generate the invoices zip.");
+    } finally {
+      setBulkDownloading(false);
+    }
+  }
+
   return (
     <>
       <div className={styles.viewToggle} role="tablist" aria-label="Invoice type">
@@ -177,6 +200,49 @@ export function InvoicesTab() {
         </p>
       )}
 
+      {invoiceType === "standard" && (
+        <div className={styles.bulkDownloadRow}>
+          <div>
+            <label htmlFor="bulkFromDate" className={styles.formLabel}>
+              From
+            </label>
+            <input
+              id="bulkFromDate"
+              type="date"
+              value={bulkFromDate}
+              onChange={(e) => setBulkFromDate(e.target.value)}
+              className={styles.formInput}
+            />
+          </div>
+          <div>
+            <label htmlFor="bulkToDate" className={styles.formLabel}>
+              To
+            </label>
+            <input
+              id="bulkToDate"
+              type="date"
+              value={bulkToDate}
+              onChange={(e) => setBulkToDate(e.target.value)}
+              className={styles.formInput}
+            />
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => void handleBulkDownload()}
+            disabled={!bulkFromDate || !bulkToDate || bulkDownloading}
+          >
+            {bulkDownloading ? "Preparing…" : "Download all"}
+          </Button>
+        </div>
+      )}
+
+      {bulkDownloadError && (
+        <p role="alert" aria-live="polite" className={styles.formError}>
+          {bulkDownloadError}
+        </p>
+      )}
+
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
@@ -186,8 +252,7 @@ export function InvoicesTab() {
               <th className={styles.tableHeadCell}>Date</th>
               {invoiceType === "standard" && <th className={styles.tableHeadCell}>Sales order</th>}
               <th className={styles.tableHeadCell}>Customer</th>
-              <th className={styles.tableHeadCell}>Due date</th>
-              {invoiceType === "standard" && <th className={styles.tableHeadCell}>Payment</th>}
+              {invoiceType === "proforma" && <th className={styles.tableHeadCell}>Due date</th>}
               {invoiceType === "standard" && <th className={styles.tableHeadCell}>Status</th>}
               <th className={styles.tableHeadCell}>Amount</th>
               <th className={styles.tableHeadCell}>PDF</th>
@@ -211,9 +276,8 @@ export function InvoicesTab() {
                     <td className={styles.tableCell}>{salesOrder ? `SO-${salesOrder.orderNo}` : "—"}</td>
                   )}
                   <td className={styles.tableCell}>{customerName ?? "—"}</td>
-                  <td className={styles.tableCell}>{new Date(invoice.dueDate).toLocaleDateString()}</td>
-                  {invoiceType === "standard" && (
-                    <td className={styles.tableCell}>{invoice.onlineOrOffline === "online" ? "Online" : "Offline"}</td>
+                  {invoiceType === "proforma" && (
+                    <td className={styles.tableCell}>{new Date(invoice.dueDate).toLocaleDateString()}</td>
                   )}
                   {invoiceType === "standard" && (
                     <td className={styles.tableCell}>{STATUS_LABEL[invoice.status]}</td>

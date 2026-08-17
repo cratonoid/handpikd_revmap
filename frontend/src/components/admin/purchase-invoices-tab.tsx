@@ -118,7 +118,7 @@ export function PurchaseInvoicesTab() {
               <th className={styles.tableHeadCell}>Purchase invoice no.</th>
               <th className={styles.tableHeadCell}>Date</th>
               <th className={styles.tableHeadCell}>Vendor</th>
-              <th className={styles.tableHeadCell}>Source</th>
+              <th className={styles.tableHeadCell}>PO number</th>
               <th className={styles.tableHeadCell}>Amount</th>
               <th className={styles.tableHeadCell}>PDF</th>
             </tr>
@@ -126,10 +126,7 @@ export function PurchaseInvoicesTab() {
           <tbody>
             {purchaseInvoices.map((purchaseInvoice, index) => {
               const po = purchaseInvoice.poId ? purchaseOrdersById.get(purchaseInvoice.poId) : undefined;
-              const sourceLabel =
-                purchaseInvoice.source === "po_dropdown"
-                  ? `PO-${po?.purchaseOrderNo ?? "—"}`
-                  : "Uploaded PDF" + (po ? ` (ref. PO-${po.purchaseOrderNo})` : "");
+              const poNumberLabel = po ? `PO-${po.purchaseOrderNo}` : "—";
               return (
                 <tr
                   key={purchaseInvoice.id}
@@ -142,7 +139,7 @@ export function PurchaseInvoicesTab() {
                   </td>
                   <td className={styles.tableCell}>{new Date(purchaseInvoice.date).toLocaleDateString()}</td>
                   <td className={styles.tableCell}>{vendorsById.get(purchaseInvoice.vendorId)?.name ?? "—"}</td>
-                  <td className={styles.tableCell}>{sourceLabel}</td>
+                  <td className={styles.tableCell}>{poNumberLabel}</td>
                   <td className={styles.tableCell}>₹{purchaseInvoice.totalAmountAfterTax.toFixed(2)}</td>
                   <td className={styles.tableCell}>
                     <button

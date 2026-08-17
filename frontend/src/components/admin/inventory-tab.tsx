@@ -3,13 +3,13 @@
 // ---------------------------------------------------------------------------
 // <InventoryTab> — "Inventory" tab on /admin/inventory
 // ---------------------------------------------------------------------------
-// Read-only current-stock view: one row per product (from GET
-// /admin/get_inventory — backend/app/api/routes/inventory.py), showing the
-// product name/HSN already joined in server-side and the current quantity
-// on hand. There's nothing to add/edit here — stock only moves as a
-// side-effect of creating purchase/sales orders (see
-// components/admin/purchase-order-form-modal.tsx and
-// sales-order-form-modal.tsx), which is also what writes the ledger rows
+// Read-only current-stock view: one row per product actually in stock (from
+// GET /admin/get_inventory — backend/app/api/routes/inventory.py, which
+// omits products with 0 quantity), showing the product name/HSN already
+// joined in server-side and the current quantity on hand. There's nothing to
+// add/edit here — stock only moves as a side-effect of creating
+// purchase/sales orders (see components/admin/purchase-order-form-modal.tsx
+// and sales-order-form-modal.tsx), which is also what writes the ledger rows
 // shown on the sibling <InventoryHistoryTab>.
 //
 // A quantity below 0 is possible for orders created before the sales-order

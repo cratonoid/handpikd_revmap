@@ -17,21 +17,26 @@ router = APIRouter(prefix="/admin", tags=["inventory"])
 async def get_inventory(
     _: User | None = Depends(require_admin),
 ) -> list[InventoryItem]:
-    # One row per product, not per Inventory document — a product with no
-    # purchase/sale history yet has no Inventory row, and still needs to
-    # show up here with quantity 0 (see schemas/inventory.py).
+    # One row per product with stock on hand. A product with no purchase/sale
+    # history yet, or one that's been sold down to 0 (see
+    # services/inventory.py's _adjust_inventory_quantity, which drops the
+    # Inventory row at 0), has no Inventory row and is left out — this view
+    # is meant to show what's actually in stock, not every product ever
+    # created (see schemas/inventory.py).
     products = await ProductDetails.find_all().to_list()
     inventory_rows = await Inventory.find_all().to_list()
     quantity_by_product_id = {row.product_id: row.quantity for row in inventory_rows}
+    products_by_id = {product.id: product for product in products}
 
     return [
         InventoryItem(
-            product_id=product.id,
-            product_name=product.product_name,
-            hsn_code=product.hsn_code,
-            quantity=quantity_by_product_id.get(product.id, 0),
+            product_id=row.product_id,
+            product_name=products_by_id[row.product_id].product_name,
+            hsn_code=products_by_id[row.product_id].hsn_code,
+            quantity=row.quantity,
         )
-        for product in products
+        for row in inventory_rows
+        if row.product_id in products_by_id and row.quantity != 0
     ]
 
 

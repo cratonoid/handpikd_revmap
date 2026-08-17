@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 from beanie.operators import In
 
-from app.models import Inventory, InventoryHistory, InventoryHistoryIdCounter, InventoryIdCounter
+from app.models import Inventory, InventoryHistory, InventoryHistoryIdCounter, InventoryIdCounter, ProductDetails
 from app.services.counters import get_next_id
 
 _PURCHASE_TRANSACTION = "purchase"
@@ -94,15 +94,33 @@ async def find_stock_shortfalls(stock_deltas: dict[int, int]) -> list[tuple[int,
     ]
 
 
+async def _set_product_visibility(product_id: int, is_visible: bool) -> None:
+    product = await ProductDetails.get(product_id)
+    if product is not None and product.is_visible != is_visible:
+        product.is_visible = is_visible
+        await product.save()
+
+
 async def _adjust_inventory_quantity(product_id: int, delta: int) -> None:
     inventory = await Inventory.find_one(Inventory.product_id == product_id)
     if inventory is None:
-        inventory_id = await get_next_id(InventoryIdCounter, "next_inventory_id", Inventory)
-        await Inventory(id=inventory_id, product_id=product_id, quantity=max(delta, 0)).insert()
+        new_quantity = max(delta, 0)
+        if new_quantity > 0:
+            inventory_id = await get_next_id(InventoryIdCounter, "next_inventory_id", Inventory)
+            await Inventory(id=inventory_id, product_id=product_id, quantity=new_quantity).insert()
+            await _set_product_visibility(product_id, True)
         return
 
     inventory.quantity += delta
-    await inventory.save()
+    if inventory.quantity <= 0:
+        # Out of stock: drop the inventory row and hide the product from the
+        # catalogue, but keep ProductDetails so it can resurface on restock.
+        await inventory.delete()
+        await _set_product_visibility(product_id, False)
+    else:
+        await inventory.save()
+        if delta > 0:
+            await _set_product_visibility(product_id, True)
 
 
 async def _apply_stock_deltas(stock_deltas: dict[int, int]) -> None:
