@@ -152,6 +152,7 @@ async def create_new_purchase_invoice(
         date=payload.date,
         vendor_id=payload.vendor_id,
         po_id=payload.po_id,
+        po_number_text=payload.po_number_text,
         source=payload.source,
         uploaded_pdf_path=None,
         total_amount_before_tax=total_before_tax,
@@ -201,6 +202,7 @@ def _to_purchase_invoice_detail_item(
         date=purchase_invoice.date,
         vendor_id=purchase_invoice.vendor_id,
         po_id=purchase_invoice.po_id,
+        po_number_text=purchase_invoice.po_number_text,
         source=purchase_invoice.source,
         has_uploaded_pdf=purchase_invoice.uploaded_pdf_path is not None,
         line_items=[

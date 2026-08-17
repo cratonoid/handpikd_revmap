@@ -1,5 +1,5 @@
 # Request/response bodies for the products module's endpoints.
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class AddProductDetailsRequest(BaseModel):
@@ -22,6 +22,14 @@ class AddProductDetailsRequest(BaseModel):
     # into this one request risked the same request-size blowup fixed for
     # catalogues (see routes/catalogues.py's module docstring).
     image_paths: list[str] = []
+
+    # Mirrors the frontend's own check in product-form-modal.tsx, so a
+    # direct API call can't bypass it.
+    @model_validator(mode="after")
+    def _check_discounted_price(self) -> "AddProductDetailsRequest":
+        if self.discounted_price >= self.actual_price:
+            raise ValueError("discounted_price must be less than actual_price")
+        return self
 
 
 class AddProductDetailsResponse(BaseModel):
@@ -62,6 +70,12 @@ class UpdateProductDetailsRequest(BaseModel):
     # Already-persisted paths/pasted URLs to keep. New images: see
     # AddProductDetailsRequest.image_paths.
     image_paths: list[str] = []
+
+    @model_validator(mode="after")
+    def _check_discounted_price(self) -> "UpdateProductDetailsRequest":
+        if self.discounted_price >= self.actual_price:
+            raise ValueError("discounted_price must be less than actual_price")
+        return self
 
 
 class UpdateProductDetailsResponse(BaseModel):

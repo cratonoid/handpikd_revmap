@@ -11,6 +11,7 @@ from app.models import (
     PurchaseOrders,
     PurchaseSummary,
     PurchaseSummaryIdCounter,
+    SalesOrders,
     User,
     VendorDetails,
 )
@@ -78,6 +79,21 @@ async def _reject_stock_going_negative(stock_deltas: dict[int, int]) -> None:
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=f"this edit would take stock negative for: {details}",
     )
+
+
+async def _flag_related_sales_orders(purchase_order_id: int) -> None:
+    # Notifies (doesn't auto-sync) any sales order that references this PO —
+    # see SalesOrders.po_updated_flag's docstring for why: the two orders'
+    # line items/totals are deliberately kept independent, so an edited PO
+    # just raises a flag for the admin to review the linked sales order(s)
+    # against, rather than silently overwriting their data.
+    related_orders = await SalesOrders.find(
+        SalesOrders.related_purchase_order_ids == purchase_order_id,
+        SalesOrders.is_deleted == False,
+    ).to_list()
+    for sales_order in related_orders:
+        sales_order.po_updated_flag = True
+        await sales_order.save()
 
 
 async def _insert_purchase_summary_rows(
@@ -257,5 +273,6 @@ async def update_purchase_order_details(
     await apply_purchase_order_stock(
         purchase_order.id, payload.product_ids, payload.quantities, stock_deltas
     )
+    await _flag_related_sales_orders(purchase_order.id)
 
     return UpdatePurchaseOrderDetailsResponse(message="purchase order updated successfully")

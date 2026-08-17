@@ -133,20 +133,27 @@ export function ProductsPageClient() {
 
   // Passed down to <CategoryFilter> as its `onToggle` prop — updates the
   // PENDING selection only; the grid doesn't change until Apply is pressed.
-  // Mirrors the admin product form's category picker (multi-select-dropdown.tsx's
-  // toggleValue): checking OR unchecking a node always carries its whole
-  // subtree with it, symmetrically — so checking "Mugs" also checks
-  // "Stainless Steel", "Ceramic", etc., not just "Mugs" itself.
+  // Same "unfold one level at a time" idea as the hamper inquiry tree
+  // (components/hamper-inquiry/inquiry-tree-selector.tsx): checking a node
+  // only checks THAT node, so CategoryFilter's recursive render only reveals
+  // its direct children, not the whole subtree at once — a child's own
+  // children only show up once it's clicked too. Unchecking still clears the
+  // node's whole subtree (via collectIds) so any deeper picks made while it
+  // was open don't linger as orphaned state once it's collapsed again.
+  //
+  // This doesn't need to also check descendant ids for filtering to work —
+  // expandedAppliedCategoryIds below already expands each applied id out to
+  // its full subtree via descendantIndex, so checking "Drinkware" alone
+  // still matches products tagged under "Mugs", "Bottles", etc.
   function handleToggle(node: CategoryNode) {
     setPendingCheckedIds((prev) => {
       const next = new Set(prev);
-      // collectIds returns the node's own id plus all descendant ids — see
-      // lib/public-products.ts.
-      const group = collectIds(node);
       if (next.has(node.id)) {
-        group.forEach((id) => next.delete(id));
+        // collectIds returns the node's own id plus all descendant ids —
+        // see lib/public-products.ts.
+        collectIds(node).forEach((id) => next.delete(id));
       } else {
-        group.forEach((id) => next.add(id));
+        next.add(node.id);
       }
       return next;
     });

@@ -153,7 +153,10 @@ export function SalesOrdersTab() {
                 className={styles.tableRow}
               >
                 <td className={styles.tableCell}>{index + 1}</td>
-                <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{order.orderNo}</td>
+                <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
+                  {order.orderNo}
+                  {order.poUpdatedFlag && <span className={styles.inactiveBadge}>PO updated</span>}
+                </td>
                 <td className={styles.tableCell}>{new Date(order.date).toLocaleDateString()}</td>
                 <td className={styles.tableCell}>{customersById.get(order.custId)?.name ?? "—"}</td>
                 <td className={styles.tableCell}>{statusesById.get(order.orderStatusId)?.statusName ?? "—"}</td>

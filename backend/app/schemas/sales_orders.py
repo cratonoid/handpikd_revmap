@@ -48,6 +48,9 @@ class SalesOrderDetailItem(BaseModel):
     total_amount_after_tax: float
     description: str
     related_purchase_order_ids: list[int]
+    # See SalesOrders.po_updated_flag — true when a related purchase order
+    # was edited since this sales order was last saved.
+    po_updated_flag: bool
     is_deleted: bool
 
 

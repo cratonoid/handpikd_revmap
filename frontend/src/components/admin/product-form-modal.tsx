@@ -18,7 +18,9 @@
 //
 // Vendor is a single-select (a product has exactly one vendor_id) and
 // categories are a multiselect (category_ids is an array on ProductDetails) —
-// see single-select-dropdown.tsx / multi-select-dropdown.tsx.
+// see single-select-dropdown.tsx / category-tree-select.tsx. The category
+// picker is a drill-down tree (unfolds one level per click, same idea as the
+// hamper inquiry form) rather than a flat searchable list.
 //
 // Images: each row is either uploaded (handleImageFileChange -> local disk
 // via uploadProductImage, see lib/products.ts) or a manually pasted URL —
@@ -34,7 +36,8 @@ import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import { GST_PERCENT_OPTIONS } from "@/lib/gst";
 import { addProductImage, deleteProductImage, uploadProductImage, type Product } from "@/lib/products";
 import type { VendorOption } from "@/lib/vendors";
-import { MultiSelectDropdown, type MultiSelectOption } from "@/components/admin/multi-select-dropdown";
+import type { CategoryNode } from "@/lib/categories";
+import { CategoryTreeSelect } from "@/components/admin/category-tree-select";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
 import { ArrowUpTrayIcon, CubeIcon, XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
@@ -45,7 +48,7 @@ export function ProductFormModal({
   mode,
   initialProduct,
   vendors,
-  categoryOptions,
+  categoryTree,
   onClose,
   onImagesChangedWithoutSave,
   onSaved,
@@ -54,7 +57,7 @@ export function ProductFormModal({
   // Only present in "edit" mode — pre-fills every field.
   initialProduct?: Product;
   vendors: VendorOption[];
-  categoryOptions: MultiSelectOption[];
+  categoryTree: CategoryNode[];
   onClose: () => void;
   // Image removal deletes immediately (see removeImageRow) rather than
   // waiting for Save, so closing the modal WITHOUT saving can still leave
@@ -320,6 +323,11 @@ export function ProductFormModal({
       return;
     }
 
+    if (Number(discountedPrice) >= Number(actualPrice)) {
+      setError("Discounted price must be less than the actual price.");
+      return;
+    }
+
     void submitPayload(!wasHidden);
   }
 
@@ -404,10 +412,10 @@ export function ProductFormModal({
               onChange={setVendorId}
             />
 
-            <MultiSelectDropdown
+            <CategoryTreeSelect
               label="Categories"
               placeholder="Select categories"
-              options={categoryOptions}
+              tree={categoryTree}
               selectedValues={categoryIds}
               onChange={setCategoryIds}
             />

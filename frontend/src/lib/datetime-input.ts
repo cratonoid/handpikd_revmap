@@ -35,3 +35,34 @@ export function addDaysToDatetimeLocalValue(value: string, days: number): string
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
+
+// ---------------------------------------------------------------------------
+// date-only helpers — quotation form's Issue date / Valid till fields
+// ---------------------------------------------------------------------------
+// <input type="date"> takes/returns "YYYY-MM-DD" with no time component.
+// The quotation API's date/valid_till fields are plain dates (see
+// schemas/quotations.py), so the raw value round-trips as-is.
+
+// Local "now", for pre-filling the date field on new quotations.
+export function nowAsDateValue(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+// Backend ISO date string -> date input value, for pre-filling the date
+// field in edit mode.
+export function toDateValue(isoDate: string): string {
+  return isoDate.slice(0, 10);
+}
+
+// Adds `days` to a date input value, formatted the same way as
+// nowAsDateValue. Used to default a quotation's "valid till" field to its
+// issue date + 10 days (quotation-form-modal.tsx) — the result stays a
+// plain editable input value, not a derived/computed one.
+export function addDaysToDateValue(value: string, days: number): string {
+  const date = new Date(`${value}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}

@@ -4,6 +4,8 @@
 # order) and generating their PDFs. Restricted to admins (bypassed entirely
 # when settings.auth_enabled is False, matching require_admin in
 # routes/admin.py).
+from datetime import datetime
+
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
@@ -105,8 +107,8 @@ async def create_new_quotation(
     quotation = QuotationDetails(
         id=quotation_id,
         quotation_no=quotation_no,
-        date=payload.date,
-        valid_till=payload.valid_till,
+        date=datetime.combine(payload.date, datetime.min.time()),
+        valid_till=datetime.combine(payload.valid_till, datetime.min.time()),
         cust_id=payload.cust_id,
         total_amount_before_tax=total_before_tax,
         total_tax_amount=total_tax,
@@ -156,8 +158,8 @@ async def get_quotation_details(
             QuotationDetailItem(
                 id=quotation.id,
                 quotation_no=quotation.quotation_no,
-                date=quotation.date,
-                valid_till=quotation.valid_till,
+                date=quotation.date.date(),
+                valid_till=quotation.valid_till.date(),
                 cust_id=quotation.cust_id,
                 status=quotation.status,
                 product_ids=[item.product_id for item in line_items],
@@ -193,8 +195,8 @@ async def update_quotation_details(
 
     quotation.status = payload.status
     quotation.cust_id = payload.cust_id
-    quotation.date = payload.date
-    quotation.valid_till = payload.valid_till
+    quotation.date = datetime.combine(payload.date, datetime.min.time())
+    quotation.valid_till = datetime.combine(payload.valid_till, datetime.min.time())
     quotation.total_amount_before_tax = total_before_tax
     quotation.total_tax_amount = total_tax
     quotation.total_amount_after_tax = total_after_tax

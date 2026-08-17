@@ -237,6 +237,7 @@ async def get_sales_order_details(
                 total_amount_after_tax=order.total_amount_after_tax,
                 description=order.description,
                 related_purchase_order_ids=order.related_purchase_order_ids,
+                po_updated_flag=order.po_updated_flag,
                 is_deleted=order.is_deleted,
             )
         )
@@ -287,6 +288,9 @@ async def update_sales_order_details(
     sales_order.description = payload.description
     sales_order.related_purchase_order_ids = payload.related_purchase_order_ids
     sales_order.is_deleted = payload.is_deleted
+    # Saving the sales order counts as the admin having reviewed whatever
+    # related-PO change set the flag (see SalesOrders.po_updated_flag).
+    sales_order.po_updated_flag = False
     await sales_order.save()
 
     await SalesSummary.find(SalesSummary.sales_order_id == sales_order.id).delete()
