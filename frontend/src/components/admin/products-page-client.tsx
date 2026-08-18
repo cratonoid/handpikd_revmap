@@ -16,11 +16,18 @@
 // (`vendorOptions`) feeds the popup's picker, which should only offer active
 // vendors.
 //
-// ProductDetails has no is_deleted flag, only is_visible — so "Active" /
-// "Hidden" here is exactly the vendors page's "Active" / "Deleted" toggle,
-// just renamed to match the field it's actually driving. Clicking a row
-// opens the popup in "edit" mode, pre-filled with that row's data; "+ Add
-// new product" opens it in "add" mode.
+// Three tabs over two independent flags on ProductDetails (see
+// lib/products.ts), so every product lands in exactly one of them:
+//   Active  — live and on the storefront   (is_visible, not is_deleted)
+//   Hidden  — live but off the storefront  (!is_visible, not is_deleted)
+//   Deleted — soft-deleted, restorable     (is_deleted, whatever is_visible)
+// is_deleted wins over is_visible: a deleted product belongs under Deleted
+// whether it was visible or not, which is why the Deleted filter is checked
+// first. The list itself is deliberately the unfiltered
+// get_product_details, so the tabs are pure client-side splits of one fetch.
+//
+// Clicking a row opens the popup in "edit" mode, pre-filled with that row's
+// data; "+ Add new product" opens it in "add" mode.
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/button";
 import { resolveMediaUrl } from "@/lib/api";
@@ -34,7 +41,7 @@ import styles from "@/styles/dashboard.module.css";
 
 type ModalState = { mode: "add" } | { mode: "edit"; product: Product } | null;
 type LoadState = "loading" | "loaded" | "error";
-type View = "active" | "hidden";
+type View = "active" | "hidden" | "deleted";
 
 export function ProductsPageClient() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -66,7 +73,7 @@ export function ProductsPageClient() {
   }, [categoryFilterIds, descendantsById]);
 
   const visibleProducts = products
-    .filter((p) => (view === "hidden" ? !p.isVisible : p.isVisible))
+    .filter((p) => (view === "deleted" ? p.isDeleted : !p.isDeleted && p.isVisible === (view === "active")))
     .filter((p) => categoryFilterIds.length === 0 || p.categoryIds.some((id) => expandedFilterIds.has(id)));
   const vendorsById = new Map(vendors.map((v) => [v.id, v]));
 
@@ -102,6 +109,14 @@ export function ProductsPageClient() {
       next[index] = product;
       return next;
     });
+    setModalState(null);
+  }
+
+  // Permanent delete leaves nothing to show, so the row goes rather than
+  // being updated the way handleSaved updates one after a soft delete or a
+  // restore.
+  function handlePermanentlyDeleted(productId: number) {
+    setProducts((prev) => prev.filter((p) => p.id !== productId));
     setModalState(null);
   }
 
@@ -156,6 +171,15 @@ export function ProductsPageClient() {
             className={`${styles.viewToggleButton} ${view === "hidden" ? styles.viewToggleButtonActive : ""}`}
           >
             Hidden products
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "deleted"}
+            onClick={() => setView("deleted")}
+            className={`${styles.viewToggleButton} ${view === "deleted" ? styles.viewToggleButtonActive : ""}`}
+          >
+            Deleted
           </button>
         </div>
 
@@ -246,6 +270,7 @@ export function ProductsPageClient() {
           categoryTree={categoryTree}
           onClose={() => setModalState(null)}
           onImagesChangedWithoutSave={handleImagesChangedWithoutSave}
+          onPermanentlyDeleted={handlePermanentlyDeleted}
           onSaved={handleSaved}
         />
       )}

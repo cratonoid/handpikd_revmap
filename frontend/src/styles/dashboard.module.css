@@ -1269,6 +1269,133 @@ select.formInput:disabled {
   color: var(--color-charcoal);
 }
 
+/* Checkbox form field with a label and an explanatory line under it — the
+   product form's "Visible" toggle (components/admin/product-form-modal.tsx).
+   The whole thing is one <label>, so the hint text is part of the hit area
+   rather than dead space next to the box. */
+.formCheckboxField {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  cursor: pointer;
+}
+
+.formCheckboxField input {
+  margin-top: 0.15rem;
+}
+
+.formCheckboxText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.formCheckboxLabel {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-charcoal);
+}
+
+.formCheckboxHint {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--color-ink);
+}
+
+/* -----------------------------------------------------------------------
+   Confirmation popup layered over a form modal — the product delete dialog
+   (components/admin/product-form-modal.tsx), which offers a temporary and a
+   permanent delete rather than a single yes/no. Reuses .modalBackdrop and
+   .modalHeader; only the panel is narrower than a full form modal's.
+   ----------------------------------------------------------------------- */
+.confirmDialogPanel {
+  width: 100%;
+  max-width: 30rem;
+  align-self: center;
+  border-radius: 1rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  box-shadow: 0 20px 25px -5px color-mix(in srgb, var(--color-charcoal) 25%, transparent);
+}
+
+.confirmDialogBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+}
+
+.confirmDialogIntro {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--color-charcoal);
+}
+
+.confirmDialogOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* Each option is a full-height card rather than a plain button: the choice
+   between the two deletes is made on the consequences spelled out inside
+   them, not on the button label alone. */
+.confirmOptionButton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  padding: 0.9rem 1rem;
+  text-align: left;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.confirmOptionButton:hover:not(:disabled) {
+  border-color: var(--color-charcoal);
+  background-color: color-mix(in srgb, var(--color-charcoal) 5%, transparent);
+}
+
+.confirmOptionButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.confirmOptionButtonDanger .confirmOptionTitle {
+  color: var(--color-red);
+}
+
+.confirmOptionButtonDanger:hover:not(:disabled) {
+  border-color: var(--color-red);
+  background-color: color-mix(in srgb, var(--color-red) 6%, transparent);
+}
+
+.confirmOptionTitle {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--color-charcoal);
+}
+
+.confirmOptionText {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--color-ink);
+}
+
+.confirmDialogActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  border-top: 1px solid var(--color-border);
+  padding: 1rem 1.5rem;
+}
+
 /* -----------------------------------------------------------------------
    Category hierarchy popup (components/admin/category-tree-modal.tsx,
    components/admin/category-tree-node.tsx)
@@ -2570,6 +2697,14 @@ select.formInput:disabled {
     max-width: none;
     border: none;
     border-radius: 0;
+  }
+
+  /* .modalBackdrop drops its padding above so a form modal can go full
+     bleed; the delete dialog is short enough to stay a floating card, so it
+     brings its own inset back. */
+  .confirmDialogPanel {
+    width: auto;
+    margin: 1rem;
   }
 
   .modalHeader {

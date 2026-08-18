@@ -51,6 +51,7 @@ class ProductDetailItem(BaseModel):
     moq: int
     description: str
     is_visible: bool
+    is_deleted: bool
     image_paths: list[str]
 
 
@@ -82,6 +83,28 @@ class UpdateProductDetailsResponse(BaseModel):
     message: str
     id: int
     image_paths: list[str]
+
+
+class DeleteProductDetailsRequest(BaseModel):
+    product_id: int
+    # False -> soft delete (flips is_deleted, keeps the row and its images so
+    # older orders/quotations/invoices still resolve a real name and HSN
+    # code). True -> hard delete: the product row, its product_image_details
+    # rows and the stored image files all go, which is why it's refused while
+    # anything still references the product (see delete_product_details).
+    permanent: bool = False
+
+
+class DeleteProductDetailsResponse(BaseModel):
+    message: str
+
+
+class RestoreProductDetailsRequest(BaseModel):
+    product_id: int
+
+
+class RestoreProductDetailsResponse(BaseModel):
+    message: str
 
 
 class DeleteProductImageRequest(BaseModel):

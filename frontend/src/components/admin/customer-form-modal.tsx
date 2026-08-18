@@ -221,14 +221,18 @@ export function CustomerFormModal({
               />
             </div>
 
+            {/* Optional: not every client is GST-registered, and the tax
+                layer already treats a missing GSTIN as a real case rather
+                than an error — is_intra_state (services/gst.py) reads "no
+                buyer GSTIN" as inter-state and bills IGST, and the invoice
+                PDF leaves Place of Supply blank. */}
             <div>
               <label htmlFor="companyGst" className={styles.formLabel}>
-                GST number<span className={styles.requiredMark}>*</span>
+                GST number
               </label>
               <input
                 id="companyGst"
                 type="text"
-                required
                 value={companyGst}
                 onChange={(e) => setCompanyGst(e.target.value.toUpperCase())}
                 className={styles.formInput}

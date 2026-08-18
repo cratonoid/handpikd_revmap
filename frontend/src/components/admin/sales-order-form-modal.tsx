@@ -123,10 +123,16 @@ export function SalesOrderFormModal({
     isDeleted: false,
   }));
 
+  // Soft-deleted products are the ones kept out — is_visible only governs the
+  // storefront, so a product hidden from customers is still perfectly
+  // orderable/quotable/invoiceable here. `products` itself is deliberately
+  // unfiltered (get_product_details returns deleted ones too) so an existing
+  // line item pointing at a since-deleted product still resolves a name;
+  // it's only the picker that hides them.
   const productOptions: SingleSelectOption[] = useMemo(
     () =>
       products
-        .filter((product) => product.isVisible)
+        .filter((product) => !product.isDeleted)
         .map((product) => ({ value: String(product.id), label: product.productName, isDeleted: false })),
     [products],
   );
@@ -358,10 +364,10 @@ export function SalesOrderFormModal({
                     placeholder="Select a product…"
                     entityLabel="products"
                     hideLabel
-                    // productOptions is already filtered to isVisible
-                    // products only (deleted products should never be
-                    // orderable), so the Active/Deleted toggle would just be
-                    // a permanently-empty "Deleted" tab.
+                    // productOptions already excludes soft-deleted products
+                    // (they should never be orderable), so the
+                    // Active/Deleted toggle would just be a
+                    // permanently-empty "Deleted" tab.
                     showStatusFilter={false}
                     options={productOptions}
                     selectedValue={item.productId}

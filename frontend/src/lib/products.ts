@@ -1,17 +1,26 @@
 // ---------------------------------------------------------------------------
 // Product data for the /admin/products table
 // ---------------------------------------------------------------------------
-// Mirrors lib/vendors.ts. Fetches from GET /admin/get_product_details (not
-// yet implemented on the backend — see backend/app/models/product_details.py
-// and product_image_details.py for the underlying collections), which is
-// expected to return every product as a flat list. `id` (ProductDetails'
+// Mirrors lib/vendors.ts. Fetches from GET /admin/get_product_details (see
+// backend/app/api/routes/products.py), which returns every product as a flat
+// list — hidden and soft-deleted ones included, each carrying its flags, so
+// callers filter for themselves. `id` (ProductDetails'
 // Beanie primary key) is the unique key used for both the table's React key
 // and matching a row back to a product for editing.
 //
-// There's no `is_deleted` field on ProductDetails, only `is_visible` — the
-// admin UI's delete/restore action (product-form-modal.tsx) reuses that flag
-// the same way vendors/customers reuse `is_deleted`: a soft toggle, not a
-// real removal.
+// ProductDetails carries two independent flags, and the /admin/products tabs
+// are exactly their combinations:
+//   - `isVisible`  — storefront visibility only. Off means the product is
+//     hidden from /products and the public inquiry cart, but it can still be
+//     quoted, ordered and invoiced. Defaults on for new products.
+//   - `isDeleted`  — soft delete. The product disappears from every picker
+//     (and from the storefront regardless of isVisible) but the row survives,
+//     so older orders/quotations/invoices still resolve its name and HSN
+//     code. Reversible via restoreProduct.
+// A hard delete (deleteProduct with permanent: true) takes the row, its
+// product_image_details rows and the stored image files with it, and the
+// backend refuses it outright while any document still references the
+// product.
 //
 // `imagePaths` stands in for product_image_details rows (one product has
 // many). Each entry is either a pasted URL or, more commonly, the CDN URL
@@ -33,6 +42,7 @@ export type Product = {
   moq: number;
   description: string;
   isVisible: boolean;
+  isDeleted: boolean;
   imagePaths: string[];
 };
 
@@ -50,6 +60,7 @@ type ProductDetailItem = {
   moq: number;
   description: string;
   is_visible: boolean;
+  is_deleted: boolean;
   image_paths: string[];
 };
 
@@ -64,6 +75,51 @@ export async function deleteProductImage(productId: number, imagePath: string): 
   });
   if (!response.ok) {
     throw new Error("Failed to delete image");
+  }
+}
+
+// Deletes a product, either way round (backend/app/api/routes/products.py's
+// delete_product_details):
+//   - permanent: false — flips is_deleted, fully reversible via
+//     restoreProduct below, images left alone.
+//   - permanent: true  — removes the product row, its image rows and the
+//     image files themselves. No undo, and the backend answers 409 (with a
+//     message naming what still references it, e.g. "used by 2 sales orders")
+//     rather than breaking an existing document's line items.
+// The 409 detail is surfaced to the admin verbatim, so it's thrown as the
+// error message rather than swallowed into a generic one.
+export async function deleteProduct(productId: number, permanent: boolean): Promise<void> {
+  const response = await apiFetch("/admin/delete_product_details", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ product_id: productId, permanent }),
+  });
+
+  if (!response.ok) {
+    const detail = await response
+      .json()
+      .then((body: { detail?: string }) => body.detail)
+      .catch(() => undefined);
+    throw new Error(detail ?? "Failed to delete product");
+  }
+}
+
+// Clears is_deleted (POST /admin/restore_product_details). Can still fail
+// with 409 if another product has taken this one's HSN code + name pair in
+// the meantime — that detail is surfaced the same way deleteProduct's is.
+export async function restoreProduct(productId: number): Promise<void> {
+  const response = await apiFetch("/admin/restore_product_details", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ product_id: productId }),
+  });
+
+  if (!response.ok) {
+    const detail = await response
+      .json()
+      .then((body: { detail?: string }) => body.detail)
+      .catch(() => undefined);
+    throw new Error(detail ?? "Failed to restore product");
   }
 }
 
@@ -140,6 +196,7 @@ export async function fetchProducts(): Promise<Product[]> {
     moq: item.moq,
     description: item.description,
     isVisible: item.is_visible,
+    isDeleted: item.is_deleted,
     imagePaths: item.image_paths,
   }));
 }

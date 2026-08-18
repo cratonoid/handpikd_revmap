@@ -134,8 +134,11 @@ export function PurchaseOrderFormModal({
   // draw from that vendor's own products — until a vendor is picked, the
   // product picker has nothing to offer and stays disabled (see the <select>
   // below) rather than falling back to every product.
+  // Soft-deleted products drop out too, same rule as every other document
+  // picker — is_visible isn't consulted, since it only governs the
+  // storefront and a purchase order is an internal document.
   const availableProducts = useMemo(
-    () => (vendorId ? products.filter((p) => p.vendorId === Number(vendorId)) : []),
+    () => (vendorId ? products.filter((p) => p.vendorId === Number(vendorId) && !p.isDeleted) : []),
     [products, vendorId],
   );
   const productsById = useMemo(() => new Map(products.map((p) => [String(p.id), p])), [products]);

@@ -23,6 +23,10 @@ from app.models import (
     ProductIdCounter,
     ProductImageDetails,
     ProductImageIdCounter,
+    ProformaInvoiceSummary,
+    PurchaseSummary,
+    QuotationSummary,
+    SalesSummary,
     User,
     VendorDetails,
 )
@@ -30,11 +34,15 @@ from app.schemas.products import (
     AddProductDetailsRequest,
     AddProductDetailsResponse,
     AddProductImageResponse,
+    DeleteProductDetailsRequest,
+    DeleteProductDetailsResponse,
     DeleteProductImageRequest,
     DeleteProductImageResponse,
     ProductDetailItem,
     PublicCategoryNode,
     PublicProductItem,
+    RestoreProductDetailsRequest,
+    RestoreProductDetailsResponse,
     UpdateProductDetailsRequest,
     UpdateProductDetailsResponse,
     UploadProductImageResponse,
@@ -64,7 +72,13 @@ async def _validate_hsn_code_product_name(hsn_code: str, product_name: str, excl
     # pair is all an invoice line shows. Names are compared ignoring case and
     # surrounding/repeated whitespace so "Blue Mug" and "blue  mug" count as
     # the same product rather than as two.
-    products_on_hsn_code = await ProductDetails.find(ProductDetails.hsn_code == hsn_code).to_list()
+    # Soft-deleted products don't hold their name hostage: the pair only has
+    # to stay unique among products that can still turn up on an invoice
+    # line. Restoring one that now collides is what restore_product_details
+    # re-checks, rather than blocking a live product here for a dead one.
+    products_on_hsn_code = await ProductDetails.find(
+        ProductDetails.hsn_code == hsn_code, ProductDetails.is_deleted == False
+    ).to_list()
     incoming_name = _normalised_product_name(product_name)
 
     for existing_product in products_on_hsn_code:
@@ -133,6 +147,11 @@ async def add_product_details(
 async def get_product_details(
     _: User | None = Depends(require_admin),
 ) -> list[ProductDetailItem]:
+    # Deliberately unfiltered — hidden AND soft-deleted products come back
+    # too, each carrying its flags. The admin UI splits them into its
+    # Active/Hidden/Deleted tabs itself (products-page-client.tsx), and the
+    # order/quotation/invoice tables need the deleted ones present to resolve
+    # a product name for line items that reference them.
     products = await ProductDetails.find_all().to_list()
     if not products:
         return []
@@ -157,6 +176,7 @@ async def get_product_details(
             moq=product.moq,
             description=product.description,
             is_visible=product.is_visible,
+            is_deleted=product.is_deleted,
             image_paths=images_by_product_id.get(product.id, []),
         )
         for product in products
@@ -194,6 +214,113 @@ async def update_product_details(
     await _replace_image_paths(product.id, payload.image_paths)
 
     return UpdateProductDetailsResponse(message="product updated successfully", id=product.id, image_paths=payload.image_paths)
+
+
+# Every collection whose rows pin a product in place: as long as one of these
+# still references it, the product's name and HSN code are what an existing
+# order/quotation/invoice line renders, so the row can't actually go away.
+# Deliberately not listed here:
+#   - inventory / inventory_history, which only ever gain rows through a
+#     purchase or sales order, so purchase_summary/sales_summary already
+#     cover them;
+#   - sales_order_costing, likewise derived from a sales order;
+#   - product_inquiry, which snapshots the product name and unit price at
+#     submission time precisely so an inquiry keeps rendering after the
+#     product is gone (see models/product_inquiry.py).
+# Each entry pairs the collection with the attribute naming its parent
+# document, so one order listing the same product on two lines still counts
+# once.
+_PRODUCT_REFERENCES = (
+    (SalesSummary, "sales_order_id", "sales order"),
+    (QuotationSummary, "quotation_id", "quotation"),
+    (ProformaInvoiceSummary, "invoice_id", "proforma invoice"),
+    (PurchaseSummary, "purchase_order_id", "purchase order"),
+)
+
+
+def _phrase_reference_counts(counts: list[tuple[int, str]]) -> list[str]:
+    # [(2, "sales order"), (0, "quotation"), (1, "purchase order")]
+    #   -> ["2 sales orders", "1 purchase order"]
+    # Zero-count entries drop out entirely rather than reading as "0
+    # quotations" in the middle of the refusal message.
+    return [f"{count} {noun}{'s' if count != 1 else ''}" for count, noun in counts if count]
+
+
+async def _describe_product_references(product_id: int) -> list[str]:
+    # Counted per parent document rather than per line, since one order
+    # listing the same product twice is still just the one order the admin
+    # would have to go and edit.
+    counts: list[tuple[int, str]] = []
+    for model, parent_attribute, noun in _PRODUCT_REFERENCES:
+        rows = await model.find(model.product_id == product_id).to_list()
+        counts.append((len({getattr(row, parent_attribute) for row in rows}), noun))
+    return _phrase_reference_counts(counts)
+
+
+@router.post("/delete_product_details", response_model=DeleteProductDetailsResponse)
+async def delete_product_details(
+    payload: DeleteProductDetailsRequest,
+    _: User | None = Depends(require_admin),
+) -> DeleteProductDetailsResponse:
+    # Two very different actions behind one endpoint, matching the two options
+    # the admin picks between in the delete popup (product-form-modal.tsx):
+    #   permanent=False -> is_deleted flag only, fully reversible via
+    #                      restore_product_details, images untouched.
+    #   permanent=True  -> the product row, its product_image_details rows and
+    #                      the image files on disk are all removed, and
+    #                      there's no undo — hence the reference check first.
+    product = await ProductDetails.get(payload.product_id)
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="product not found")
+
+    if not payload.permanent:
+        product.is_deleted = True
+        await product.save()
+        return DeleteProductDetailsResponse(message="product deleted successfully")
+
+    references = await _describe_product_references(product.id)
+    if references:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"this product is used by {', '.join(references)} and can't be permanently deleted — "
+                "delete it temporarily instead"
+            ),
+        )
+
+    # Images go before the product itself: if removing a file throws, the
+    # product is still there to try again from, rather than orphaning both the
+    # rows and the files behind a product that no longer exists.
+    images = await ProductImageDetails.find(ProductImageDetails.product_id == product.id).to_list()
+    for image in images:
+        remove_stored_image(image.image_path)
+    await ProductImageDetails.find(ProductImageDetails.product_id == product.id).delete()
+
+    await product.delete()
+
+    return DeleteProductDetailsResponse(message="product permanently deleted")
+
+
+@router.post("/restore_product_details", response_model=RestoreProductDetailsResponse)
+async def restore_product_details(
+    payload: RestoreProductDetailsRequest,
+    _: User | None = Depends(require_admin),
+) -> RestoreProductDetailsResponse:
+    product = await ProductDetails.get(payload.product_id)
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="product not found")
+
+    # The HSN code + name pair only has to be unique among live products (see
+    # _validate_hsn_code_product_name), so a product added while this one was
+    # deleted may have taken its pair in the meantime — bringing it back has
+    # to re-check, or two live products would end up indistinguishable on an
+    # invoice line.
+    await _validate_hsn_code_product_name(product.hsn_code, product.product_name, exclude_id=product.id)
+
+    product.is_deleted = False
+    await product.save()
+
+    return RestoreProductDetailsResponse(message="product restored successfully")
 
 
 @router.post("/add_product_image", response_model=AddProductImageResponse)
@@ -265,7 +392,9 @@ async def get_public_categories() -> list[PublicCategoryNode]:
 
 @public_router.get("/get_public_products", response_model=list[PublicProductItem])
 async def get_public_products() -> list[PublicProductItem]:
-    products = await ProductDetails.find(ProductDetails.is_visible == True).to_list()
+    products = await ProductDetails.find(
+        ProductDetails.is_visible == True, ProductDetails.is_deleted == False
+    ).to_list()
     if not products:
         return []
 

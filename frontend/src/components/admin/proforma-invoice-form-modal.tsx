@@ -108,10 +108,16 @@ export function ProformaInvoiceFormModal({
     isDeleted: customer.isDeleted,
   }));
 
+  // Soft-deleted products are the ones kept out — is_visible only governs the
+  // storefront, so a product hidden from customers is still perfectly
+  // orderable/quotable/invoiceable here. `products` itself is deliberately
+  // unfiltered (get_product_details returns deleted ones too) so an existing
+  // line item pointing at a since-deleted product still resolves a name;
+  // it's only the picker that hides them.
   const productOptions: SingleSelectOption[] = useMemo(
     () =>
       products
-        .filter((product) => product.isVisible)
+        .filter((product) => !product.isDeleted)
         .map((product) => ({ value: String(product.id), label: product.productName, isDeleted: false })),
     [products],
   );

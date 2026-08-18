@@ -49,13 +49,23 @@ def _require_vendor_has_gst(vendor: VendorDetails) -> None:
         )
 
 
-async def _validate_products_belong_to_vendor(product_ids: list[int], vendor_id: int) -> None:
+async def _validate_products_belong_to_vendor(
+    product_ids: list[int], vendor_id: int, reject_deleted: bool = False
+) -> None:
+    # reject_deleted is on for creates only — a soft-deleted product can't go
+    # on a new purchase order, but an existing one that already lists one
+    # still has to be editable. Same split as _validate_products_exist in
+    # routes/quotations.py.
     products = await ProductDetails.find(In(ProductDetails.id, product_ids)).to_list()
     products_by_id = {product.id: product for product in products}
     for product_id in product_ids:
         product = products_by_id.get(product_id)
         if product is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"product {product_id} not found")
+        if reject_deleted and product.is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=f"product {product_id} has been deleted"
+            )
         if product.vendor_id != vendor_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -139,7 +149,7 @@ async def create_new_purchase_order(
             status_code=status.HTTP_409_CONFLICT, detail="a purchase order with this number already exists"
         )
 
-    await _validate_products_belong_to_vendor(payload.product_ids, payload.vendor_id)
+    await _validate_products_belong_to_vendor(payload.product_ids, payload.vendor_id, reject_deleted=True)
     total_amount_before_tax, total_amount_after_tax = _compute_totals(
         payload.quantities, payload.rates, payload.sgst_perc, payload.cgst_perc, payload.igst_perc
     )

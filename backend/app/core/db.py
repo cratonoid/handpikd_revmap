@@ -195,6 +195,19 @@ async def _backfill_order_dates() -> None:
     await db["sales_orders"].update_many({"date": {"$exists": False}}, {"$set": {"date": now}})
 
 
+async def _backfill_product_delete_flag() -> None:
+    # `is_deleted` was added to ProductDetails after products were already in
+    # the collection, and those rows simply don't have the field. Beanie
+    # itself is fine with that (the model defaults it to False), but Mongo is
+    # not: an {"is_deleted": false} filter does NOT match a document where the
+    # key is absent, so every such product would silently vanish from the
+    # storefront the moment get_public_products started filtering on it.
+    # Writing the default in once is cheaper than teaching every query to
+    # spell the condition as {"$ne": true}.
+    db = get_db()
+    await db["product_details"].update_many({"is_deleted": {"$exists": False}}, {"$set": {"is_deleted": False}})
+
+
 async def connect_to_mongo() -> None:
     global client
     client = AsyncMongoClient(settings.mongodb_uri)
@@ -264,6 +277,7 @@ async def connect_to_mongo() -> None:
     await _seed_order_statuses()
     await _seed_personal_details()
     await _backfill_order_dates()
+    await _backfill_product_delete_flag()
 
 
 async def close_mongo_connection() -> None:

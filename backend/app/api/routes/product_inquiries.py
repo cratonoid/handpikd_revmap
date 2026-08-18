@@ -54,12 +54,15 @@ async def submit_product_inquiry(payload: SubmitProductInquiryRequest) -> Submit
     products = await ProductDetails.find(In(ProductDetails.id, list(quantities.keys()))).to_list()
     products_by_id = {product.id: product for product in products}
 
-    # Only products the storefront actually offers (is_visible, same filter as
-    # get_public_products in routes/products.py) can be inquired about.
+    # Only products the storefront actually offers (is_visible and not
+    # is_deleted, same filter as get_public_products in routes/products.py)
+    # can be inquired about.
     missing = [
         product_id
         for product_id in quantities
-        if product_id not in products_by_id or not products_by_id[product_id].is_visible
+        if product_id not in products_by_id
+        or not products_by_id[product_id].is_visible
+        or products_by_id[product_id].is_deleted
     ]
     if missing:
         raise HTTPException(

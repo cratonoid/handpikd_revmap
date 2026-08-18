@@ -85,12 +85,21 @@ async def _validate_customer_exists(cust_id: int) -> None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="customer not found")
 
 
-async def _validate_products_exist(product_ids: list[int]) -> None:
+async def _validate_products_exist(product_ids: list[int], reject_deleted: bool = False) -> None:
+    # reject_deleted is on for creates only. A soft-deleted product must not
+    # be pickable on something new (it isn't offered by the frontend's picker
+    # either — see the isDeleted filter in the form modals), but an existing
+    # document that already lists one still has to be editable, so updates
+    # only check that the product exists at all.
     products = await ProductDetails.find(In(ProductDetails.id, product_ids)).to_list()
-    found_ids = {product.id for product in products}
+    products_by_id = {product.id: product for product in products}
     for product_id in product_ids:
-        if product_id not in found_ids:
+        if product_id not in products_by_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"product {product_id} not found")
+        if reject_deleted and products_by_id[product_id].is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=f"product {product_id} has been deleted"
+            )
 
 
 def _compute_line_items_and_totals(
@@ -170,7 +179,7 @@ async def create_new_proforma_invoice(
     _: User | None = Depends(require_admin),
 ) -> CreateNewProformaInvoiceResponse:
     await _validate_customer_exists(payload.cust_id)
-    await _validate_products_exist(payload.product_ids)
+    await _validate_products_exist(payload.product_ids, reject_deleted=True)
 
     line_totals_before_tax, tax_amounts, total_before_tax, total_tax, total_after_tax = (
         _compute_line_items_and_totals(payload.quantities, payload.rates, payload.tax_percs)

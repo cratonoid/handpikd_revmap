@@ -8,13 +8,23 @@
 //   - mode "add"  -> POST /admin/add_product_details    (new product)
 //   - mode "edit" -> POST /admin/update_product_details (existing product,
 //                    looked up by id)
-// Neither endpoint exists yet — both are stubs to be wired up once the
-// backend routes land (see backend/app/models/product_details.py).
+// Neither endpoint carries the delete flags: `is_visible` is an ordinary
+// form field (the "Visible on the storefront" checkbox, on by default for a
+// new product), while `is_deleted` is only ever moved by the dedicated
+// delete/restore endpoints below.
 //
-// ProductDetails has no `is_deleted` field, only `is_visible` — so the
-// delete/restore button here reuses that flag the same way vendors/customers
-// reuse `is_deleted`: a soft toggle (not a real removal) that also works as
-// an "undelete", with every other field held as-is.
+// Deleting opens a second popup offering both kinds (see lib/products.ts):
+//   - "Delete temporarily" -> soft delete. The product drops out of every
+//     picker and the storefront but keeps its row and images, so older
+//     orders/quotations/invoices still show its name, and it can be restored
+//     from the Deleted tab on /admin/products.
+//   - "Delete permanently"  -> the row, its image rows and the image files
+//     are gone for good, so it takes a second confirmation, and the backend
+//     refuses with a 409 (surfaced here verbatim, e.g. "used by 2 sales
+//     orders") if any document still references the product.
+// Either way the delete acts on the SAVED product, discarding whatever is
+// unsaved in the form — it doesn't save-then-flag the way the old
+// is_visible-based delete did.
 //
 // Vendor is a single-select (a product has exactly one vendor_id) and
 // categories are a multiselect (category_ids is an array on ProductDetails) —
@@ -34,7 +44,14 @@ import { Button } from "@/components/button";
 import { apiFetch, resolveMediaUrl } from "@/lib/api";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import { GST_PERCENT_OPTIONS } from "@/lib/gst";
-import { addProductImage, deleteProductImage, uploadProductImage, type Product } from "@/lib/products";
+import {
+  addProductImage,
+  deleteProduct,
+  deleteProductImage,
+  restoreProduct,
+  uploadProductImage,
+  type Product,
+} from "@/lib/products";
 import type { VendorOption } from "@/lib/vendors";
 import type { CategoryNode } from "@/lib/categories";
 import { CategoryTreeSelect } from "@/components/admin/category-tree-select";
@@ -42,7 +59,12 @@ import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admi
 import { ArrowUpTrayIcon, CubeIcon, XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
-type Status = "idle" | "saving";
+type Status = "idle" | "saving" | "deleting";
+
+// Which screen of the delete popup is open: "choice" is the temporary-vs-
+// permanent pick, "permanent" the extra are-you-sure only the irreversible
+// one gets. null = popup closed.
+type DeleteStep = "choice" | "permanent" | null;
 
 export function ProductFormModal({
   mode,
@@ -51,6 +73,7 @@ export function ProductFormModal({
   categoryTree,
   onClose,
   onImagesChangedWithoutSave,
+  onPermanentlyDeleted,
   onSaved,
 }: {
   mode: "add" | "edit";
@@ -68,6 +91,10 @@ export function ProductFormModal({
   // get_product_details rather than trusting its own cached list.
   onImagesChangedWithoutSave: () => void;
   onSaved: (product: Product) => void;
+  // Permanent delete only — the product is gone, so the parent drops it from
+  // its list outright instead of updating a row (soft delete and restore
+  // both come back through onSaved with isDeleted flipped).
+  onPermanentlyDeleted: (productId: number) => void;
 }) {
   const [productName, setProductName] = useState(initialProduct?.productName ?? "");
   const [hsnCode, setHsnCode] = useState(initialProduct?.hsnCode ?? "");
@@ -83,12 +110,19 @@ export function ProductFormModal({
   const [gstPerc, setGstPerc] = useState(initialProduct ? String(initialProduct.gstPerc) : "");
   const [moq, setMoq] = useState(initialProduct?.moq ?? 1);
   const [description, setDescription] = useState(initialProduct?.description ?? "");
+  // On by default for a new product — a product is meant to be on the
+  // storefront unless the admin says otherwise.
+  const [isVisible, setIsVisible] = useState(initialProduct?.isVisible ?? true);
   const [imagePaths, setImagePaths] = useState<string[]>(
     initialProduct?.imagePaths && initialProduct.imagePaths.length > 0 ? initialProduct.imagePaths : [""],
   );
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteStep, setDeleteStep] = useState<DeleteStep>(null);
+  // Kept apart from the form's own `error` because it's shown inside the
+  // delete popup, and because a permanent delete's 409 carries a message
+  // worth showing as-is ("used by 2 sales orders, 1 quotation").
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   // Which image row is mid-delete (disables its button) and any error from
   // that request — separate from the form's own error/status since deleting
   // an image happens immediately, independent of the Save button.
@@ -105,7 +139,8 @@ export function ProductFormModal({
   const [hasUnsavedImageDeletion, setHasUnsavedImageDeletion] = useState(false);
 
   const isEdit = mode === "edit";
-  const wasHidden = initialProduct ? !initialProduct.isVisible : false;
+  const isDeleted = initialProduct?.isDeleted ?? false;
+  const busy = status !== "idle";
   const title = isEdit ? "Edit product" : "Add new product";
 
   // Closing (Cancel/X/backdrop) never runs onSaved, so if an image delete
@@ -208,9 +243,10 @@ export function ProductFormModal({
     };
   }
 
-  // Shared by the normal Save button and the delete/restore action below —
-  // both save the current form state, only differing in what `is_visible`
-  // should end up as. Two-phase, same as catalogue-form-modal.tsx: details
+  // Used by the normal Save button, and by the fallback below that re-saves
+  // a new product hidden when its images didn't all upload — hence
+  // `is_visible` being a parameter rather than just the checkbox's value.
+  // Two-phase, same as catalogue-form-modal.tsx: details
   // first (carrying only already-persisted paths/pasted URLs), then one
   // addProductImage call per pending "data:" image, since bundling every
   // image's bytes into one request risked the same request-size blowup
@@ -253,10 +289,11 @@ export function ProductFormModal({
       } catch {
         const keepPaths = [...savedPersistedPaths, ...uploadedPaths];
         if (!isEdit) {
-          // ProductDetails has no hard delete, only this is_visible toggle
-          // (same one delete/restore uses) — hide the incomplete product
-          // rather than showing it to customers with missing images. Keep
-          // whatever images did upload (keepPaths) rather than wiping them.
+          // Hide the incomplete product rather than showing it to customers
+          // with missing images — is_visible, not is_deleted, because this
+          // is a half-finished save the admin is expected to come back and
+          // finish, not something they asked to delete. Keep whatever images
+          // did upload (keepPaths) rather than wiping them.
           await apiFetch("/admin/update_product_details", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -286,6 +323,9 @@ export function ProductFormModal({
         moq,
         description,
         isVisible: isVisibleValue,
+        // Saving never moves is_deleted — only the delete/restore endpoints
+        // do, and neither goes through here.
+        isDeleted,
         imagePaths: [...savedPersistedPaths, ...uploadedPaths],
       });
     } catch {
@@ -328,12 +368,65 @@ export function ProductFormModal({
       return;
     }
 
-    void submitPayload(!wasHidden);
+    void submitPayload(isVisible);
   }
 
-  function handleDeleteOrRestore() {
-    setConfirmingDelete(false);
-    void submitPayload(wasHidden);
+  // Acts on the saved product, not the form — any unsaved edits are dropped,
+  // which is the point: the admin asked for this product to go, not for
+  // their half-finished changes to be written first.
+  async function handleDelete(permanent: boolean) {
+    if (!initialProduct) return;
+
+    setStatus("deleting");
+    setDeleteError(null);
+    try {
+      await deleteProduct(initialProduct.id, permanent);
+    } catch (error) {
+      // The backend's 409 detail is the useful part on a permanent delete
+      // (it names what still references the product), so show it verbatim
+      // rather than a generic failure line.
+      setDeleteError(error instanceof Error ? error.message : "Couldn't delete this product. Please try again.");
+      setStatus("idle");
+      return;
+    }
+
+    setStatus("idle");
+    setDeleteStep(null);
+    if (permanent) {
+      onPermanentlyDeleted(initialProduct.id);
+    } else if (hasUnsavedImageDeletion) {
+      // initialProduct's imagePaths still list an image this session already
+      // deleted server-side, so spreading it would put a stale row in the
+      // Deleted tab — a re-fetch picks up both the missing image and the
+      // is_deleted that was just set.
+      onImagesChangedWithoutSave();
+    } else {
+      onSaved({ ...initialProduct, isDeleted: true });
+    }
+  }
+
+  async function handleRestore() {
+    if (!initialProduct) return;
+
+    setStatus("deleting");
+    setDeleteError(null);
+    try {
+      await restoreProduct(initialProduct.id);
+    } catch (error) {
+      // 409 here means another product has taken this one's HSN code + name
+      // pair while it was deleted — again worth showing as-is.
+      setError(error instanceof Error ? error.message : "Couldn't restore this product. Please try again.");
+      setStatus("idle");
+      return;
+    }
+
+    setStatus("idle");
+    if (hasUnsavedImageDeletion) {
+      // Same stale-imagePaths case as handleDelete's soft branch.
+      onImagesChangedWithoutSave();
+    } else {
+      onSaved({ ...initialProduct, isDeleted: false });
+    }
   }
 
   return (
@@ -501,6 +594,29 @@ export function ProductFormModal({
                 className={styles.formTextarea}
               />
             </div>
+
+            {/* Storefront visibility only — an unticked product still shows
+                up in the order/quotation/invoice pickers, it just isn't
+                offered to customers. That's what separates it from a delete,
+                hence the hint text. */}
+            <div className={styles.formGridFullSpan}>
+              <label htmlFor="isVisible" className={styles.formCheckboxField}>
+                <input
+                  id="isVisible"
+                  type="checkbox"
+                  checked={isVisible}
+                  onChange={(e) => setIsVisible(e.target.checked)}
+                  className={styles.selectCheckbox}
+                />
+                <span className={styles.formCheckboxText}>
+                  <span className={styles.formCheckboxLabel}>Visible</span>
+                  <span className={styles.formCheckboxHint}>
+                    Shown on the storefront and in the customer inquiry cart. Unticking moves it to Hidden products; it
+                    can still be quoted, ordered and invoiced.
+                  </span>
+                </span>
+              </label>
+            </div>
           </div>
 
           <div className={styles.imagesSection}>
@@ -589,52 +705,151 @@ export function ProductFormModal({
 
           <div className={styles.modalActions}>
             <div className={styles.modalActionsLeft}>
-              {isEdit && !confirmingDelete && (
+              {isEdit && (
                 <button
                   type="button"
-                  onClick={() => setConfirmingDelete(true)}
-                  disabled={status === "saving"}
-                  className={`${styles.triggerButtonBase} ${wasHidden ? styles.restoreTriggerButton : styles.deleteTriggerButton}`}
+                  onClick={() => {
+                    setDeleteError(null);
+                    if (isDeleted) {
+                      void handleRestore();
+                    } else {
+                      setDeleteStep("choice");
+                    }
+                  }}
+                  disabled={busy}
+                  className={`${styles.triggerButtonBase} ${isDeleted ? styles.restoreTriggerButton : styles.deleteTriggerButton}`}
                 >
-                  {wasHidden ? "Restore product" : "Delete product"}
+                  {isDeleted
+                    ? status === "deleting"
+                      ? "Restoring…"
+                      : "Restore product"
+                    : "Delete product"}
                 </button>
-              )}
-
-              {isEdit && confirmingDelete && (
-                <div className={styles.deleteConfirmRow}>
-                  <span className={styles.deleteConfirmText}>
-                    {wasHidden
-                      ? "Are you sure you want to restore this product?"
-                      : "Are you sure you want to delete this product?"}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="tertiary"
-                    onClick={() => setConfirmingDelete(false)}
-                    disabled={status === "saving"}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="button" variant="primary" onClick={handleDeleteOrRestore} disabled={status === "saving"}>
-                    {status === "saving" ? "Saving…" : wasHidden ? "Yes, restore" : "Yes, delete"}
-                  </Button>
-                </div>
               )}
             </div>
 
-            {!confirmingDelete && (
-              <div className={styles.modalActionsRight}>
-                <Button type="button" variant="tertiary" onClick={handleClose}>
-                  Cancel
-                </Button>
-                <Button type="submit" variant="primary" disabled={status === "saving"}>
-                  {status === "saving" ? "Saving…" : "Save"}
-                </Button>
-              </div>
-            )}
+            <div className={styles.modalActionsRight}>
+              <Button type="button" variant="tertiary" onClick={handleClose}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={busy}>
+                {status === "saving" ? "Saving…" : "Save"}
+              </Button>
+            </div>
           </div>
         </form>
       </div>
+
+      {/* Delete popup, layered over the form (its own backdrop, so the form
+          stays visible but unreachable behind it). Two screens: pick which
+          kind of delete, then — for the permanent one only — confirm, since
+          that one can't be undone. */}
+      {deleteStep !== null && (
+        <div
+          className={styles.modalBackdrop}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (!busy) setDeleteStep(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="product-delete-title"
+            className={styles.confirmDialogPanel}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.modalHeader}>
+              <h2 id="product-delete-title" className={styles.modalTitle}>
+                {deleteStep === "choice" ? "Delete product" : "Delete permanently?"}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setDeleteStep(null)}
+                disabled={busy}
+                aria-label="Close"
+                className={styles.modalCloseButton}
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className={styles.confirmDialogBody}>
+              {deleteStep === "choice" ? (
+                <>
+                  <p className={styles.confirmDialogIntro}>
+                    How should “{initialProduct?.productName}” be deleted?
+                  </p>
+
+                  <div className={styles.confirmDialogOptions}>
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete(false)}
+                      disabled={busy}
+                      className={styles.confirmOptionButton}
+                    >
+                      <span className={styles.confirmOptionTitle}>Delete temporarily</span>
+                      <span className={styles.confirmOptionText}>
+                        Moves it to the Deleted tab. It disappears from the storefront and from every order, quotation
+                        and invoice picker, but its images and its name on past documents are kept — and it can be
+                        restored later.
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteError(null);
+                        setDeleteStep("permanent");
+                      }}
+                      disabled={busy}
+                      className={`${styles.confirmOptionButton} ${styles.confirmOptionButtonDanger}`}
+                    >
+                      <span className={styles.confirmOptionTitle}>Delete permanently</span>
+                      <span className={styles.confirmOptionText}>
+                        Erases the product and its uploaded images from the server for good. Not possible if any order,
+                        quotation, proforma invoice or purchase order still lists it.
+                      </span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className={styles.confirmDialogIntro}>
+                  “{initialProduct?.productName}” and all of its uploaded images will be erased from the server. This
+                  can’t be undone.
+                </p>
+              )}
+
+              {deleteError && (
+                <p role="alert" aria-live="polite" className={styles.formError}>
+                  {deleteError}
+                </p>
+              )}
+            </div>
+
+            <div className={styles.confirmDialogActions}>
+              <Button
+                type="button"
+                variant="tertiary"
+                onClick={() => (deleteStep === "permanent" ? setDeleteStep("choice") : setDeleteStep(null))}
+                disabled={busy}
+              >
+                {deleteStep === "permanent" ? "Back" : "Cancel"}
+              </Button>
+              {deleteStep === "permanent" && (
+                <button
+                  type="button"
+                  onClick={() => void handleDelete(true)}
+                  disabled={busy}
+                  className={`${styles.triggerButtonBase} ${styles.deleteTriggerButton}`}
+                >
+                  {status === "deleting" ? "Deleting…" : "Yes, delete permanently"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

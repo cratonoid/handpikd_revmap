@@ -112,7 +112,11 @@ export function ClientsPageClient() {
                 <td className={styles.tableCell}>{index + 1}</td>
                 <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{customer.registeredName}</td>
                 <td className={styles.tableCell}>{customer.companyOrDepartment}</td>
-                <td className={styles.tableCell}>{customer.companyGst}</td>
+                {/* GST is optional (not every client is registered), so an
+                    empty cell would read as a rendering fault — same em-dash
+                    placeholder the other admin tables use for a missing
+                    value. */}
+                <td className={styles.tableCell}>{customer.companyGst || "—"}</td>
               </tr>
             ))}
           </tbody>

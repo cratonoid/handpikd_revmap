@@ -6,24 +6,27 @@
    and why colors reference `var(--color-*)` / `color-mix(...)` instead of
    hex values.
 
-   The inquiry form at the bottom of the page does NOT define its own field
+   The inquiry popup (cart-inquiry-modal.tsx) does NOT define its own field
    styles: it reuses home-page.module.css's `.form*` classes (the same ones
    the homepage's Connect With Us form and the Get It Now popup use), so
    every form on the site keeps looking identical. Only the cart-specific
-   parts — the line items, the totals block, and the page shell — live here.
+   parts — the line items, the totals block, the floating Proceed button, and
+   the popup's overlay/header — live here.
    ============================================================================= */
 
 .pageInner {
   margin-inline: auto;
   max-width: 56rem;
   padding-inline: 1.25rem;
-  padding-block: 2.5rem 4rem;
+  /* The generous bottom padding keeps the floating Proceed button
+     (`.proceedButton`) from covering the last thing on the page. */
+  padding-block: 2.5rem 7rem;
 }
 
 @media (min-width: 640px) {
   .pageInner {
     padding-inline: 2rem;
-    padding-block: 3.5rem 5rem;
+    padding-block: 3.5rem 8rem;
   }
 }
 
@@ -267,25 +270,114 @@
 }
 
 /* -----------------------------------------------------------------------
-   Inquiry form block
-   ----------------------------------------------------------------------- */
+   Floating "Proceed" button
+   -----------------------------------------------------------------------
+   Same pill/shadow language as shared.module.css's `.floatingInquiryButton`
+   (the site-wide CTA that leads here and hides itself on /cart), so the two
+   read as the same control continuing across pages. */
 
-.formSection {
-  margin-top: 3rem;
-  border-top: 1px solid var(--color-border);
-  padding-top: 2.5rem;
+.proceedButton {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  border-radius: 9999px;
+  background-color: var(--color-button-primary);
+  padding: 0.875rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-cream);
+  box-shadow: 0 10px 24px -6px color-mix(in srgb, var(--color-charcoal) 45%, transparent);
+  transition:
+    background-color 0.2s,
+    transform 0.2s;
 }
 
-.formHeading {
+.proceedButton:hover {
+  background-color: var(--color-button-primary-hover);
+  transform: translateY(-2px);
+}
+
+.proceedButton:focus-visible {
+  outline: 2px solid var(--color-charcoal);
+  outline-offset: 2px;
+}
+
+.proceedTotal {
+  border-left: 1px solid color-mix(in srgb, var(--color-cream) 35%, transparent);
+  padding-left: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -----------------------------------------------------------------------
+   Inquiry popup (cart-inquiry-modal.tsx)
+   -----------------------------------------------------------------------
+   Mirrors products.module.css's `.getItNow*` overlay — see the comment there
+   for why the modal is portalled onto <body>. */
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: color-mix(in srgb, black 82%, transparent);
+  padding: 1.25rem;
+}
+
+.modalScroll {
+  width: 100%;
+  max-width: 34rem;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+
+.modalHeader {
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.modalEyebrow {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+}
+
+.modalTitle {
+  margin-top: 0.25rem;
   font-family: var(--font-display);
-  font-size: 1.5rem;
+  font-size: 1.375rem;
   font-weight: 600;
   color: var(--color-charcoal);
 }
 
+.modalCloseButton {
+  display: flex;
+  height: 2.5rem;
+  width: 2.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: var(--color-charcoal);
+  transition: background-color 0.2s;
+}
+
+.modalCloseButton:hover {
+  background-color: var(--color-cream-deep);
+}
+
 .formSubtext {
   margin-top: 0.5rem;
-  margin-bottom: 1.5rem;
   font-size: 0.875rem;
   color: color-mix(in srgb, var(--color-ink) 65%, transparent);
 }

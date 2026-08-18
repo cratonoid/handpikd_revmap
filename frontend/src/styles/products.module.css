@@ -688,6 +688,8 @@
   text-decoration: underline;
 }
 
+/* Phones keep an explicit 2-up: a 200px minimum would drop a 375px screen to
+   a single column, which reads as a list rather than a catalogue. */
 .productGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -695,15 +697,21 @@
   row-gap: 2.25rem;
 }
 
+/* From tablet up the column COUNT grows with the viewport instead of each
+   card getting wider — a fixed 4-column grid inside this page's 105rem shell
+   pushed cards to ~330px on a 1920px monitor, and .cardImageWrap's 1/1
+   aspect ratio made every thumbnail that tall too.
+
+   auto-fill, not auto-fit: auto-fit collapses the tracks it can't fill and
+   lets the surviving cards stretch across them, so a short catalogue (4
+   products against 6 possible columns) would render BIGGER than the fixed
+   grid it replaced. auto-fill keeps the empty tracks, holding the cards at
+   their intended width and leaving the rest of the row blank.
+   Works out to 3 columns at 640-1279px (unchanged), 4 at 1280px (also
+   unchanged), then 5 and 6 as the viewport passes ~1450px and ~1750px. */
 @media (min-width: 640px) {
   .productGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (min-width: 1280px) {
-  .productGrid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
 }
 

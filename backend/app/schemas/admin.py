@@ -8,7 +8,11 @@ class AddCustomerDetailsRequest(BaseModel):
     registered_name: str
     company_or_department: str
     address: str
-    company_gst: str
+    # Optional — not every client is GST-registered. Blank is a supported
+    # value all the way down: is_intra_state in services/gst.py reads a
+    # missing buyer GSTIN as inter-state (IGST), and the invoice PDF renders
+    # an empty Place of Supply rather than failing.
+    company_gst: str = ""
     points: int
     is_deleted: bool = False
     contact_name: list[str]
@@ -33,7 +37,7 @@ class CustomerDetailItem(BaseModel):
     registered_name: str
     company_or_department: str
     address: str
-    company_gst: str
+    company_gst: str = ""
     points: int
     is_deleted: bool = False
     contact_name: list[str]
@@ -48,7 +52,7 @@ class UpdateCustomerDetailsRequest(BaseModel):
     registered_name: str
     company_or_department: str
     address: str
-    company_gst: str
+    company_gst: str = ""
     points: int
     is_deleted: bool = False
     contact_name: list[str]
