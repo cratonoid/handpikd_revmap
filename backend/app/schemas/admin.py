@@ -45,7 +45,14 @@ class CustomerDetailItem(BaseModel):
 
 
 class UpdateCustomerDetailsRequest(BaseModel):
+    # The customer being edited, identified by their CURRENT email — it is
+    # the only handle the frontend has (CustomerDetailItem exposes no id).
     mail: str
+    # The address to rename that login to. Empty (or identical to `mail`)
+    # means "leave the email alone"; anything else is only accepted if no
+    # other user already holds it — see update_customer_details in
+    # routes/admin.py.
+    new_mail: str = ""
     # Empty string means "leave the current password unchanged" — see
     # update_customer_details in routes/admin.py.
     password: str = ""

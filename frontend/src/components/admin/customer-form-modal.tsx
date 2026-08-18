@@ -8,9 +8,12 @@
 //   - mode "edit" -> POST /admin/update_customer_details (existing customer,
 //                    looked up by email — see backend/app/api/routes/admin.py)
 // Both endpoints require the FULL record on every call (there's no PATCH).
-// In edit mode the email is locked (it's how update_customer_details looks
-// the customer up — there's no rename support) and the password is optional:
-// an empty string tells the backend to leave the current password alone.
+// In edit mode the email is editable, but it is still how the backend looks
+// the customer up, so the payload carries both: `mail` stays the address the
+// modal was opened with, and `new_mail` carries whatever the admin typed. The
+// backend rejects a rename onto an address another user already holds with a
+// 409, same as adding a duplicate. The password is optional: an empty string
+// tells the backend to leave the current password alone.
 //
 // The delete/restore button reuses the same update_customer_details call
 // with every other field held as-is and just `is_deleted` flipped — a soft
@@ -34,7 +37,10 @@ export function CustomerFormModal({
   // Only present in "edit" mode — pre-fills every field except password.
   initialCustomer?: Customer;
   onClose: () => void;
-  onSaved: (customer: Customer) => void;
+  // `previousMail` is the address the customer had when the modal opened —
+  // the table keys its rows by mail, so a rename has to update the right row
+  // rather than look like a brand-new customer.
+  onSaved: (customer: Customer, previousMail: string) => void;
 }) {
   const [mail, setMail] = useState(initialCustomer?.mail ?? "");
   const [password, setPassword] = useState("");
@@ -75,8 +81,16 @@ export function CustomerFormModal({
     setStatus("saving");
     setError(null);
 
+    // Trimmed because the backend stores the trimmed address — keeping the
+    // raw value locally would leave the table holding a mail the server
+    // doesn't have, and the next edit of that row would 404.
+    const submittedMail = mail.trim();
+
     const payload = {
-      mail,
+      // Lookup key: in edit mode always the address the modal opened with,
+      // since a rename must still find the existing user.
+      mail: initialCustomer?.mail ?? submittedMail,
+      ...(isEdit ? { new_mail: submittedMail } : {}),
       password,
       registered_name: registeredName,
       company_or_department: companyOrDepartment,
@@ -97,7 +111,11 @@ export function CustomerFormModal({
 
       if (!response.ok) {
         if (response.status === 409) {
-          setError("A customer with this email already exists.");
+          setError(
+            isEdit
+              ? "Another customer already uses this email. Please pick a different one."
+              : "A customer with this email already exists.",
+          );
         } else if (response.status === 404) {
           setError("Customer not found.");
         } else {
@@ -107,16 +125,19 @@ export function CustomerFormModal({
         return;
       }
 
-      onSaved({
-        mail,
-        registeredName,
-        companyOrDepartment,
-        address,
-        companyGst,
-        points,
-        isDeleted: isDeletedValue,
-        contacts,
-      });
+      onSaved(
+        {
+          mail: submittedMail,
+          registeredName,
+          companyOrDepartment,
+          address,
+          companyGst,
+          points,
+          isDeleted: isDeletedValue,
+          contacts,
+        },
+        initialCustomer?.mail ?? submittedMail,
+      );
     } catch {
       setError("Couldn't reach the server. Please try again.");
       setStatus("idle");
@@ -162,18 +183,17 @@ export function CustomerFormModal({
           <div className={styles.formGrid}>
             <div>
               <label htmlFor="mail" className={styles.formLabel}>
-                Email{isEdit && " (cannot be changed)"}
-                <span className={styles.requiredMark}>*</span>
+                Email<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="mail"
                 type="email"
                 required
-                disabled={isEdit}
                 value={mail}
                 onChange={(e) => setMail(e.target.value)}
                 className={styles.formInput}
               />
+              {isEdit && <p className={styles.pageSubtext}>This is the customer&apos;s login email.</p>}
             </div>
 
             <div>

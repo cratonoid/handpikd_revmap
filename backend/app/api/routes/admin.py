@@ -174,8 +174,24 @@ async def update_customer_details(
     if customer is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="customer not found")
 
+    # A rename is only allowed onto an address no one else holds. mail is the
+    # customer's login AND the only handle the admin UI has on them (see
+    # _get_customer_detail_by_mail above), so letting two users share one
+    # would make both unreachable — the same 409 add_customer_details raises.
+    # A blank new_mail, or one equal to the current address, means "leave the
+    # email alone" and skips the check entirely.
+    new_mail = payload.new_mail.strip()
+    renaming = bool(new_mail) and new_mail != user.mail
+    if renaming:
+        clash = await User.find_one(User.mail == new_mail)
+        if clash is not None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="email already exists")
+        user.mail = new_mail
+
     if payload.password:
         user.password = hash_password(payload.password)
+
+    if renaming or payload.password:
         await user.save()
 
     customer.registered_name = payload.registered_name

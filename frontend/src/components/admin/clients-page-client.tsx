@@ -47,9 +47,12 @@ export function ClientsPageClient() {
     };
   }, []);
 
-  function handleSaved(customer: Customer) {
+  // `previousMail` is the address the row had before the save; it differs
+  // from customer.mail when the admin renamed the login email, and matching
+  // on it is what keeps a rename an update instead of a second row.
+  function handleSaved(customer: Customer, previousMail: string) {
     setCustomers((prev) => {
-      const index = prev.findIndex((c) => c.mail === customer.mail);
+      const index = prev.findIndex((c) => c.mail === previousMail);
       if (index === -1) {
         return [...prev, customer];
       }
