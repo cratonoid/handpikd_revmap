@@ -15,20 +15,36 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { VendorFormModal } from "@/components/admin/vendor-form-modal";
-import { fetchVendors, type Vendor } from "@/lib/vendors";
+import { fetchVendors, VENDOR_TYPE_LABELS, type Vendor, type VendorType } from "@/lib/vendors";
 import styles from "@/styles/dashboard.module.css";
 
 type ModalState = { mode: "add" } | { mode: "edit"; vendor: Vendor } | null;
 type LoadState = "loading" | "loaded";
 type View = "active" | "deleted";
+// "all" is the catch-all — it's also the only filter that shows vendors
+// created before vendor types existed (their vendorType is ""), since those
+// belong to neither type. See lib/vendors.ts.
+type TypeFilter = "all" | VendorType;
+
+const TYPE_FILTERS: { value: TypeFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  ...(Object.keys(VENDOR_TYPE_LABELS) as VendorType[]).map((type) => ({
+    value: type,
+    label: VENDOR_TYPE_LABELS[type],
+  })),
+];
 
 export function VendorsPageClient() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
   const [view, setView] = useState<View>("active");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
-  const visibleVendors = vendors.filter((v) => (view === "deleted" ? v.isDeleted : !v.isDeleted));
+  const visibleVendors = vendors.filter(
+    (v) =>
+      (view === "deleted" ? v.isDeleted : !v.isDeleted) && (typeFilter === "all" || v.vendorType === typeFilter),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -71,32 +87,48 @@ export function VendorsPageClient() {
       <div className={styles.pageHeaderRow}>
         <div>
           <h1 className={styles.pageHeading}>Vendors</h1>
-          <p className={styles.pageSubtext}>View and manage vendor accounts and their points of contact.</p>
         </div>
         <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
           + Add new vendor
         </Button>
       </div>
 
-      <div className={styles.viewToggle} role="tablist" aria-label="Vendor status">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "active"}
-          onClick={() => setView("active")}
-          className={`${styles.viewToggleButton} ${view === "active" ? styles.viewToggleButtonActive : ""}`}
-        >
-          Active vendors
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "deleted"}
-          onClick={() => setView("deleted")}
-          className={`${styles.viewToggleButton} ${view === "deleted" ? styles.viewToggleButtonActive : ""}`}
-        >
-          Deleted vendors
-        </button>
+      <div className={styles.filterToggleRow}>
+        <div className={styles.viewToggle} role="tablist" aria-label="Vendor status">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "active"}
+            onClick={() => setView("active")}
+            className={`${styles.viewToggleButton} ${view === "active" ? styles.viewToggleButtonActive : ""}`}
+          >
+            Active vendors
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "deleted"}
+            onClick={() => setView("deleted")}
+            className={`${styles.viewToggleButton} ${view === "deleted" ? styles.viewToggleButtonActive : ""}`}
+          >
+            Deleted vendors
+          </button>
+        </div>
+
+        <div className={styles.viewToggle} role="tablist" aria-label="Vendor type">
+          {TYPE_FILTERS.map((filter) => (
+            <button
+              key={filter.value}
+              type="button"
+              role="tab"
+              aria-selected={typeFilter === filter.value}
+              onClick={() => setTypeFilter(filter.value)}
+              className={`${styles.viewToggleButton} ${typeFilter === filter.value ? styles.viewToggleButtonActive : ""}`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className={styles.tableWrap}>
@@ -105,6 +137,7 @@ export function VendorsPageClient() {
             <tr>
               <th className={styles.tableHeadCell}>S.No</th>
               <th className={styles.tableHeadCell}>Vendor</th>
+              <th className={styles.tableHeadCell}>Type</th>
               <th className={styles.tableHeadCell}>GST number</th>
               <th className={styles.tableHeadCell}>Address</th>
             </tr>
@@ -118,8 +151,13 @@ export function VendorsPageClient() {
               >
                 <td className={styles.tableCell}>{index + 1}</td>
                 <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{vendor.registeredName}</td>
+                <td className={styles.tableCell}>
+                  {vendor.vendorType ? VENDOR_TYPE_LABELS[vendor.vendorType] : "—"}
+                </td>
                 <td className={styles.tableCell}>{vendor.gst}</td>
-                <td className={styles.tableCell}>{vendor.address}</td>
+                <td className={styles.tableCell} title={vendor.address}>
+                  <span className={styles.tableCellTruncate}>{vendor.address}</span>
+                </td>
               </tr>
             ))}
           </tbody>

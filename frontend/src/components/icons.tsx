@@ -242,6 +242,19 @@ export function ReceiptIcon(props: IconProps) {
   );
 }
 
+// Ledger/coins — the Accounts module. Deliberately distinct from
+// ReceiptIcon (Invoices) and ChartBarIcon (Analytical Dashboard), the two
+// nav items it sits nearest in meaning.
+export function LedgerIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H18a1.5 1.5 0 0 1 1.5 1.5v13A1.5 1.5 0 0 1 18 20H5.5A1.5 1.5 0 0 1 4 18.5Z" />
+      <path d="M7.5 4v16" />
+      <path d="M11 9.5h5.5M11 13h5.5" />
+    </svg>
+  );
+}
+
 export function HomeIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>

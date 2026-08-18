@@ -1,12 +1,15 @@
 # Request/response bodies for the vendors module's endpoints.
 from pydantic import BaseModel, model_validator
 
+from app.models.vendor_details import VendorType
+
 
 class AddVendorDetailsRequest(BaseModel):
     registered_name: str
     gst: str = ""
     address: str
     description: str
+    vendor_type: VendorType
     is_deleted: bool = False
     contact_name: list[str]
     contact_phone: list[str]
@@ -50,6 +53,9 @@ class VendorDetailItem(BaseModel):
     address: str
     description: str
     qr_code: str
+    # None for vendors created before vendor_type existed — see
+    # models/vendor_details.py.
+    vendor_type: VendorType | None = None
     is_deleted: bool = False
     contact_name: list[str]
     contact_phone: list[str]
@@ -62,6 +68,7 @@ class UpdateVendorDetailsRequest(BaseModel):
     address: str
     qr_code: str = ""
     description: str
+    vendor_type: VendorType
     is_deleted: bool = False
     contact_name: list[str]
     contact_phone: list[str]

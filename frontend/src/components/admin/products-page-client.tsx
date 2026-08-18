@@ -126,44 +126,50 @@ export function ProductsPageClient() {
       <div className={styles.pageHeaderRow}>
         <div>
           <h1 className={styles.pageHeading}>Products</h1>
-          <p className={styles.pageSubtext}>Manage the product catalogue, pricing, and images.</p>
         </div>
         <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
           + Add new product
         </Button>
       </div>
 
-      <div className={styles.viewToggle} role="tablist" aria-label="Product status">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "active"}
-          onClick={() => setView("active")}
-          className={`${styles.viewToggleButton} ${view === "active" ? styles.viewToggleButtonActive : ""}`}
-        >
-          Active products
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "hidden"}
-          onClick={() => setView("hidden")}
-          className={`${styles.viewToggleButton} ${view === "hidden" ? styles.viewToggleButtonActive : ""}`}
-        >
-          Hidden products
-        </button>
-      </div>
+      {/* Status toggle and category filter share one control row. They used to
+          stack, and the category select carried a "FILTER BY CATEGORY" caption
+          above it — together nearly 150px of chrome above the first product.
+          The caption is now sr-only: the placeholder already reads "All
+          categories", so it was labelling something self-evident. */}
+      <div className={styles.filterToggleRow}>
+        <div className={styles.viewToggle} role="tablist" aria-label="Product status">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "active"}
+            onClick={() => setView("active")}
+            className={`${styles.viewToggleButton} ${view === "active" ? styles.viewToggleButtonActive : ""}`}
+          >
+            Active products
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "hidden"}
+            onClick={() => setView("hidden")}
+            className={`${styles.viewToggleButton} ${view === "hidden" ? styles.viewToggleButtonActive : ""}`}
+          >
+            Hidden products
+          </button>
+        </div>
 
-      <div className="mt-4 flex flex-wrap items-end gap-3">
-        <div className="max-w-xs flex-1 min-w-[14rem]">
+        <div className={styles.filterToggleRowSelect}>
           <CategoryTreeSelect
             label="Filter by category"
+            hideLabel
             placeholder="All categories"
             tree={categoryTree}
             selectedValues={categoryFilterIds}
             onChange={setCategoryFilterIds}
           />
         </div>
+
         {categoryFilterIds.length > 0 && (
           <Button type="button" variant="tertiary" onClick={() => setCategoryFilterIds([])}>
             Clear category filter

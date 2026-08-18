@@ -112,11 +112,11 @@ export function QuotationsTab() {
 
   return (
     <>
-      <h1 className={styles.pageHeading}>Quotation</h1>
-      <p className={styles.pageSubtext}>Create and track quotations sent to clients.</p>
-
+      {/* Title and both actions on one row — the shape every other module uses. */}
       <div className={styles.pageHeaderRow}>
-        <p className={styles.pageSubtext}>Pick products directly on the form to draft a quotation.</p>
+        <div>
+          <h1 className={styles.pageHeading}>Quotation</h1>
+        </div>
         <div className={styles.modalActionsRight}>
           <Button type="button" variant="tertiary" onClick={() => setShowCompanyDetails(true)}>
             Company details

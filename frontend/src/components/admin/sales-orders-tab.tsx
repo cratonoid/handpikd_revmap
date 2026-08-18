@@ -17,12 +17,21 @@
 // `orderStatuses` rather than a hardcoded list, so they always match
 // whatever statuses are seeded in backend/app/core/db.py.
 //
+// The "Add details" link per row opens the costing sheet at
+// /admin/orders/sales/[id]/details (components/admin/
+// sales-order-costing-page-client.tsx) — the per-product purchase rates,
+// printing/delivery/misc costs, discount and profit behind the order. It's a
+// page rather than another popup because it carries far more figures than
+// the order form does. Its own click is stopped from bubbling so it doesn't
+// also count towards the row's double-click-to-edit.
+//
 // get_customer_list is used (rather than the heavier, email-keyed
 // get_customer_details) because it's the only endpoint exposing a numeric
 // customer id — and it returns every customer, active and deleted, so the
 // table can still resolve a name for orders placed against a since-deleted
 // customer (see lib/customers.ts).
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/button";
 import { SalesOrderFormModal } from "@/components/admin/sales-order-form-modal";
 import { fetchSalesOrders, type SalesOrder } from "@/lib/sales-orders";
@@ -35,6 +44,24 @@ import styles from "@/styles/dashboard.module.css";
 type ModalState = { mode: "add" } | { mode: "edit"; order: SalesOrder } | null;
 type LoadState = "loading" | "loaded";
 type StatusFilter = "all" | number;
+
+// Status name (lowercased) -> the color modifier for its Status cell. Keyed by
+// name rather than OrderStatusMaster id so the colors survive a reseed that
+// renumbers the rows. Anything not listed here — a status added to
+// _ORDER_STATUS_SEED in backend/app/core/db.py without a color picked for it —
+// falls through to plain .tableCell ink rather than borrowing another
+// status's color.
+const STATUS_COLOR_CLASSES: Record<string, string> = {
+  new: styles.statusNew,
+  processing: styles.statusProcessing,
+  delivered: styles.statusDelivered,
+  completed: styles.statusCompleted,
+};
+
+function statusCellClassName(statusName: string | undefined) {
+  const colorClass = statusName ? STATUS_COLOR_CLASSES[statusName.toLowerCase()] : undefined;
+  return `${styles.tableCell} ${styles.statusText} ${colorClass ?? ""}`;
+}
 
 export function SalesOrdersTab() {
   const [orders, setOrders] = useState<SalesOrder[]>([]);
@@ -99,35 +126,43 @@ export function SalesOrdersTab() {
 
   return (
     <>
-      <div className={styles.pageHeaderRow}>
-        <p className={styles.pageSubtext}>Raise and track sales orders placed by customers.</p>
-        <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
-          + New sales order
-        </Button>
-      </div>
-
-      <div className={styles.viewToggle} role="tablist" aria-label="Sales order status">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={statusFilter === "all"}
-          onClick={() => setStatusFilter("all")}
-          className={`${styles.viewToggleButton} ${statusFilter === "all" ? styles.viewToggleButtonActive : ""}`}
-        >
-          All
-        </button>
-        {sortedStatuses.map((orderStatus) => (
+      {/* Status pills and the "new order" button share one row. They used to be
+          two stacked rows, with a third above them for a subtitle that only
+          restated the page subtext in orders-page-client.tsx — three rows of
+          chrome that left barely two orders visible under it. */}
+      <div className={styles.filterToggleRow}>
+        <div className={styles.viewToggle} role="tablist" aria-label="Sales order status">
           <button
-            key={orderStatus.id}
             type="button"
             role="tab"
-            aria-selected={statusFilter === orderStatus.id}
-            onClick={() => setStatusFilter(orderStatus.id)}
-            className={`${styles.viewToggleButton} ${statusFilter === orderStatus.id ? styles.viewToggleButtonActive : ""}`}
+            aria-selected={statusFilter === "all"}
+            onClick={() => setStatusFilter("all")}
+            className={`${styles.viewToggleButton} ${statusFilter === "all" ? styles.viewToggleButtonActive : ""}`}
           >
-            {orderStatus.statusName}
+            All
           </button>
-        ))}
+          {sortedStatuses.map((orderStatus) => (
+            <button
+              key={orderStatus.id}
+              type="button"
+              role="tab"
+              aria-selected={statusFilter === orderStatus.id}
+              onClick={() => setStatusFilter(orderStatus.id)}
+              className={`${styles.viewToggleButton} ${statusFilter === orderStatus.id ? styles.viewToggleButtonActive : ""}`}
+            >
+              {orderStatus.statusName}
+            </button>
+          ))}
+        </div>
+
+        <Button
+          type="button"
+          variant="primary"
+          className={styles.filterToggleRowAction}
+          onClick={() => setModalState({ mode: "add" })}
+        >
+          + New sales order
+        </Button>
       </div>
 
       <div className={styles.tableWrap}>
@@ -140,9 +175,9 @@ export function SalesOrdersTab() {
               <th className={styles.tableHeadCell}>Customer</th>
               <th className={styles.tableHeadCell}>Status</th>
               <th className={styles.tableHeadCell}>Before tax</th>
-              <th className={styles.tableHeadCell}>Tax</th>
               <th className={styles.tableHeadCell}>After tax</th>
               <th className={styles.tableHeadCell}>Description</th>
+              <th className={styles.tableHeadCell}>Details</th>
             </tr>
           </thead>
           <tbody>
@@ -159,11 +194,21 @@ export function SalesOrdersTab() {
                 </td>
                 <td className={styles.tableCell}>{new Date(order.date).toLocaleDateString()}</td>
                 <td className={styles.tableCell}>{customersById.get(order.custId)?.name ?? "—"}</td>
-                <td className={styles.tableCell}>{statusesById.get(order.orderStatusId)?.statusName ?? "—"}</td>
+                <td className={statusCellClassName(statusesById.get(order.orderStatusId)?.statusName)}>
+                  {statusesById.get(order.orderStatusId)?.statusName ?? "—"}
+                </td>
                 <td className={styles.tableCell}>₹{order.totalAmountBeforeTax.toFixed(2)}</td>
-                <td className={styles.tableCell}>₹{order.totalTaxAmount.toFixed(2)}</td>
                 <td className={styles.tableCell}>₹{order.totalAmountAfterTax.toFixed(2)}</td>
                 <td className={styles.tableCell}>{order.description}</td>
+                <td className={styles.tableCell}>
+                  <Link
+                    href={`/admin/orders/sales/${order.id}/details`}
+                    onClick={(event) => event.stopPropagation()}
+                    className={styles.tableActionButton}
+                  >
+                    Add details
+                  </Link>
+                </td>
               </tr>
             ))}
           </tbody>

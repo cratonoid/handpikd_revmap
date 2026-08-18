@@ -23,8 +23,6 @@ export function InvoicesPageClient() {
       <h1 className={styles.pageHeading}>Invoices</h1>
 
       <div className={styles.invoicesToolbar}>
-        <p className={styles.pageSubtext}>Generate, send, and track payment status of sales and purchase invoices.</p>
-
         <div className={styles.viewToggle} role="tablist" aria-label="Invoices section">
           <button
             type="button"

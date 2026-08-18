@@ -47,6 +47,14 @@
 
   --color-border: #d8c6a4;
 
+  /* Admin sales-order status colors — see `statusColors` in src/lib/brand.ts
+     for why these sit apart from the brand palette above. Consumed by
+     .statusText in src/styles/dashboard.module.css. */
+  --color-status-new: #35618f;
+  --color-status-processing: #8a5a12;
+  --color-status-delivered: #2c6e7f;
+  --color-status-completed: #2f6b3a;
+
   /* The header's own rendered height in its normal (non-compact, non-
      scrolled) state: 1.25rem of padding-block + the 2.25rem logo mark +
      the 1px bottom border. Kept as a variable so the Hero section (see
@@ -107,6 +115,84 @@
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+/* ---------------------------------------------------------------------------
+   Scrollbars
+   ---------------------------------------------------------------------------
+   The dashboard shell scrolls in three places at once (sidebar, content pane,
+   table body), so the OS default — a wide grey channel with a stepper arrow at
+   each end — shows up three times over and reads as chrome bolted onto the
+   page rather than part of it. These replace it with a slim neutral pill
+   floating on a transparent track.
+
+   The thumb is solid charcoal — the same near-black as the headings, active
+   nav pill and primary buttons — so it reads as part of the palette rather
+   than as leftover OS chrome. It carries no hover or active state: charcoal is
+   already the darkest value in the palette, so there is nowhere darker to go,
+   and lightening on hover would invert the usual meaning. The slim 6px pill is
+   what keeps it from feeling heavy at full strength.
+
+   WHY THE @supports GATE BELOW, AND NOT JUST BOTH SYNTAXES SIDE BY SIDE:
+   scrollbar-width/scrollbar-color are the standard properties, but Chromium
+   treats them as an either/or with ::-webkit-scrollbar — the moment either
+   standard property applies to an element, Chromium ignores every
+   ::-webkit-scrollbar rule for it and paints its own scrollbar in the given
+   colour, arrows and full width included. Declaring both therefore does not
+   degrade gracefully; the standard pair silently wins and takes width,
+   stepper arrows and track styling out of our hands.
+
+   So the standard properties are fenced off to engines that have no
+   ::-webkit-scrollbar support at all — in practice Firefox. `selector()`
+   tests whether the engine can parse the selector, and Chromium and Safari
+   both can, which excludes them from the block and leaves them on the
+   ::-webkit-scrollbar rules, where width and arrows are actually
+   controllable. The colours are kept in sync so both paths land in the same
+   place. */
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-track-piece {
+  background: transparent;
+}
+
+/* The transparent border plus background-clip: content-box insets the thumb
+   inside the 12px gutter, leaving a 6px pill with clear space either side.
+   Painting a 6px thumb directly would instead pin it against the edge of the
+   content, which is the look this is trying to get away from. */
+::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-color: var(--color-charcoal);
+  background-clip: content-box;
+}
+
+/* The stepper arrows at each end of the track. The bare ::-webkit-scrollbar-button
+   covers current Chromium; the :start:decrement / :end:increment pair is what
+   older WebKit matches on, and costs nothing to keep. */
+::-webkit-scrollbar-button,
+::-webkit-scrollbar-button:start:decrement,
+::-webkit-scrollbar-button:end:increment {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Where a horizontal and a vertical bar meet, the default is an opaque grey
+   square. */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@supports (scrollbar-width: thin) and (not selector(::-webkit-scrollbar)) {
+  :root {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-charcoal) transparent;
+  }
 }
 
 /* ---------------------------------------------------------------------------

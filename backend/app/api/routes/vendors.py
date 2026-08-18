@@ -33,6 +33,7 @@ async def add_vendor_details(
         gst=payload.gst,
         address=payload.address,
         description=payload.description,
+        vendor_type=payload.vendor_type,
         is_deleted=payload.is_deleted,
     )
     await vendor.insert()
@@ -86,6 +87,7 @@ async def get_vendor_details(
                 address=vendor.address,
                 description=vendor.description,
                 qr_code=vendor.qr_code,
+                vendor_type=vendor.vendor_type,
                 is_deleted=vendor.is_deleted,
                 contact_name=[poc.contact_name for poc in vendor_pocs],
                 contact_phone=[poc.contact_phone for poc in vendor_pocs],
@@ -109,6 +111,7 @@ async def update_vendor_details(
     vendor.address = payload.address
     vendor.qr_code = payload.qr_code
     vendor.description = payload.description
+    vendor.vendor_type = payload.vendor_type
     vendor.is_deleted = payload.is_deleted
     await vendor.save()
 

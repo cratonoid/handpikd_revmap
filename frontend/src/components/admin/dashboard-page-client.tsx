@@ -43,9 +43,6 @@ export function DashboardPageClient() {
   return (
     <>
       <h1 className={styles.pageHeading}>Analytical Dashboard</h1>
-      <p className={styles.pageSubtext}>
-        A snapshot of clients, orders, quotations, and invoices across the business.
-      </p>
       <div className={styles.statGrid}>
         {STATS.map((stat) => (
           <div key={stat.label} className={styles.statCard}>

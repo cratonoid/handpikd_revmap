@@ -188,12 +188,6 @@ export function InvoicesTab() {
         </div>
       </div>
 
-      <p className={styles.pageSubtext}>
-        {invoiceType === "standard"
-          ? "Raise invoices against existing sales orders."
-          : "Raise proforma invoices by hand, before a sales order or shipment exists."}
-      </p>
-
       {downloadError && (
         <p role="alert" aria-live="polite" className={styles.formError}>
           {downloadError}

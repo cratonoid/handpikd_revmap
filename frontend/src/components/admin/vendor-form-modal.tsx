@@ -30,7 +30,7 @@
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
-import { convertVendorQr, type Vendor, type VendorPoc } from "@/lib/vendors";
+import { convertVendorQr, VENDOR_TYPE_LABELS, type Vendor, type VendorPoc, type VendorType } from "@/lib/vendors";
 import { XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
@@ -58,6 +58,10 @@ export function VendorFormModal({
   const [gst, setGst] = useState(initialVendor?.gst ?? "");
   const [address, setAddress] = useState(initialVendor?.address ?? "");
   const [description, setDescription] = useState(initialVendor?.description ?? "");
+  // "" is the unselected state of the picker below (and the stored value of
+  // legacy vendors that predate vendor types) — the <select> is `required`,
+  // so saving always lands on a real VendorType.
+  const [vendorType, setVendorType] = useState<VendorType | "">(initialVendor?.vendorType ?? "");
   const [pocs, setPocs] = useState<VendorPoc[]>(
     initialVendor?.pocs && initialVendor.pocs.length > 0 ? initialVendor.pocs : [{ name: "", phone: "" }],
   );
@@ -142,6 +146,7 @@ export function VendorFormModal({
       address,
       description,
       qr_code: qrCode,
+      vendor_type: vendorType,
       is_deleted: isDeletedValue,
       contact_name: pocs.map((p) => p.name),
       contact_phone: pocs.map((p) => p.phone),
@@ -173,6 +178,7 @@ export function VendorFormModal({
         address,
         description,
         qrCode,
+        vendorType,
         isDeleted: isDeletedValue,
         pocs,
       });
@@ -195,6 +201,16 @@ export function VendorFormModal({
   }
 
   function handleDeleteOrRestore() {
+    // Delete/restore skips the form's own validation (it's not a submit), but
+    // it still posts the whole form to update_vendor_details — and the backend
+    // rejects a payload with no vendor_type. Vendors created before vendor
+    // types existed come in with none, so ask for one rather than 422-ing.
+    if (!vendorType) {
+      setConfirmingDelete(false);
+      setError("Please select a vendor type first.");
+      return;
+    }
+
     setConfirmingDelete(false);
     void submitPayload(!wasDeleted);
   }
@@ -244,6 +260,28 @@ export function VendorFormModal({
                 onChange={(e) => setGst(e.target.value.toUpperCase())}
                 className={styles.formInput}
               />
+            </div>
+
+            <div>
+              <label htmlFor="vendorType" className={styles.formLabel}>
+                Vendor type<span className={styles.requiredMark}>*</span>
+              </label>
+              <select
+                id="vendorType"
+                required
+                value={vendorType}
+                onChange={(e) => setVendorType(e.target.value as VendorType)}
+                className={styles.formInput}
+              >
+                <option value="" disabled>
+                  Select vendor type
+                </option>
+                {(Object.keys(VENDOR_TYPE_LABELS) as VendorType[]).map((type) => (
+                  <option key={type} value={type}>
+                    {VENDOR_TYPE_LABELS[type]}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className={styles.formGridFullSpan}>

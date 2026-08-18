@@ -1,5 +1,12 @@
 # Schema for the #vendor_details collection.
+from enum import Enum
+
 from beanie import Document
+
+
+class VendorType(str, Enum):
+    material = "material"
+    printing = "printing"
 
 
 class VendorDetails(Document):
@@ -14,6 +21,10 @@ class VendorDetails(Document):
     # Populated later by the separate add_qr_code endpoint, not at creation.
     qr_code: str = ""
     description: str
+    # None only for vendors created before vendor_type existed — the add/edit
+    # form requires one of VendorType's values. Such legacy vendors show up
+    # under the vendors page's "All" filter but neither type-specific filter.
+    vendor_type: VendorType | None = None
     is_deleted: bool = False
 
     class Settings:

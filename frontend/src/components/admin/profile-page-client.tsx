@@ -125,7 +125,6 @@ export function ProfilePageClient() {
       <div className={styles.pageHeaderRow}>
         <div>
           <h1 className={styles.pageHeading}>Profile</h1>
-          <p className={styles.pageSubtext}>View and edit Handpikd&apos;s company, bank, and document details.</p>
         </div>
       </div>
 

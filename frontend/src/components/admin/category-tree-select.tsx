@@ -23,12 +23,18 @@ import styles from "@/styles/dashboard.module.css";
 
 export function CategoryTreeSelect({
   label,
+  hideLabel = false,
   placeholder = "Select categories",
   tree,
   selectedValues,
   onChange,
 }: {
   label: string;
+  // Drops the label from view but keeps it in the accessibility tree — for
+  // callers that put this in a filter row where the placeholder ("All
+  // categories") already says what the control does, and a stacked uppercase
+  // caption above it would just cost a row of vertical space.
+  hideLabel?: boolean;
   placeholder?: string;
   tree: CategoryNode[];
   selectedValues: string[];
@@ -78,7 +84,7 @@ export function CategoryTreeSelect({
 
   return (
     <div ref={wrapperRef} className={styles.selectWrapper}>
-      <span className={styles.formLabel}>{label}</span>
+      <span className={hideLabel ? "sr-only" : styles.formLabel}>{label}</span>
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}

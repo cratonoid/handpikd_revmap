@@ -4,9 +4,7 @@
 // <SalesOrderFormModal> — add/edit popup on the Sales orders tab of
 // /admin/orders
 // ---------------------------------------------------------------------------
-// Mirrors purchase-order-form-modal.tsx's line-item structure, plus
-// vendor-form-modal.tsx's delete/restore split (SalesOrders has an
-// is_deleted flag, unlike PurchaseOrders):
+// Mirrors purchase-order-form-modal.tsx's line-item structure:
 //   - mode "add"  -> POST /admin/create_new_sales_order
 //   - mode "edit" -> POST /admin/update_sales_order_details (existing order,
 //                    looked up by id)
@@ -109,10 +107,8 @@ export function SalesOrderFormModal({
   const [description, setDescription] = useState(initialOrder?.description ?? "");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const isEdit = mode === "edit";
-  const wasDeleted = initialOrder?.isDeleted ?? false;
   const title = isEdit ? "Edit sales order" : "New sales order";
 
   const customerOptions: SingleSelectOption[] = customers.map((customer) => ({
@@ -172,10 +168,10 @@ export function SalesOrderFormModal({
     setLineItems((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== index)));
   }
 
-  // Shared by the normal Save button and the delete/restore action below —
-  // both just POST the current form state, only differing (in edit mode) in
-  // what is_deleted should end up as.
-  async function submitPayload(isDeletedValue: boolean) {
+  // Sales orders are never deleted from this form — an edit always writes
+  // back whatever is_deleted the order already had (always false in
+  // practice, since the list endpoint only returns active orders).
+  async function submitPayload() {
     setStatus("saving");
     setError(null);
 
@@ -186,7 +182,7 @@ export function SalesOrderFormModal({
 
     const payload = {
       ...(isEdit
-        ? { id: initialOrder?.id, order_status_id: Number(orderStatusId), is_deleted: isDeletedValue }
+        ? { id: initialOrder?.id, order_status_id: Number(orderStatusId), is_deleted: initialOrder?.isDeleted ?? false }
         : {}),
       cust_id: Number(custId),
       date: fromDatetimeLocalValue(date),
@@ -240,12 +236,7 @@ export function SalesOrderFormModal({
       return;
     }
 
-    void submitPayload(wasDeleted);
-  }
-
-  function handleDeleteOrRestore() {
-    setConfirmingDelete(false);
-    void submitPayload(!wasDeleted);
+    void submitPayload();
   }
 
   return (
@@ -483,50 +474,16 @@ export function SalesOrderFormModal({
           )}
 
           <div className={styles.modalActions}>
-            <div className={styles.modalActionsLeft}>
-              {isEdit && !confirmingDelete && (
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDelete(true)}
-                  disabled={status === "saving"}
-                  className={`${styles.triggerButtonBase} ${wasDeleted ? styles.restoreTriggerButton : styles.deleteTriggerButton}`}
-                >
-                  {wasDeleted ? "Restore order" : "Delete order"}
-                </button>
-              )}
-
-              {isEdit && confirmingDelete && (
-                <div className={styles.deleteConfirmRow}>
-                  <span className={styles.deleteConfirmText}>
-                    {wasDeleted
-                      ? "Are you sure you want to restore this sales order?"
-                      : "Are you sure you want to delete this sales order?"}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="tertiary"
-                    onClick={() => setConfirmingDelete(false)}
-                    disabled={status === "saving"}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="button" variant="primary" onClick={handleDeleteOrRestore} disabled={status === "saving"}>
-                    {status === "saving" ? "Saving…" : wasDeleted ? "Yes, restore" : "Yes, delete"}
-                  </Button>
-                </div>
-              )}
+            {/* No delete action here — sales orders can't be deleted from
+                the admin UI, only edited. */}
+            <div className={styles.modalActionsRight}>
+              <Button type="button" variant="tertiary" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={status === "saving"}>
+                {status === "saving" ? "Saving…" : "Save"}
+              </Button>
             </div>
-
-            {!confirmingDelete && (
-              <div className={styles.modalActionsRight}>
-                <Button type="button" variant="tertiary" onClick={onClose}>
-                  Cancel
-                </Button>
-                <Button type="submit" variant="primary" disabled={status === "saving"}>
-                  {status === "saving" ? "Saving…" : "Save"}
-                </Button>
-              </div>
-            )}
           </div>
         </form>
       </div>

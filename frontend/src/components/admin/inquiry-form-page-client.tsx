@@ -21,9 +21,6 @@ export function InquiryFormPageClient() {
   return (
     <>
       <h1 className={styles.pageHeading}>Hamper Inquiry Form</h1>
-      <p className={styles.pageSubtext}>
-        Review visitor submissions from /hamper-inquiry-form, or edit the category hierarchy the form presents.
-      </p>
 
       <div className={styles.viewToggle} role="tablist" aria-label="Hamper inquiry form section">
         <button

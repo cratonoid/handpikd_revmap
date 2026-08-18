@@ -141,10 +141,6 @@ export function CategoriesPageClient() {
       <div className={styles.pageHeaderRow}>
         <div>
           <h1 className={styles.pageHeading}>Categories</h1>
-          <p className={styles.pageSubtext}>
-            Organize products into categories for the catalogue. Click a category to preview its children, or
-            double-click to open and edit its full hierarchy.
-          </p>
         </div>
         <Button type="button" variant="primary" onClick={() => setAddModalOpen(true)}>
           + Add new category

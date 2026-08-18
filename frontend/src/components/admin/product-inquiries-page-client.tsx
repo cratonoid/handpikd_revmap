@@ -59,9 +59,6 @@ export function ProductInquiriesPageClient() {
   return (
     <>
       <h1 className={styles.pageHeading}>Product Inquiries</h1>
-      <p className={styles.pageSubtext}>
-        Inquiries sent from the storefront cart. Click a row to see the products and quantities requested.
-      </p>
 
       <div className={styles.tableWrap}>
         {isLoading ? (

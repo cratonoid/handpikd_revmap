@@ -51,8 +51,6 @@ export function InventoryTab() {
 
   return (
     <>
-      <p className={styles.pageSubtext}>Current stock on hand for every product, updated by purchases and sales.</p>
-
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>

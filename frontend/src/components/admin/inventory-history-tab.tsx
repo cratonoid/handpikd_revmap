@@ -72,10 +72,6 @@ export function InventoryHistoryTab() {
 
   return (
     <>
-      <p className={styles.pageSubtext}>
-        Ledger of every stock movement from purchase and sales orders. Double-click a row for details.
-      </p>
-
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>

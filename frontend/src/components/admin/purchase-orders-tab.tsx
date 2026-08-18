@@ -87,9 +87,15 @@ export function PurchaseOrdersTab() {
 
   return (
     <>
-      <div className={styles.pageHeaderRow}>
-        <p className={styles.pageSubtext}>Raise and track purchase orders placed with vendors.</p>
-        <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
+      {/* Matches the sales tab next door: no subtitle restating the page
+          subtext, action button right-aligned above the table. */}
+      <div className={styles.filterToggleRow}>
+        <Button
+          type="button"
+          variant="primary"
+          className={styles.filterToggleRowAction}
+          onClick={() => setModalState({ mode: "add" })}
+        >
           + New purchase order
         </Button>
       </div>

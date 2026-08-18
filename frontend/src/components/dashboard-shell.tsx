@@ -11,6 +11,14 @@
 // (app/admin/layout.tsx and app/customer/layout.tsx are Server Components),
 // which only works for serializable data and JSX, not arbitrary functions.
 //
+// Responsive behaviour: at >= 768px the nav is a permanent column beside the
+// content. Below that it becomes a slide-in drawer opened by the hamburger
+// button in the top bar. It used to be a horizontal strip of pills above the
+// content that scrolled sideways — with 13 admin items that meant most of the
+// app was hidden behind a sideways swipe, and the strip still ate a chunk of
+// the little vertical room a phone has. The drawer costs one tap but shows
+// every destination at once, as a readable vertical list.
+//
 // Role check: this is a purely client-side guard against sessionStorage
 // (see lib/auth.ts) — there's no backend call yet, so it only prevents an
 // admin-only page from flashing on screen for a customer's tab, not a
@@ -36,7 +44,7 @@
 // client render (a plain literal, not read from storage), so there's
 // nothing to correct — the role is only read inside an effect, which by
 // definition runs after hydration has already settled.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/logo";
@@ -50,12 +58,15 @@ import {
   HomeIcon,
   IdCardIcon,
   InboxIcon,
+  LedgerIcon,
   LogoutIcon,
+  MenuIcon,
   ReceiptIcon,
   ShoppingCartIcon,
   StorefrontIcon,
   TagIcon,
   UsersIcon,
+  XMarkIcon,
 } from "@/components/icons";
 import { clearSession, getUserRole, type UserRole } from "@/lib/auth";
 import styles from "@/styles/dashboard.module.css";
@@ -73,6 +84,7 @@ const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     { label: "Vendors", href: "/admin/vendors", icon: StorefrontIcon },
     { label: "Orders", href: "/admin/orders", icon: ShoppingCartIcon },
     { label: "Invoices", href: "/admin/invoices", icon: ReceiptIcon },
+    { label: "Accounts", href: "/admin/accounts", icon: LedgerIcon },
     { label: "Inventory", href: "/admin/inventory", icon: ArchiveBoxIcon },
     { label: "Products", href: "/admin/products", icon: CubeIcon },
     { label: "Categories", href: "/admin/categories", icon: TagIcon },
@@ -93,12 +105,28 @@ const ROLE_LABEL: Record<UserRole, string> = {
   customer: "Customer",
 };
 
+// Matches the min-width: 768px breakpoint the sidebar/drawer rules in
+// dashboard.module.css switch on. Kept as a constant so the one place JS
+// needs to know about the breakpoint (closing the drawer when a rotation or
+// window resize crosses into desktop, where the drawer no longer exists)
+// can't drift away from the stylesheet.
+const DESKTOP_QUERY = "(min-width: 768px)";
+
 type AuthStatus = "checking" | "authorized" | "unauthorized";
 
 export function DashboardShell({ role, children }: { role: UserRole; children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [status, setStatus] = useState<AuthStatus>("checking");
+  const [navOpen, setNavOpen] = useState(false);
+
+  // The hamburger, so focus can be handed back to it when the drawer closes
+  // — otherwise closing with Escape or the X button drops a keyboard user
+  // back at the top of the document.
+  const navToggleRef = useRef<HTMLButtonElement>(null);
+  // The drawer panel itself, focused on open so the next Tab lands inside the
+  // nav rather than continuing from wherever focus was in the page.
+  const navPanelRef = useRef<HTMLElement>(null);
 
   // Runs once, after mount — i.e. only once hydration has already
   // settled, so there's no earlier "unauthorized" commit for a redirect
@@ -117,6 +145,55 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
     }
   }, [status, router]);
 
+  // While the drawer is open: Escape closes it, and the page behind it is
+  // frozen so a scroll gesture that starts on the dimmed backdrop doesn't
+  // slide the content underneath. Both are torn down the moment it closes,
+  // so nothing here runs (or holds body scroll hostage) on desktop.
+  useEffect(() => {
+    if (!navOpen) return;
+
+    // Not closeNav() itself: that function is rebuilt on every render, and
+    // this effect only re-runs when navOpen flips, so the listener would go
+    // on holding a stale copy. The two statements it does are inlined here
+    // instead — navToggleRef is a ref, so it is always current.
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setNavOpen(false);
+        navToggleRef.current?.focus();
+      }
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+    navPanelRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [navOpen]);
+
+  // Growing past the breakpoint (rotating a tablet, dragging a desktop window
+  // wider) turns the drawer back into the permanent sidebar via CSS. Clearing
+  // the state here keeps React's idea of "open" from lingering — otherwise
+  // shrinking back down would reveal a drawer nobody asked to open.
+  useEffect(() => {
+    const media = window.matchMedia(DESKTOP_QUERY);
+
+    function onChange(event: MediaQueryListEvent) {
+      if (event.matches) setNavOpen(false);
+    }
+
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+
+  function closeNav() {
+    setNavOpen(false);
+    navToggleRef.current?.focus();
+  }
+
   function handleLogout() {
     clearSession();
     router.push("/login");
@@ -127,24 +204,81 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
   }
 
   const navItems = NAV_ITEMS[role];
+  // What the hamburger sits next to on a phone: the label of the page you are
+  // actually on. The top bar otherwise shows only the logo, which says nothing
+  // about where in the dashboard you are once the horizontal pill strip (which
+  // used to answer that) is gone.
+  const activeItem = navItems.find((item) => item.href === pathname);
 
   return (
     <div className={styles.shell}>
       <header className={styles.topbar}>
-        <Link href={role === "admin" ? "/admin" : "/customer"} className={styles.topbarLogo}>
-          <Logo compact />
-        </Link>
+        <div className={styles.topbarLeft}>
+          {/* Hidden at >= 768px, where .sidebar is always on screen. */}
+          <button
+            type="button"
+            ref={navToggleRef}
+            className={styles.navToggle}
+            aria-label={navOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={navOpen}
+            aria-controls="dashboard-nav"
+            onClick={() => setNavOpen((open) => !open)}
+          >
+            <MenuIcon className="h-5 w-5" />
+          </button>
+
+          <Link href={role === "admin" ? "/admin" : "/customer"} className={styles.topbarLogo}>
+            <Logo compact />
+          </Link>
+
+          {activeItem && <span className={styles.topbarSection}>{activeItem.label}</span>}
+        </div>
+
         <div className={styles.topbarRight}>
           <span className={styles.roleBadge}>{ROLE_LABEL[role]}</span>
-          <button type="button" onClick={handleLogout} className={styles.logoutButton}>
+          {/* aria-label rather than relying on the text: .logoutButtonLabel is
+              display: none under 420px, which would otherwise leave this an
+              unnamed icon button on the narrowest phones. */}
+          <button type="button" onClick={handleLogout} className={styles.logoutButton} aria-label="Log out">
             <LogoutIcon className="h-4 w-4" />
-            Log out
+            <span className={styles.logoutButtonLabel}>Log out</span>
           </button>
         </div>
       </header>
 
       <div className={styles.body}>
-        <nav className={styles.sidebar} aria-label="Dashboard navigation">
+        {/* The dim behind the open drawer. Rendered unconditionally (rather
+            than behind `navOpen &&`) so it can fade both in AND out — an
+            element that only exists while open has nothing to animate away
+            from. It is display: none at >= 768px, and pointer-events: none
+            while closed, so it never intercepts a click on the page below. */}
+        <div
+          className={`${styles.navBackdrop} ${navOpen ? styles.navBackdropOpen : ""}`}
+          onClick={closeNav}
+          aria-hidden="true"
+        />
+
+        <nav
+          id="dashboard-nav"
+          ref={navPanelRef}
+          tabIndex={-1}
+          className={`${styles.sidebar} ${navOpen ? styles.sidebarOpen : ""}`}
+          aria-label="Dashboard navigation"
+        >
+          {/* Drawer-only chrome — display: none at >= 768px, where the sidebar
+              is permanent furniture and needs no title or close button. */}
+          <div className={styles.sidebarHeader}>
+            <span className={styles.sidebarHeaderTitle}>Menu</span>
+            <button
+              type="button"
+              className={styles.sidebarCloseButton}
+              onClick={closeNav}
+              aria-label="Close navigation menu"
+            >
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          </div>
+
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
@@ -152,6 +286,12 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
               <Link
                 key={item.href}
                 href={item.href}
+                // Closes the drawer on the way out. Same approach as the
+                // marketing site's hamburger (components/header.tsx) — and
+                // while the drawer is open it and its backdrop cover the
+                // whole screen, so tapping a link here is the only way to
+                // navigate from this state anyway.
+                onClick={() => setNavOpen(false)}
                 className={`${styles.navLink} ${isActive ? styles.navLinkActive : ""}`}
                 aria-current={isActive ? "page" : undefined}
               >
@@ -162,7 +302,13 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
           })}
         </nav>
 
-        <main className={styles.content}>{children}</main>
+        {/* .content is the scroll container (so the top bar and sidebar stay
+            put); .contentInner holds the centred max-width column, which
+            keeps the scrollbar at the edge of the pane rather than floating
+            mid-screen on a wide monitor. */}
+        <main className={styles.content}>
+          <div className={styles.contentInner}>{children}</div>
+        </main>
       </div>
     </div>
   );

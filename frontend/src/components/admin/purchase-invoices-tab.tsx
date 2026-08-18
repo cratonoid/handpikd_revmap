@@ -97,15 +97,17 @@ export function PurchaseInvoicesTab() {
 
   return (
     <>
-      <div className={styles.pageHeaderRow}>
-        <p className={styles.pageSubtext}>
-          Raise purchase invoices against existing purchase orders, then optionally attach the vendor&apos;s PDF.
-        </p>
-        <div className={styles.modalActionsRight}>
-          <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
-            + New purchase invoice
-          </Button>
-        </div>
+      {/* Matches the purchase-orders tab: action right-aligned above the
+          table, no subtitle restating the page subtext. */}
+      <div className={styles.filterToggleRow}>
+        <Button
+          type="button"
+          variant="primary"
+          className={styles.filterToggleRowAction}
+          onClick={() => setModalState({ mode: "add" })}
+        >
+          + New purchase invoice
+        </Button>
       </div>
 
       {downloadError && (

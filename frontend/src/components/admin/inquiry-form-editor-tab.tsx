@@ -114,15 +114,11 @@ export function InquiryFormEditorTab() {
   return (
     <>
       <div className={styles.pageHeaderRow}>
-        <div>
-          <p className={styles.pageSubtext}>
-            These top-level categories are what a visitor sees first on the hamper inquiry form. Click a category to
-            preview its sub-options, or double-click to open and edit its full hierarchy.
-          </p>
+        <div className={styles.modalActionsRight}>
+          <Button type="button" variant="primary" onClick={() => setAddRootOpen(true)}>
+            + Add new category
+          </Button>
         </div>
-        <Button type="button" variant="primary" onClick={() => setAddRootOpen(true)}>
-          + Add new category
-        </Button>
       </div>
 
       <div className={styles.tableWrap}>

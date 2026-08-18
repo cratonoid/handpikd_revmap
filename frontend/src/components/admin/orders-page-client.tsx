@@ -20,7 +20,6 @@ export function OrdersPageClient() {
   return (
     <>
       <h1 className={styles.pageHeading}>Orders</h1>
-      <p className={styles.pageSubtext}>Track purchase and sales orders from placement through fulfillment.</p>
 
       <div className={styles.viewToggle} role="tablist" aria-label="Orders section">
         <button

@@ -19,6 +19,16 @@ export type VendorPoc = {
   phone: string;
 };
 
+// What the vendor supplies. "" only for vendors created before vendor types
+// existed — the add/edit form requires a real type, so those are legacy rows
+// that show under the vendors page's "All" filter only.
+export type VendorType = "material" | "printing";
+
+export const VENDOR_TYPE_LABELS: Record<VendorType, string> = {
+  material: "Material",
+  printing: "Printing",
+};
+
 export type Vendor = {
   id: number;
   registeredName: string;
@@ -26,6 +36,7 @@ export type Vendor = {
   address: string;
   description: string;
   qrCode: string;
+  vendorType: VendorType | "";
   isDeleted: boolean;
   pocs: VendorPoc[];
 };
@@ -39,6 +50,7 @@ type VendorDetailItem = {
   address: string;
   description: string;
   qr_code: string;
+  vendor_type: VendorType | null;
   is_deleted: boolean;
   contact_name: string[];
   contact_phone: string[];
@@ -85,6 +97,7 @@ export async function fetchVendors(): Promise<Vendor[]> {
     address: item.address,
     description: item.description,
     qrCode: item.qr_code,
+    vendorType: item.vendor_type ?? "",
     isDeleted: item.is_deleted,
     pocs: item.contact_name.map((name, index) => ({
       name,

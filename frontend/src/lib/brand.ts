@@ -42,6 +42,23 @@ export const colors = {
   border: "#D8C6A4", // muted tan — shared border/divider color used across cards, inputs, and hairlines
 } as const;
 
+// Admin-only status colors, kept OUT of `colors` above because they aren't
+// part of the brand palette — the public site stays off-white/beige/black.
+// These exist purely so a sales order's status is scannable at a glance in
+// the /admin/orders table (see .statusText in styles/dashboard.module.css),
+// which a single ink-colored word can't do. Deliberately desaturated and
+// mid-dark so they read as the same family as the cream/tan chrome rather
+// than as generic traffic-light UI, and all clear 4.5:1 against `cream`.
+//
+// Same hand-sync rule as `colors`: change a hex here and you must change the
+// matching --color-status-* line in globals.css too.
+export const statusColors = {
+  new: "#35618F", // steel blue — just raised, nothing done yet
+  processing: "#8A5A12", // ochre — work in progress
+  delivered: "#2C6E7F", // teal — goods are out
+  completed: "#2F6B3A", // green — closed out
+} as const;
+
 // `keyof typeof colors` produces a union type of every key name in `colors`,
 // i.e. "cream" | "creamDeep" | "charcoal" | ... | "border".
 // This type isn't consumed anywhere else in the app yet, but it's exported so

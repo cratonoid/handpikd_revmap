@@ -44,6 +44,8 @@ from app.models.quotation_id_counter import QuotationIdCounter
 from app.models.quotation_no_counter_master import QuotationNoCounterMaster
 from app.models.quotation_summary import QuotationSummary
 from app.models.quotation_summary_id_counter import QuotationSummaryIdCounter
+from app.models.sales_order_costing import PrintingCost, SalesOrderCosting
+from app.models.sales_order_costing_id_counter import SalesOrderCostingIdCounter
 from app.models.sales_order_id_counter import SalesOrderIdCounter
 from app.models.sales_orders import SalesOrders
 from app.models.sales_summary import SalesSummary
@@ -108,6 +110,9 @@ __all__ = [
     "QuotationNoCounterMaster",
     "QuotationSummary",
     "QuotationSummaryIdCounter",
+    "PrintingCost",
+    "SalesOrderCosting",
+    "SalesOrderCostingIdCounter",
     "SalesOrderIdCounter",
     "SalesOrders",
     "SalesSummary",

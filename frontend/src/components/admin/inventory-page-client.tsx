@@ -21,7 +21,6 @@ export function InventoryPageClient() {
   return (
     <>
       <h1 className={styles.pageHeading}>Inventory</h1>
-      <p className={styles.pageSubtext}>Monitor stock levels across products and warehouses.</p>
 
       <div className={styles.viewToggle} role="tablist" aria-label="Inventory section">
         <button

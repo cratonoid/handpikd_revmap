@@ -84,9 +84,6 @@ export function CataloguesPageClient() {
       <div className={styles.pageHeaderRow}>
         <div>
           <h1 className={styles.pageHeading}>Catalogues</h1>
-          <p className={styles.pageSubtext}>
-            Manage vendor and brand catalogues, converted from an uploaded PDF into browsable pages.
-          </p>
         </div>
         <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
           + Add new catalogue

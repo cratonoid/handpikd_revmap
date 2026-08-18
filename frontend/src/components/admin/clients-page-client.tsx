@@ -65,7 +65,6 @@ export function ClientsPageClient() {
       <div className={styles.pageHeaderRow}>
         <div>
           <h1 className={styles.pageHeading}>Clients</h1>
-          <p className={styles.pageSubtext}>View and manage client accounts and their points of contact.</p>
         </div>
         <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
           + Add new customer
