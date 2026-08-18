@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { CustomerFormModal } from "@/components/admin/customer-form-modal";
 import { fetchCustomers, type Customer } from "@/lib/customers";
+import { stateNameForCode } from "@/lib/gst";
 import styles from "@/styles/dashboard.module.css";
 
 type ModalState = { mode: "add" } | { mode: "edit"; customer: Customer } | null;
@@ -103,6 +104,7 @@ export function ClientsPageClient() {
               <th className={styles.tableHeadCell}>Customer</th>
               <th className={styles.tableHeadCell}>Department</th>
               <th className={styles.tableHeadCell}>GST number</th>
+              <th className={styles.tableHeadCell}>State</th>
             </tr>
           </thead>
           <tbody>
@@ -120,6 +122,11 @@ export function ClientsPageClient() {
                     placeholder the other admin tables use for a missing
                     value. */}
                 <td className={styles.tableCell}>{customer.companyGst || "—"}</td>
+                {/* Decides SGST + CGST vs IGST on this client's invoices, so it
+                    is worth seeing at a glance next to the GST number. */}
+                <td className={styles.tableCell}>
+                  {customer.stateName || stateNameForCode(customer.companyGst.slice(0, 2)) || "—"}
+                </td>
               </tr>
             ))}
           </tbody>

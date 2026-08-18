@@ -126,12 +126,20 @@ class TaxPeriodRow(BaseModel):
 
 class AccountsTaxSummaryResponse(BaseModel):
     # Output side — tax charged to customers on standard sales invoices.
-    # #sales_summary stores a single tax_perc per line with no
-    # SGST/CGST/IGST split, so unlike the input side this cannot be broken
-    # down by head.
+    # The split comes from each invoice's own total_sgst/cgst/igst_amount,
+    # frozen when it was raised from the client's state vs ours (see
+    # models/invoice_details.py).
     output_tax: float
     output_taxable_value: float
     output_invoice_count: int
+    output_sgst: float
+    output_cgst: float
+    output_igst: float
+    # Tax on invoices raised before the split was stored — real output tax,
+    # but not attributable to a head without re-deriving it from the two
+    # GSTINs as they stand today, which is exactly what freezing the split
+    # was meant to stop.
+    output_unclassified: float
     # Input side — tax paid to vendors on purchase invoices. The split comes
     # from the linked PurchaseOrders' sgst_perc/cgst_perc/igst_perc, which
     # are mutually exclusive by Indian GST rules (see models/purchase_orders.py).

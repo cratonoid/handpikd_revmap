@@ -80,6 +80,47 @@ export function AccountsTaxTab({ data }: { data: AccountsTaxSummary }) {
       </section>
 
       <section className={styles.accountsSection}>
+        <h2 className={styles.accountsSectionTitle}>Output tax by head</h2>
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th className={styles.tableHeadCell}>Head</th>
+                <th className={styles.tableHeadCellTight}>Amount</th>
+                <th className={styles.tableHeadCellTight}>Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { label: "SGST", amount: data.outputSgst },
+                { label: "CGST", amount: data.outputCgst },
+                { label: "IGST", amount: data.outputIgst },
+                { label: "Unclassified", amount: data.outputUnclassified },
+              ].map((head) => (
+                <tr key={head.label} className={styles.tableRow}>
+                  <td className={styles.tableCellPrimary}>{head.label}</td>
+                  <td className={styles.tableCellTight}>{formatCurrency(head.amount)}</td>
+                  <td className={styles.tableCellTight}>
+                    {data.outputTax ? `${((head.amount / data.outputTax) * 100).toFixed(1)}%` : "—"}
+                  </td>
+                </tr>
+              ))}
+              <tr className={`${styles.tableRow} ${styles.accountsTotalRow}`}>
+                <td className={styles.tableCellPrimary}>Total output tax</td>
+                <td className={styles.tableCellTight}>{formatCurrency(data.outputTax)}</td>
+                <td className={styles.tableCellTight}>{data.outputTax ? "100.0%" : "—"}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p className={styles.accountsFootnote}>
+          Each sales invoice records the heads it was raised under, decided when it was raised from the
+          client&apos;s GST state against ours. &quot;Unclassified&quot; is tax on invoices raised before that
+          was stored, which have no head on record.
+        </p>
+      </section>
+
+      <section className={styles.accountsSection}>
         <h2 className={styles.accountsSectionTitle}>Input tax by head</h2>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
@@ -116,8 +157,7 @@ export function AccountsTaxTab({ data }: { data: AccountsTaxSummary }) {
         <p className={styles.accountsFootnote}>
           The split follows each purchase invoice&apos;s linked purchase order, which records either
           SGST + CGST (intra-state) or IGST (inter-state). &quot;Unclassified&quot; is tax on purchase invoices
-          whose order carries no percentages. Sales invoices store a single tax rate per line with no head
-          split, so output tax cannot be broken down the same way.
+          whose order carries no percentages.
         </p>
       </section>
 

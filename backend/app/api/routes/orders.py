@@ -1,8 +1,21 @@
 # Orders module: endpoints for placing purchase orders against a vendor's
 # products, restricted to admins (bypassed entirely when settings.auth_enabled
 # is False, matching require_admin in routes/admin.py).
+#
+# A purchase order can be started two ways, both landing on
+# create_new_purchase_order below:
+#   - keyed in by hand on the purchase order form, or
+#   - read off the vendor's own invoice PDF by parse_purchase_invoice_pdf,
+#     which writes nothing itself — it returns the values it read (and
+#     refuses the upload outright if any check fails, see
+#     services/purchase_invoice_intake.py) for the admin to review in the
+#     same form before submitting.
+# Either way the order raises its purchase invoice as part of being created,
+# which is why /admin/create_new_purchase_invoice no longer exists: a
+# purchase invoice always belongs to an order, so there was never a correct
+# moment to create one on its own.
 from beanie.operators import In
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.api.routes.admin import require_admin
 from app.models import (
@@ -18,12 +31,15 @@ from app.models import (
 from app.schemas.purchase_orders import (
     CreateNewPurchaseOrderRequest,
     CreateNewPurchaseOrderResponse,
+    ParsedPurchaseInvoiceLineItem,
+    ParsePurchaseInvoicePdfResponse,
     PurchaseOrderDetailItem,
     PurchaseOrderListItem,
     UpdatePurchaseOrderDetailsRequest,
     UpdatePurchaseOrderDetailsResponse,
 )
 from app.services.counters import get_next_id
+from app.services.invoice_extraction import InvoiceExtractionError
 from app.services.inventory import (
     STOCK_IN,
     apply_purchase_order_stock,
@@ -32,6 +48,13 @@ from app.services.inventory import (
     get_applied_purchase_quantities,
     totals_by_product,
 )
+from app.services.purchase_invoice_intake import (
+    DuplicateInvoiceError,
+    InvoiceIntakeError,
+    UnsupportedInvoiceError,
+    read_uploaded_invoice,
+)
+from app.services.purchase_invoices import create_purchase_invoice_for_order
 
 router = APIRouter(prefix="/admin", tags=["orders"])
 
@@ -179,7 +202,76 @@ async def create_new_purchase_order(
         totals_by_product(payload.product_ids, payload.quantities),
     )
 
-    return CreateNewPurchaseOrderResponse(message="purchase order successfully created")
+    # Every purchase order raises its purchase invoice here, rather than the
+    # admin raising one separately afterwards — see
+    # services/purchase_invoices.py. The vendor's own PDF, if there is one,
+    # is attached to this invoice in a follow-up request
+    # (attach_purchase_invoice_pdf), which is why its id comes back.
+    purchase_invoice = await create_purchase_invoice_for_order(purchase_order, payload.vendor_invoice_no)
+
+    return CreateNewPurchaseOrderResponse(
+        message="purchase order successfully created", purchase_invoice_id=purchase_invoice.id
+    )
+
+
+@router.post("/parse_purchase_invoice_pdf", response_model=ParsePurchaseInvoicePdfResponse)
+async def parse_purchase_invoice_pdf(
+    file: UploadFile = File(...),
+    _: User | None = Depends(require_admin),
+) -> ParsePurchaseInvoicePdfResponse:
+    # Read-only: this endpoint never writes anything. It either returns
+    # values for the admin to review and submit through
+    # create_new_purchase_order, or it refuses the upload — an invoice is
+    # only ever half-understood, never half-recorded.
+    pdf_bytes = await file.read()
+
+    try:
+        intake = await read_uploaded_invoice(pdf_bytes)
+    except InvoiceExtractionError as error:
+        # The PDF itself couldn't be read in full — the values aren't there
+        # to argue with, so this is the upload being unusable rather than a
+        # missing record.
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error))
+    except DuplicateInvoiceError as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error))
+    except UnsupportedInvoiceError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
+    except InvoiceIntakeError as error:
+        # Vendor or product not on file — the admin has to add the missing
+        # record before this invoice can be accepted.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
+
+    return ParsePurchaseInvoicePdfResponse(
+        vendor_id=intake.vendor_id,
+        vendor_name=intake.vendor_name,
+        vendor_gstin=intake.vendor_gstin,
+        vendor_invoice_no=intake.invoice_no,
+        date=intake.invoice_date,
+        # The same parallel arrays create_new_purchase_order takes, so the
+        # form can submit what it was handed without rebuilding it.
+        product_ids=[item.product_id for item in intake.line_items],
+        quantities=[item.quantity for item in intake.line_items],
+        rates=[item.rate for item in intake.line_items],
+        line_items=[
+            ParsedPurchaseInvoiceLineItem(
+                product_id=item.product_id,
+                product_name=item.product_name,
+                description=item.description,
+                quantity=item.quantity,
+                rate=item.rate,
+                gst_perc=item.gst_perc,
+            )
+            for item in intake.line_items
+        ],
+        sgst_perc=intake.sgst_perc,
+        cgst_perc=intake.cgst_perc,
+        igst_perc=intake.igst_perc,
+        total_amount_before_tax=intake.total_amount_before_tax,
+        total_amount_after_tax=intake.total_amount_after_tax,
+        printed_total=intake.printed_total,
+        total_mismatch=intake.total_mismatch,
+        source=intake.source,
+    )
 
 
 @router.get("/get_purchase_order_list", response_model=list[PurchaseOrderListItem])

@@ -5,8 +5,9 @@
 # so they're only reachable through the authenticated
 # routes/purchase_invoices.py endpoints. Keyed by a
 # generated uuid (see storage.py's _store_image) rather than the owning
-# PurchaseInvoiceDetails.id, since the upload happens before that row
-# exists (see POST /admin/parse_purchase_invoice_pdf).
+# PurchaseInvoiceDetails.id, so replacing an invoice's PDF writes a new file
+# instead of overwriting one that's still being served (see
+# attach_purchase_invoice_pdf in routes/purchase_invoices.py).
 import uuid
 from pathlib import Path
 

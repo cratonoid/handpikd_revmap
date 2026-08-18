@@ -1,22 +1,27 @@
-# Purchase invoices module: endpoints for raising a purchase invoice against
-# an existing PurchaseOrders record, viewing/editing/voiding it, generating
-# our own branded PDF, and optionally attaching (or replacing) the vendor's
-# own PDF for it. Purely a billing record: unlike create_new_purchase_order,
-# nothing here touches inventory (see
+# Purchase invoices module: endpoints for viewing/editing/voiding a purchase
+# invoice, generating our own branded PDF for it, and attaching (or
+# replacing) the vendor's own PDF. Purely a billing record: unlike
+# create_new_purchase_order, nothing here touches inventory (see
 # services/inventory.py::record_purchase_received) — that stays exclusively
 # on the purchase-order-received flow. Restricted to admins (bypassed
 # entirely when settings.auth_enabled is False, matching require_admin in
 # routes/admin.py).
 #
-# Flow: a PO is created manually first (routes/orders.py), a purchase
-# invoice is then raised against it (create_new_purchase_invoice below,
-# vendor/amounts snapshotted from the PO), and a vendor PDF can optionally be
-# attached afterwards as its own request (attach_purchase_invoice_pdf) — same
-# two-phase pattern as catalogues/products (see routes/catalogues.py's
-# module docstring for why a file never travels bundled into another
-# request). The same endpoint doubles as "replace": if the invoice already
-# has an uploaded PDF, the old file is hard-deleted from disk once the new
-# one is saved and the record updated, so no history/versions are kept.
+# Nothing here creates a purchase invoice, and there is deliberately no
+# endpoint that does: every purchase invoice is raised as part of creating
+# the purchase order it belongs to (see create_new_purchase_order in
+# routes/orders.py and services/purchase_invoices.py), whether that order was
+# keyed in by hand or read off an uploaded vendor invoice PDF. A purchase
+# invoice with no order behind it was never a valid record, so the create
+# call that allowed one is gone rather than guarded.
+#
+# The vendor's own PDF is attached afterwards as its own request
+# (attach_purchase_invoice_pdf) — same two-phase pattern as
+# catalogues/products (see routes/catalogues.py's module docstring for why a
+# file never travels bundled into another request). That endpoint doubles as
+# "replace": if the invoice already has an uploaded PDF, the old file is
+# hard-deleted from disk once the new one is saved and the record updated, so
+# no history/versions are kept.
 from beanie.operators import In
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 
@@ -24,8 +29,6 @@ from app.api.routes.admin import require_admin
 from app.models import (
     ProductDetails,
     PurchaseInvoiceDetails,
-    PurchaseInvoiceIdCounter,
-    PurchaseInvoiceNoCounterMaster,
     PurchaseOrders,
     PurchaseSummary,
     User,
@@ -34,13 +37,10 @@ from app.models import (
 )
 from app.schemas.purchase_invoices import (
     AttachPurchaseInvoicePdfResponse,
-    CreateNewPurchaseInvoiceRequest,
-    CreateNewPurchaseInvoiceResponse,
     PurchaseInvoiceDetailItem,
     UpdatePurchaseInvoiceDetailsRequest,
     UpdatePurchaseInvoiceDetailsResponse,
 )
-from app.services.counters import get_next_id
 from app.services.invoice_numbering import format_purchase_invoice_no
 from app.services.personal_details import get_personal_details
 from app.services.purchase_invoice_pdf import PurchaseInvoiceLineItem, generate_purchase_invoice_pdf
@@ -62,44 +62,6 @@ async def _get_purchase_order_or_404(po_id: int) -> PurchaseOrders:
     if purchase_order is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="purchase order not found")
     return purchase_order
-
-
-def _purchase_order_totals(purchase_order: PurchaseOrders) -> tuple[float, float, float]:
-    total_tax = purchase_order.total_amount_after_tax - purchase_order.total_amount_before_tax
-    return purchase_order.total_amount_before_tax, total_tax, purchase_order.total_amount_after_tax
-
-
-@router.post("/create_new_purchase_invoice", response_model=CreateNewPurchaseInvoiceResponse)
-async def create_new_purchase_invoice(
-    payload: CreateNewPurchaseInvoiceRequest,
-    _: User | None = Depends(require_admin),
-) -> CreateNewPurchaseInvoiceResponse:
-    purchase_order = await _get_purchase_order_or_404(payload.po_id)
-    total_before_tax, total_tax, total_after_tax = _purchase_order_totals(purchase_order)
-
-    purchase_invoice_no = await get_next_id(
-        PurchaseInvoiceNoCounterMaster, "next_purchase_invoice_no", PurchaseInvoiceDetails
-    )
-    purchase_invoice_id = await get_next_id(
-        PurchaseInvoiceIdCounter, "next_purchase_invoice_id", PurchaseInvoiceDetails
-    )
-
-    # uploaded_pdf_path starts unset — see attach_purchase_invoice_pdf below,
-    # the only place it's ever written.
-    purchase_invoice = PurchaseInvoiceDetails(
-        id=purchase_invoice_id,
-        purchase_invoice_no=purchase_invoice_no,
-        date=payload.date,
-        vendor_id=purchase_order.vendor_id,
-        po_id=purchase_order.id,
-        uploaded_pdf_path=None,
-        total_amount_before_tax=total_before_tax,
-        total_tax_amount=total_tax,
-        total_amount_after_tax=total_after_tax,
-    )
-    await purchase_invoice.insert()
-
-    return CreateNewPurchaseInvoiceResponse(message="purchase invoice successfully created", id=purchase_invoice_id)
 
 
 @router.post("/attach_purchase_invoice_pdf", response_model=AttachPurchaseInvoicePdfResponse)
@@ -139,6 +101,7 @@ def _to_purchase_invoice_detail_item(purchase_invoice: PurchaseInvoiceDetails) -
         date=purchase_invoice.date,
         vendor_id=purchase_invoice.vendor_id,
         po_id=purchase_invoice.po_id,
+        vendor_invoice_no=purchase_invoice.vendor_invoice_no,
         has_uploaded_pdf=purchase_invoice.uploaded_pdf_path is not None,
         total_amount_before_tax=purchase_invoice.total_amount_before_tax,
         total_tax_amount=purchase_invoice.total_tax_amount,
@@ -234,6 +197,11 @@ async def get_purchase_invoice_pdf(
         vendor_phone=vendor_phone,
         vendor_gstin=vendor.gst,
         personal=personal,
+        # The heads the purchase order was placed under, snapshotted when
+        # this invoice was raised (None for invoices predating that, which
+        # the renderer still derives from the two GSTINs).
+        tax_kind=purchase_invoice.tax_kind,
+        place_of_supply_code=purchase_invoice.place_of_supply_code,
     )
 
     return Response(

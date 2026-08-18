@@ -4,6 +4,8 @@ from enum import Enum
 
 from beanie import Document
 
+from app.services.gst import TaxKind
+
 
 class InvoiceType(str, Enum):
     proforma = "proforma"
@@ -44,6 +46,26 @@ class InvoiceDetails(Document):
     total_amount_before_tax: float
     total_tax_amount: float
     total_amount_after_tax: float
+    # The GST heads this invoice is raised under, frozen at create/update
+    # time from the two parties' state codes (see services/gst.py's
+    # tax_kind_for): "cgst_sgst" when both sit in the same state,
+    # "igst" otherwise. Stored rather than recomputed at render time so
+    # correcting a party's state later can't silently restate an invoice
+    # that has already gone out. None for invoices raised before this
+    # existed — services/invoice_pdf.py falls back to deciding from the two
+    # GSTINs for those, exactly as it always did.
+    tax_kind: TaxKind | None = None
+    # The buyer's state at the time of the invoice, for the "Place of
+    # Supply" line. Snapshotted for the same reason as tax_kind.
+    place_of_supply_code: str = ""
+    place_of_supply_name: str = ""
+    # total_tax_amount split across the heads tax_kind names: either
+    # igst alone, or cgst and sgst at half each. They always sum to
+    # total_tax_amount, so the accounts screens can total a head directly
+    # instead of re-deriving the split per invoice.
+    total_igst_amount: float = 0.0
+    total_cgst_amount: float = 0.0
+    total_sgst_amount: float = 0.0
     type: InvoiceType
     due_date: datetime
     online_or_offline: OnlineOrOffline

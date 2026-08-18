@@ -212,7 +212,6 @@ export function ProductsPageClient() {
               <th className={styles.tableHeadCell}>Vendor</th>
               <th className={styles.tableHeadCell}>Vendor Rate</th>
               <th className={styles.tableHeadCell}>Price</th>
-              <th className={styles.tableHeadCell}>GST %</th>
               <th className={styles.tableHeadCell}>MOQ</th>
             </tr>
           </thead>
@@ -248,7 +247,6 @@ export function ProductsPageClient() {
                       <span className={styles.tableStrikePrice}>₹{product.actualPrice.toFixed(2)}</span>
                     )}
                   </td>
-                  <td className={styles.tableCell}>{product.gstPerc}%</td>
                   <td className={styles.tableCell}>{product.moq}</td>
                 </tr>
               );

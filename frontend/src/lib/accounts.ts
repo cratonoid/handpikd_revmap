@@ -108,6 +108,12 @@ export type AccountsTaxSummary = {
   outputTax: number;
   outputTaxableValue: number;
   outputInvoiceCount: number;
+  outputSgst: number;
+  outputCgst: number;
+  outputIgst: number;
+  // Tax on invoices raised before the SGST/CGST/IGST split was stored on
+  // them — real output tax, but with no head on record.
+  outputUnclassified: number;
   inputTax: number;
   inputTaxableValue: number;
   inputInvoiceCount: number;
@@ -190,6 +196,10 @@ type TaxSummaryResponse = {
   output_tax: number;
   output_taxable_value: number;
   output_invoice_count: number;
+  output_sgst: number;
+  output_cgst: number;
+  output_igst: number;
+  output_unclassified: number;
   input_tax: number;
   input_taxable_value: number;
   input_invoice_count: number;
@@ -315,6 +325,10 @@ export async function fetchAccountsTaxSummary(
     outputTax: item.output_tax,
     outputTaxableValue: item.output_taxable_value,
     outputInvoiceCount: item.output_invoice_count,
+    outputSgst: item.output_sgst,
+    outputCgst: item.output_cgst,
+    outputIgst: item.output_igst,
+    outputUnclassified: item.output_unclassified,
     inputTax: item.input_tax,
     inputTaxableValue: item.input_taxable_value,
     inputInvoiceCount: item.input_invoice_count,

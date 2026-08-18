@@ -15,6 +15,8 @@ import { Button } from "@/components/button";
 import { resolveMediaUrl } from "@/lib/api";
 import { updatePersonalDetails, uploadSignatureImage } from "@/lib/personal-details";
 import { ArrowUpTrayIcon, DocumentTextIcon, XMarkIcon } from "@/components/icons";
+import { GstStateSelect, useGstState } from "@/components/admin/gst-state-select";
+import { stateNameForCode } from "@/lib/gst";
 import styles from "@/styles/dashboard.module.css";
 
 type Status = "idle" | "saving";
@@ -47,6 +49,13 @@ export function PersonalDetailsModal({
     qr_value: initialValues.qr_value ?? "",
     signature_image: initialValues.signature_image ?? "",
   });
+  // Our own state — the seller half of every SGST + CGST vs IGST decision
+  // (see backend/app/services/gst.py). Follows the GSTIN as it's typed
+  // until the admin picks a state themselves.
+  const { stateCode, setStateCode, syncFromGstin } = useGstState(
+    initialValues.state_code ?? "",
+    initialValues.gstin ?? "",
+  );
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [isUploadingSignature, setIsUploadingSignature] = useState(false);
@@ -84,7 +93,14 @@ export function PersonalDetailsModal({
     setError(null);
 
     try {
-      const response = await updatePersonalDetails(values);
+      // state_code/state_name live outside `values` (the dropdown owns
+      // them), and state_name is derived here rather than kept in step by
+      // hand so it can't drift from the code the tax split reads.
+      const response = await updatePersonalDetails({
+        ...values,
+        state_code: stateCode,
+        state_name: stateNameForCode(stateCode),
+      });
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
         setError(typeof detail?.detail === "string" ? detail.detail : "Something went wrong. Please try again.");
@@ -155,10 +171,17 @@ export function PersonalDetailsModal({
                 id="companyGstin"
                 type="text"
                 value={values.gstin}
-                onChange={(e) => set("gstin", e.target.value)}
+                onChange={(e) => {
+                  set("gstin", e.target.value);
+                  syncFromGstin(e.target.value);
+                }}
                 className={styles.formInput}
               />
             </div>
+
+            {/* Every invoice is intra-state or inter-state relative to this
+                one value; blank would bill every sale as IGST. */}
+            <GstStateSelect id="companyState" value={stateCode} onChange={setStateCode} />
 
             <div>
               <label htmlFor="companyPhone" className={styles.formLabel}>

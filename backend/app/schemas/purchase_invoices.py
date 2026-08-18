@@ -4,16 +4,6 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
-class CreateNewPurchaseInvoiceRequest(BaseModel):
-    date: datetime
-    po_id: int
-
-
-class CreateNewPurchaseInvoiceResponse(BaseModel):
-    message: str
-    id: int
-
-
 class PurchaseInvoiceDetailItem(BaseModel):
     id: int
     purchase_invoice_no: int
@@ -21,6 +11,10 @@ class PurchaseInvoiceDetailItem(BaseModel):
     date: datetime
     vendor_id: int
     po_id: int
+    # The vendor's own invoice number, present only for orders created from
+    # an uploaded vendor PDF (see routes/orders.py's
+    # parse_purchase_invoice_pdf).
+    vendor_invoice_no: str | None
     has_uploaded_pdf: bool
     total_amount_before_tax: float
     total_tax_amount: float

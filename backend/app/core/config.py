@@ -44,4 +44,12 @@ class Settings(BaseSettings):
     # see docker-compose.yml.
     purchase_invoice_root: str = "purchase_invoices"
 
+    # Reading an uploaded vendor invoice PDF falls back to Claude whenever
+    # the deterministic parser can't decode its layout — see
+    # app/services/claude_invoice_extraction.py. Leaving the key unset
+    # disables that fallback: invoices the parser can't read are then
+    # refused, and the admin enters the purchase order by hand.
+    anthropic_api_key: str = ""
+    invoice_extraction_model: str = "claude-opus-5"
+
 settings = Settings()

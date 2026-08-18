@@ -9,6 +9,12 @@
 // invoices riding on a sales order. poId/vendorId are immutable once raised;
 // a vendor PDF can optionally be attached (and later replaced) independently
 // of that via attachPurchaseInvoicePdf.
+//
+// There is deliberately no create function here: a purchase invoice is
+// raised automatically as part of creating its purchase order (see
+// createPurchaseOrder's flow in components/admin/purchase-order-form-modal.tsx
+// and services/purchase_invoices.py on the backend), so the Purchase
+// Invoices tab lists, edits and voids them but never adds one.
 import { apiFetch } from "@/lib/api";
 
 export type PurchaseInvoice = {
@@ -18,6 +24,9 @@ export type PurchaseInvoice = {
   date: string;
   vendorId: number;
   poId: number;
+  // The vendor's own invoice number, present only for orders created by
+  // uploading their invoice PDF.
+  vendorInvoiceNo: string | null;
   hasUploadedPdf: boolean;
   totalAmountBeforeTax: number;
   totalTaxAmount: number;
@@ -33,6 +42,7 @@ type PurchaseInvoiceDetailItem = {
   date: string;
   vendor_id: number;
   po_id: number;
+  vendor_invoice_no: string | null;
   has_uploaded_pdf: boolean;
   total_amount_before_tax: number;
   total_tax_amount: number;
@@ -48,6 +58,7 @@ function toPurchaseInvoice(item: PurchaseInvoiceDetailItem): PurchaseInvoice {
     date: item.date,
     vendorId: item.vendor_id,
     poId: item.po_id,
+    vendorInvoiceNo: item.vendor_invoice_no,
     hasUploadedPdf: item.has_uploaded_pdf,
     totalAmountBeforeTax: item.total_amount_before_tax,
     totalTaxAmount: item.total_tax_amount,
@@ -64,28 +75,6 @@ export async function fetchPurchaseInvoices(): Promise<PurchaseInvoice[]> {
 
   const items: PurchaseInvoiceDetailItem[] = await response.json();
   return items.map(toPurchaseInvoice);
-}
-
-export type CreatePurchaseInvoicePayload = {
-  date: string;
-  poId: number;
-};
-
-// Raises the invoice itself (date + linked PO — vendor/amounts are
-// snapshotted server-side from that PO). A vendor PDF, if any, is attached
-// separately once this returns an id (see attachPurchaseInvoicePdf and
-// purchase-invoice-form-modal.tsx's handleSubmit). Returns the raw Response
-// so the caller can both check .ok/.status for its existing error handling
-// and read the id on success.
-export async function createPurchaseInvoice(payload: CreatePurchaseInvoicePayload): Promise<Response> {
-  return apiFetch("/admin/create_new_purchase_invoice", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      date: payload.date,
-      po_id: payload.poId,
-    }),
-  });
 }
 
 // Attaches a vendor PDF to a purchase invoice via POST

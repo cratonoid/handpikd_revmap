@@ -106,3 +106,120 @@ export async function fetchPurchaseOrders(): Promise<PurchaseOrder[]> {
     description: item.description,
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Reading a purchase order off the vendor's own invoice PDF
+// ---------------------------------------------------------------------------
+// POST /admin/parse_purchase_invoice_pdf (backend/app/api/routes/orders.py)
+// reads an uploaded vendor invoice and returns the values a purchase order
+// would be built from — vendor, invoice number and date, and one line item
+// per product resolved to one of ours. It writes nothing: the admin reviews
+// these values in the ordinary purchase order form and saves them through
+// create_new_purchase_order like any other order.
+//
+// The endpoint refuses the upload outright (rather than returning partial
+// values) if the vendor or a product isn't on file, the invoice has already
+// been recorded, its line items are taxed at different GST rates, or the PDF
+// couldn't be read in full — parsePurchaseInvoicePdf surfaces the backend's
+// own explanation of which, since it names the record the admin has to add.
+
+export type ParsedInvoiceLineItem = {
+  productId: number;
+  // Our product's name, and the text as printed on the invoice — both are
+  // shown so the admin can see what was matched to what.
+  productName: string;
+  description: string;
+  quantity: number;
+  rate: number;
+  gstPerc: number;
+};
+
+export type ParsedPurchaseInvoice = {
+  vendorId: number;
+  vendorName: string;
+  vendorGstin: string;
+  vendorInvoiceNo: string;
+  date: string;
+  lineItems: ParsedInvoiceLineItem[];
+  sgstPerc: number | null;
+  cgstPerc: number | null;
+  igstPerc: number | null;
+  totalAmountBeforeTax: number;
+  totalAmountAfterTax: number;
+  // The invoice's own printed total, and whether it disagrees with the total
+  // these line items add up to. Shown as a warning to check rather than
+  // treated as an error — vendors add freight, labour and round-off lines
+  // that no line item accounts for.
+  printedTotal: number | null;
+  totalMismatch: boolean;
+  // "text" if the deterministic parser read the PDF, "claude" if it fell
+  // back to reading it with Claude.
+  source: string;
+};
+
+// Shape returned by the backend's ParsePurchaseInvoicePdfResponse schema.
+type ParsePurchaseInvoicePdfResponse = {
+  vendor_id: number;
+  vendor_name: string;
+  vendor_gstin: string;
+  vendor_invoice_no: string;
+  date: string;
+  line_items: {
+    product_id: number;
+    product_name: string;
+    description: string;
+    quantity: number;
+    rate: number;
+    gst_perc: number;
+  }[];
+  sgst_perc: number | null;
+  cgst_perc: number | null;
+  igst_perc: number | null;
+  total_amount_before_tax: number;
+  total_amount_after_tax: number;
+  printed_total: number | null;
+  total_mismatch: boolean;
+  source: string;
+};
+
+export async function parsePurchaseInvoicePdf(file: File): Promise<ParsedPurchaseInvoice> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await apiFetch("/admin/parse_purchase_invoice_pdf", { method: "POST", body: formData });
+
+  if (!response.ok) {
+    // Every rejection reason is written for the admin and names what to fix
+    // ("no vendor with GSTIN ...", "invoice X has already been recorded"),
+    // so it's shown as-is rather than flattened into a status-code message.
+    const body = await response.json().catch(() => null);
+    throw new Error(
+      typeof body?.detail === "string" ? body.detail : "this invoice couldn't be read. Please try again.",
+    );
+  }
+
+  const parsed: ParsePurchaseInvoicePdfResponse = await response.json();
+  return {
+    vendorId: parsed.vendor_id,
+    vendorName: parsed.vendor_name,
+    vendorGstin: parsed.vendor_gstin,
+    vendorInvoiceNo: parsed.vendor_invoice_no,
+    date: parsed.date,
+    lineItems: parsed.line_items.map((item) => ({
+      productId: item.product_id,
+      productName: item.product_name,
+      description: item.description,
+      quantity: item.quantity,
+      rate: item.rate,
+      gstPerc: item.gst_perc,
+    })),
+    sgstPerc: parsed.sgst_perc,
+    cgstPerc: parsed.cgst_perc,
+    igstPerc: parsed.igst_perc,
+    totalAmountBeforeTax: parsed.total_amount_before_tax,
+    totalAmountAfterTax: parsed.total_amount_after_tax,
+    printedTotal: parsed.printed_total,
+    totalMismatch: parsed.total_mismatch,
+    source: parsed.source,
+  };
+}

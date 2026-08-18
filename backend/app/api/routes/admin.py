@@ -23,6 +23,7 @@ from app.schemas.admin import (
     UpdateCustomerDetailsResponse,
 )
 from app.services.counters import get_next_id
+from app.services.gst import resolve_party_state
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -31,6 +32,19 @@ async def require_admin(current_user: User | None = Depends(get_current_user)) -
     if current_user is not None and current_user.role != UserRole.admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin access required")
     return current_user
+
+
+def party_state_or_400(state_code: str, gstin: str) -> tuple[str, str]:
+    """resolve_party_state with its ValueError turned into a 400.
+
+    Shared with routes/vendors.py — clients and vendors resolve their state
+    by exactly the same rule, and both are edited through this module's
+    admin-only endpoints.
+    """
+    try:
+        return resolve_party_state(state_code, gstin)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 @router.post("/add_customer_details", response_model=AddCustomerDetailsResponse)
@@ -46,6 +60,8 @@ async def add_customer_details(
     user = User(id=user_id, mail=payload.mail, password=hash_password(payload.password), role=UserRole.customer)
     await user.insert()
 
+    state_code, state_name = party_state_or_400(payload.state_code, payload.company_gst)
+
     customer_id = await get_next_id(CustomerIdCounter, "next_customer_id", CustomerDetails)
     customer = CustomerDetails(
         id=customer_id,
@@ -54,6 +70,8 @@ async def add_customer_details(
         company_or_department=payload.company_or_department,
         address=payload.address,
         company_gst=payload.company_gst,
+        state_code=state_code,
+        state_name=state_name,
         points=payload.points,
         is_deleted=payload.is_deleted,
     )
@@ -105,6 +123,8 @@ async def _get_customer_detail_by_mail(mail: str) -> CustomerDetailItem:
         company_or_department=customer.company_or_department,
         address=customer.address,
         company_gst=customer.company_gst,
+        state_code=customer.state_code,
+        state_name=customer.state_name,
         points=customer.points,
         is_deleted=customer.is_deleted,
         contact_name=[poc.contact_name for poc in pocs],
@@ -151,6 +171,8 @@ async def get_customer_details(
                 company_or_department=customer.company_or_department,
                 address=customer.address,
                 company_gst=customer.company_gst,
+                state_code=customer.state_code,
+                state_name=customer.state_name,
                 points=customer.points,
                 is_deleted=customer.is_deleted,
                 contact_name=[poc.contact_name for poc in customer_pocs],
@@ -198,6 +220,7 @@ async def update_customer_details(
     customer.company_or_department = payload.company_or_department
     customer.address = payload.address
     customer.company_gst = payload.company_gst
+    customer.state_code, customer.state_name = party_state_or_400(payload.state_code, payload.company_gst)
     customer.points = payload.points
     customer.is_deleted = payload.is_deleted
     await customer.save()

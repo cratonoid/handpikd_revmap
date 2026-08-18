@@ -33,6 +33,12 @@ export type Vendor = {
   id: number;
   registeredName: string;
   gst: string;
+  // Two-digit GST state code and its name — same rules as Customer's:
+  // auto-filled from `gst` on the vendor form, but its own field so a
+  // vendor with no GSTIN still resolves to SGST+CGST on a same-state
+  // purchase. "" for vendors saved before the field existed.
+  stateCode: string;
+  stateName: string;
   address: string;
   description: string;
   qrCode: string;
@@ -47,6 +53,8 @@ type VendorDetailItem = {
   id: number;
   registered_name: string;
   gst: string;
+  state_code: string;
+  state_name: string;
   address: string;
   description: string;
   qr_code: string;
@@ -62,12 +70,18 @@ export type VendorOption = {
   // "" if the vendor has no GST number on file — see product-form-modal.tsx,
   // which filters these down to GST-only for its vendor picker.
   gst: string;
+  // The vendor's state, so the purchase order form can decide SGST+CGST vs
+  // IGST the moment a vendor is picked, without a second request.
+  stateCode: string;
+  stateName: string;
 };
 
 type VendorListItem = {
   vendor_id: number;
   vendor_name: string;
   gst: string;
+  state_code: string;
+  state_name: string;
 };
 
 // Lightweight id+name list for vendor-picker dropdowns (product and purchase
@@ -80,7 +94,13 @@ export async function fetchVendorsList(): Promise<VendorOption[]> {
   }
 
   const items: VendorListItem[] = await response.json();
-  return items.map((item) => ({ id: item.vendor_id, name: item.vendor_name, gst: item.gst }));
+  return items.map((item) => ({
+    id: item.vendor_id,
+    name: item.vendor_name,
+    gst: item.gst,
+    stateCode: item.state_code ?? "",
+    stateName: item.state_name ?? "",
+  }));
 }
 
 export async function fetchVendors(): Promise<Vendor[]> {
@@ -94,6 +114,8 @@ export async function fetchVendors(): Promise<Vendor[]> {
     id: item.id,
     registeredName: item.registered_name,
     gst: item.gst,
+    stateCode: item.state_code ?? "",
+    stateName: item.state_name ?? "",
     address: item.address,
     description: item.description,
     qrCode: item.qr_code,

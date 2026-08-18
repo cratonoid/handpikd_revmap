@@ -15,12 +15,10 @@ import styles from "@/styles/brand-catalogues.module.css";
 
 export function BrandCatalogueCard({
   catalogueName,
-  vendorName,
   coverImagePath,
   onOpen,
 }: {
   catalogueName: string;
-  vendorName: string;
   coverImagePath: string | undefined;
   onOpen: () => void;
 }) {
@@ -41,7 +39,6 @@ export function BrandCatalogueCard({
       </div>
       <div className={styles.cardBody}>
         <h3 className={styles.cardTitle}>{catalogueName}</h3>
-        {vendorName && <p className={styles.cardVendor}>{vendorName}</p>}
         <span className={styles.cardViewGallery}>
           View Catalogue
           <ArrowUpRightIcon className="h-3.5 w-3.5" />

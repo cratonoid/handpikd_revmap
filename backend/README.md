@@ -28,6 +28,23 @@ with `NotImplementedError` under `--reload` on Windows. Run
 backend changes. This only affects Windows dev machines — Linux (prod, see
 docker-compose.yml) doesn't have this split and `--reload` is fine there.
 
+## Reading vendor invoice PDFs
+
+Uploading a vendor's invoice on the Purchase orders tab reads it in two
+stages (`app/services/invoice_extraction.py`): a deterministic pass over the
+PDF's text layer first, then Claude for any layout that pass can't decode.
+The second stage needs a key in `.env`:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+# optional — defaults to claude-opus-5
+INVOICE_EXTRACTION_MODEL=claude-opus-5
+```
+
+Leaving the key unset is a supported configuration: invoices the
+deterministic pass can read still upload, and the rest are refused with a
+message telling the admin to enter the purchase order by hand.
+
 ## Test
 
 ```bash

@@ -85,6 +85,11 @@ _ORDER_STATUS_SEED = [
 # app/services/personal_details.py for the attribute<->id mapping), taken
 # from Handpikd's own details as supplied by the admin, cross-checked against
 # a real invoice sample (invoice #20, Christ University, 04-Aug-2026).
+# state_code/state_name are deliberately absent: their rows are seeded blank
+# and derived from whatever `gstin` actually holds, by _with_state_filled_in
+# in services/personal_details.py. Seeding a literal "08"/"Rajasthan" here
+# would stick to a database whose admin has since changed the GSTIN, and
+# every sale would then be billed under the wrong head.
 _PERSONAL_DETAILS_SEED = {
     "gstin": "08DINPA7100K1ZA",
     "address": "PLOT NO. 20, GYAN VIHAR, SOGARIYA NEAR RAILWAY COLONY KOTA SUB POST OFFICE KOTA, Rajasthan - 324002",

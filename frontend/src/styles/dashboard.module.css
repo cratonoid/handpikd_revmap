@@ -562,8 +562,25 @@
    pages still use at full size.
    ----------------------------------------------------------------------- */
 
+/* Page title and the Sales/Purchase pill share one line instead of stacking.
+   The heading alone claimed a full row whose right two-thirds sat empty; the
+   pill now rides in that space, giving the table back ~40px. */
+.invoicesPageHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+/* margin-left: auto rather than justify-content: space-between so the pill
+   still sits flush right if a third control is ever added to the row. */
+.invoicesPageHeader .viewToggle {
+  margin-top: 0;
+  margin-left: auto;
+}
+
 .invoicesToolbar {
-  margin-top: 1rem;
+  margin-top: 0.75rem;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -575,18 +592,37 @@
   margin-top: 0;
 }
 
+/* Everything in this group is one control tall now that .invoicesFilterField
+   puts its label beside the input rather than above it, so plain centering
+   lines the date fields up with the buttons. */
 .invoicesToolbarActions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.6rem;
 }
 
-.invoicesFilterRow {
-  margin-top: 0.6rem;
+/* The bulk-download date range, folded into the toolbar's right-hand group
+   instead of sitting on its own row below it. That row cost ~50px of vertical
+   space above the table on every visit to Standard invoices; here it rides
+   along in space the toolbar was already reserving. */
+.invoicesToolbarFilters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* Label beside the input instead of stacked above it — the stacked form cost
+   the whole toolbar row ~14px of height for two words. */
+.invoicesFilterField {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .invoicesFilterRow .formLabel {
-  margin-bottom: 0.2rem;
+  margin-bottom: 0;
   font-size: 0.6875rem;
   white-space: nowrap;
 }
@@ -688,6 +724,14 @@
 
 .filterToggleRow .viewToggle {
   margin-top: 0;
+}
+
+/* Pushes a trailing pill group (vendors: Active / Deleted) to the far end of
+   the row while the leading group stays put. Same margin-left: auto trick as
+   .filterToggleRowAction, but without that class's mobile full-width rule —
+   a pill toggle should keep its intrinsic width when the row wraps. */
+.viewToggleEnd {
+  margin-left: auto;
 }
 
 /* Pushes a trailing button to the far end of the row. margin-left: auto rather
@@ -1036,6 +1080,26 @@ select.formInput:disabled {
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--color-red);
+}
+
+/* Quiet explanatory line under a field, for a decision the form made on the
+   admin's behalf — the purchase order form's SGST+CGST vs IGST notice
+   (purchase-order-form-modal.tsx). Deliberately not .formError's red: it
+   reports what the form did, not something the admin has to fix. */
+.formHint {
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--color-ink);
+}
+
+/* Inline text button sitting inside a sentence (e.g. .formHint's manual
+   override toggle) — matches .addContactButton's underlined-link treatment. */
+.linkButton {
+  font-weight: 600;
+  color: var(--color-charcoal);
+  text-decoration: underline;
+  text-underline-offset: 0.15rem;
 }
 
 /* Review notice banner (sales-order-form-modal.tsx) — shown when a related
@@ -3121,4 +3185,78 @@ select.formInput:disabled {
     grid-row: 2;
     height: 1rem;
   }
+}
+
+/* -----------------------------------------------------------------------
+   Starting a purchase order: choosing a source, and reviewing a parsed
+   invoice (components/admin/purchase-order-source-modal.tsx and the
+   pre-filled state of purchase-order-form-modal.tsx)
+   ----------------------------------------------------------------------- */
+/* Two equal cards rather than a pair of buttons: the choice between reading
+   the vendor's invoice and keying the order in is a fork in the flow, not a
+   confirm/cancel, and each side needs a line explaining what it will do. */
+.sourceChoiceGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+}
+
+.sourceChoiceCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1.1rem;
+  text-align: left;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background-color: var(--color-cream);
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.sourceChoiceCard:hover {
+  border-color: var(--color-charcoal);
+}
+
+.sourceChoiceTitle {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.sourceChoiceHint {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--color-ink);
+}
+
+/* The banner over a purchase order form that was filled in from an uploaded
+   invoice. Deliberately looks like a notice rather than a form section —
+   nothing in it is editable, and its job is to say "check this" before the
+   fields below are trusted. */
+.parsedInvoiceNotice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background-color: var(--color-cream-deep);
+}
+
+.parsedInvoiceTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.parsedInvoiceList {
+  margin: 0;
+  padding-left: 1.1rem;
+  list-style: disc;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-ink);
 }

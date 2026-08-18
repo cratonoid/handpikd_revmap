@@ -16,6 +16,8 @@ import { resolveMediaUrl } from "@/lib/api";
 import { uploadSignatureImage } from "@/lib/personal-details";
 import { fetchProfileDetails, updateProfileDetails } from "@/lib/profile-details";
 import { ArrowUpTrayIcon, DocumentTextIcon } from "@/components/icons";
+import { GstStateSelect, useGstState } from "@/components/admin/gst-state-select";
+import { stateNameForCode } from "@/lib/gst";
 import styles from "@/styles/dashboard.module.css";
 
 type LoadState = "loading" | "loaded";
@@ -50,6 +52,10 @@ const EMPTY_VALUES: FieldValues = FIELD_KEYS.reduce((acc, key) => {
 
 export function ProfilePageClient() {
   const [values, setValues] = useState<FieldValues>(EMPTY_VALUES);
+  // Our own state — the seller half of every SGST + CGST vs IGST decision
+  // (see backend/app/services/gst.py). Seeded once the fetch lands, then
+  // follows the GSTIN until the admin picks a state themselves.
+  const { stateCode, setStateCode, syncFromGstin, reset: resetState } = useGstState("", "");
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +69,7 @@ export function ProfilePageClient() {
       .then((data) => {
         if (cancelled) return;
         setValues((prev) => ({ ...prev, ...data }));
+        resetState(data.state_code ?? "", data.gstin ?? "");
         setLoadState("loaded");
       })
       .catch(() => {
@@ -74,7 +81,7 @@ export function ProfilePageClient() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [resetState]);
 
   function set(key: FieldKey, value: string) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -105,7 +112,14 @@ export function ProfilePageClient() {
     setError(null);
 
     try {
-      const response = await updateProfileDetails(values);
+      // state_code/state_name are owned by the dropdown rather than
+      // `values`, and the name is derived from the code so the two can't
+      // drift apart.
+      const response = await updateProfileDetails({
+        ...values,
+        state_code: stateCode,
+        state_name: stateNameForCode(stateCode),
+      });
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
         setError(typeof detail?.detail === "string" ? detail.detail : "Something went wrong. Please try again.");
@@ -155,10 +169,24 @@ export function ProfilePageClient() {
                   id="profileGstin"
                   type="text"
                   value={values.gstin}
-                  onChange={(e) => set("gstin", e.target.value)}
+                  onChange={(e) => {
+                    set("gstin", e.target.value);
+                    syncFromGstin(e.target.value);
+                  }}
                   className={styles.formInput}
                 />
               </div>
+
+              {/* Every invoice is intra-state or inter-state relative to
+                  this one value; blank would bill every sale as IGST. */}
+              <GstStateSelect
+                id="profileState"
+                value={stateCode}
+                onChange={(code) => {
+                  setStateCode(code);
+                  setSaveStatus("idle");
+                }}
+              />
 
               <div>
                 <label htmlFor="profilePhone" className={styles.formLabel}>

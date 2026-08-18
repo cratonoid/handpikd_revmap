@@ -32,6 +32,8 @@ import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
 import { convertVendorQr, VENDOR_TYPE_LABELS, type Vendor, type VendorPoc, type VendorType } from "@/lib/vendors";
 import { XMarkIcon } from "@/components/icons";
+import { GstStateSelect, useGstState } from "@/components/admin/gst-state-select";
+import { stateNameForCode } from "@/lib/gst";
 import styles from "@/styles/dashboard.module.css";
 
 type Status = "idle" | "saving";
@@ -56,6 +58,12 @@ export function VendorFormModal({
 }) {
   const [registeredName, setRegisteredName] = useState(initialVendor?.registeredName ?? "");
   const [gst, setGst] = useState(initialVendor?.gst ?? "");
+  // Decides SGST + CGST vs IGST on purchases from this vendor. Follows
+  // the GST number as it's typed until the admin picks a state themselves.
+  const { stateCode, setStateCode, syncFromGstin } = useGstState(
+    initialVendor?.stateCode ?? "",
+    initialVendor?.gst ?? "",
+  );
   const [address, setAddress] = useState(initialVendor?.address ?? "");
   const [description, setDescription] = useState(initialVendor?.description ?? "");
   // "" is the unselected state of the picker below (and the stored value of
@@ -143,6 +151,7 @@ export function VendorFormModal({
       ...(isEdit ? { id: initialVendor?.id } : {}),
       registered_name: registeredName,
       gst,
+      state_code: stateCode,
       address,
       description,
       qr_code: qrCode,
@@ -175,6 +184,8 @@ export function VendorFormModal({
         id: initialVendor?.id ?? 0,
         registeredName,
         gst,
+        stateCode,
+        stateName: stateNameForCode(stateCode),
         address,
         description,
         qrCode,
@@ -257,10 +268,20 @@ export function VendorFormModal({
                 id="gst"
                 type="text"
                 value={gst}
-                onChange={(e) => setGst(e.target.value.toUpperCase())}
+                onChange={(e) => {
+                  const next = e.target.value.toUpperCase();
+                  setGst(next);
+                  syncFromGstin(next);
+                }}
                 className={styles.formInput}
               />
             </div>
+
+            {/* Read by the purchase order form to pick SGST + CGST or IGST
+                against our own state, and stored on the purchase invoice as
+                the place of supply. Worth setting even for a vendor with no
+                GST number, so a same-state purchase isn't billed as IGST. */}
+            <GstStateSelect id="vendorState" value={stateCode} onChange={setStateCode} />
 
             <div>
               <label htmlFor="vendorType" className={styles.formLabel}>

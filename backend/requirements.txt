@@ -13,3 +13,4 @@ qrcode
 pymupdf
 playwright
 jinja2
+anthropic

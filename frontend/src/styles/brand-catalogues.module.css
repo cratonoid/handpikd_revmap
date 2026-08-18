@@ -210,12 +210,6 @@
   color: var(--color-charcoal);
 }
 
-.cardVendor {
-  margin-top: 0.25rem;
-  font-size: 0.8125rem;
-  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
-}
-
 .cardViewGallery {
   margin-top: 0.5rem;
   display: flex;

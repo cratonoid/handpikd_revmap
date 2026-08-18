@@ -5,12 +5,16 @@
 # customer, so this is a thin relabeling wrapper around
 # invoice_pdf.generate_invoice_pdf rather than a parallel ~400-line
 # ReportLab layout. Our own GSTIN (from personal_details) is always what's
-# shown in the top-left GSTIN box and used for the intra/inter-state tax
-# split, regardless of direction, so no other differences are needed.
+# shown in the top-left GSTIN box regardless of direction, so no other
+# differences are needed. The tax split itself is passed in rather than
+# re-derived: it was decided when the purchase ORDER was placed (see
+# services/purchase_invoices.py), and the PDF has to state the heads the
+# order was actually placed under.
 from __future__ import annotations
 
 from datetime import datetime
 
+from app.services.gst import TaxKind
 from app.services.invoice_pdf import InvoiceLineItem, generate_invoice_pdf
 
 PurchaseInvoiceLineItem = InvoiceLineItem
@@ -29,6 +33,8 @@ async def generate_purchase_invoice_pdf(
     vendor_phone: str,
     vendor_gstin: str,
     personal: dict[str, str],
+    tax_kind: TaxKind | None = None,
+    place_of_supply_code: str = "",
 ) -> bytes:
     return await generate_invoice_pdf(
         invoice_no=purchase_invoice_no,
@@ -46,4 +52,6 @@ async def generate_purchase_invoice_pdf(
         personal=personal,
         title_text="PURCHASE INVOICE",
         party_label="Vendor",
+        tax_kind=tax_kind,
+        place_of_supply_code=place_of_supply_code,
     )

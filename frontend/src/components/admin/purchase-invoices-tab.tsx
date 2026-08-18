@@ -3,14 +3,17 @@
 // ---------------------------------------------------------------------------
 // <PurchaseInvoicesTab> — the Purchase Invoices half of /admin/invoices
 // ---------------------------------------------------------------------------
-// Mirrors invoices-tab.tsx. "+ New purchase invoice" opens the popup in
-// "add" mode; double-clicking a row opens it in "edit" mode. Both modes save
-// through purchase-invoice-form-modal.tsx, which POSTs to
-// create_new_purchase_invoice/update_purchase_invoice_details (backend/app/
-// api/routes/purchase_invoices.py). Purely a billing record — creating one
-// never touches inventory (unlike a purchase order being received).
+// Mirrors invoices-tab.tsx, minus an "add" action: a purchase invoice is
+// raised automatically as part of creating its purchase order (Purchase
+// orders tab on /admin/orders), whether that order was keyed in or read off
+// the vendor's invoice PDF, so there's nothing to add here — an invoice with
+// no order behind it was never a valid record. Double-clicking a row opens
+// purchase-invoice-form-modal.tsx to edit its date, attach or replace the
+// vendor's PDF, or void it, via update_purchase_invoice_details /
+// attach_purchase_invoice_pdf (backend/app/api/routes/purchase_invoices.py).
+// Purely a billing record — none of it touches inventory (unlike a purchase
+// order being received).
 import { useEffect, useState } from "react";
-import { Button } from "@/components/button";
 import { PurchaseInvoiceFormModal } from "@/components/admin/purchase-invoice-form-modal";
 import {
   downloadPurchaseInvoicePdf,
@@ -22,7 +25,7 @@ import { fetchPurchaseOrders, type PurchaseOrder } from "@/lib/purchase-orders";
 import { fetchVendorsList, type VendorOption } from "@/lib/vendors";
 import styles from "@/styles/dashboard.module.css";
 
-type ModalState = { mode: "add" } | { mode: "edit"; purchaseInvoice: PurchaseInvoice } | null;
+type ModalState = { mode: "edit"; purchaseInvoice: PurchaseInvoice } | null;
 type LoadState = "loading" | "loaded";
 
 export function PurchaseInvoicesTab() {
@@ -97,19 +100,6 @@ export function PurchaseInvoicesTab() {
 
   return (
     <>
-      {/* Matches the purchase-orders tab: action right-aligned above the
-          table, no subtitle restating the page subtext. */}
-      <div className={styles.filterToggleRow}>
-        <Button
-          type="button"
-          variant="primary"
-          className={styles.filterToggleRowAction}
-          onClick={() => setModalState({ mode: "add" })}
-        >
-          + New purchase invoice
-        </Button>
-      </div>
-
       {downloadError && (
         <p role="alert" aria-live="polite" className={styles.formError}>
           {downloadError}
@@ -185,8 +175,7 @@ export function PurchaseInvoicesTab() {
 
       {modalState && (
         <PurchaseInvoiceFormModal
-          mode={modalState.mode}
-          initialPurchaseInvoice={modalState.mode === "edit" ? modalState.purchaseInvoice : undefined}
+          purchaseInvoice={modalState.purchaseInvoice}
           vendors={vendors}
           purchaseOrders={purchaseOrders}
           onClose={() => setModalState(null)}

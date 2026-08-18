@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { VendorFormModal } from "@/components/admin/vendor-form-modal";
 import { fetchVendors, VENDOR_TYPE_LABELS, type Vendor, type VendorType } from "@/lib/vendors";
+import { stateNameForCode } from "@/lib/gst";
 import styles from "@/styles/dashboard.module.css";
 
 type ModalState = { mode: "add" } | { mode: "edit"; vendor: Vendor } | null;
@@ -94,7 +95,22 @@ export function VendorsPageClient() {
       </div>
 
       <div className={styles.filterToggleRow}>
-        <div className={styles.viewToggle} role="tablist" aria-label="Vendor status">
+        <div className={styles.viewToggle} role="tablist" aria-label="Vendor type">
+          {TYPE_FILTERS.map((filter) => (
+            <button
+              key={filter.value}
+              type="button"
+              role="tab"
+              aria-selected={typeFilter === filter.value}
+              onClick={() => setTypeFilter(filter.value)}
+              className={`${styles.viewToggleButton} ${typeFilter === filter.value ? styles.viewToggleButtonActive : ""}`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+
+        <div className={`${styles.viewToggle} ${styles.viewToggleEnd}`} role="tablist" aria-label="Vendor status">
           <button
             type="button"
             role="tab"
@@ -114,21 +130,6 @@ export function VendorsPageClient() {
             Deleted vendors
           </button>
         </div>
-
-        <div className={styles.viewToggle} role="tablist" aria-label="Vendor type">
-          {TYPE_FILTERS.map((filter) => (
-            <button
-              key={filter.value}
-              type="button"
-              role="tab"
-              aria-selected={typeFilter === filter.value}
-              onClick={() => setTypeFilter(filter.value)}
-              className={`${styles.viewToggleButton} ${typeFilter === filter.value ? styles.viewToggleButtonActive : ""}`}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div className={styles.tableWrap}>
@@ -139,6 +140,7 @@ export function VendorsPageClient() {
               <th className={styles.tableHeadCell}>Vendor</th>
               <th className={styles.tableHeadCell}>Type</th>
               <th className={styles.tableHeadCell}>GST number</th>
+              <th className={styles.tableHeadCell}>State</th>
               <th className={styles.tableHeadCell}>Address</th>
             </tr>
           </thead>
@@ -155,6 +157,10 @@ export function VendorsPageClient() {
                   {vendor.vendorType ? VENDOR_TYPE_LABELS[vendor.vendorType] : "—"}
                 </td>
                 <td className={styles.tableCell}>{vendor.gst}</td>
+                {/* Decides SGST + CGST vs IGST on purchases from this vendor. */}
+                <td className={styles.tableCell}>
+                  {vendor.stateName || stateNameForCode(vendor.gst.slice(0, 2)) || "—"}
+                </td>
                 <td className={styles.tableCell} title={vendor.address}>
                   <span className={styles.tableCellTruncate}>{vendor.address}</span>
                 </td>

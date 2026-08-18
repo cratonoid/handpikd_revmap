@@ -19,6 +19,13 @@ export type Customer = {
   companyOrDepartment: string;
   address: string;
   companyGst: string;
+  // Two-digit GST state code and its name. Auto-filled from companyGst on
+  // the client form but stored in its own right: a client with no GSTIN
+  // still sits in a state, and a same-state supply to an unregistered
+  // client is CGST+SGST rather than IGST. "" for clients saved before the
+  // field existed — lib/gst.ts's resolveStateCode falls back to the GSTIN.
+  stateCode: string;
+  stateName: string;
   points: number;
   isDeleted: boolean;
   contacts: Contact[];
@@ -32,6 +39,8 @@ type CustomerDetailItem = {
   company_or_department: string;
   address: string;
   company_gst: string;
+  state_code: string;
+  state_name: string;
   points: number;
   is_deleted: boolean;
   contact_name: string[];
@@ -45,6 +54,8 @@ function toCustomer(item: CustomerDetailItem): Customer {
     companyOrDepartment: item.company_or_department,
     address: item.address,
     companyGst: item.company_gst,
+    stateCode: item.state_code ?? "",
+    stateName: item.state_name ?? "",
     points: item.points,
     isDeleted: item.is_deleted,
     contacts: item.contact_name.map((name, index) => ({

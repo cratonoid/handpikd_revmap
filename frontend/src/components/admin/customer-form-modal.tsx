@@ -23,6 +23,8 @@ import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
 import type { Customer, Contact } from "@/lib/customers";
 import { XMarkIcon } from "@/components/icons";
+import { GstStateSelect, useGstState } from "@/components/admin/gst-state-select";
+import { stateNameForCode } from "@/lib/gst";
 import styles from "@/styles/dashboard.module.css";
 
 type Status = "idle" | "saving";
@@ -48,6 +50,12 @@ export function CustomerFormModal({
   const [companyOrDepartment, setCompanyOrDepartment] = useState(initialCustomer?.companyOrDepartment ?? "");
   const [address, setAddress] = useState(initialCustomer?.address ?? "");
   const [companyGst, setCompanyGst] = useState(initialCustomer?.companyGst ?? "");
+  // Decides SGST + CGST vs IGST on this client's invoices. Follows the
+  // GST number as it's typed until the admin picks a state themselves.
+  const { stateCode, setStateCode, syncFromGstin } = useGstState(
+    initialCustomer?.stateCode ?? "",
+    initialCustomer?.companyGst ?? "",
+  );
   const [points, setPoints] = useState(initialCustomer?.points ?? 0);
   const [contacts, setContacts] = useState<Contact[]>(
     initialCustomer?.contacts && initialCustomer.contacts.length > 0
@@ -96,6 +104,7 @@ export function CustomerFormModal({
       company_or_department: companyOrDepartment,
       address,
       company_gst: companyGst,
+      state_code: stateCode,
       points,
       is_deleted: isDeletedValue,
       contact_name: contacts.map((c) => c.name),
@@ -132,6 +141,8 @@ export function CustomerFormModal({
           companyOrDepartment,
           address,
           companyGst,
+          stateCode,
+          stateName: stateNameForCode(stateCode),
           points,
           isDeleted: isDeletedValue,
           contacts,
@@ -241,11 +252,11 @@ export function CustomerFormModal({
               />
             </div>
 
-            {/* Optional: not every client is GST-registered, and the tax
-                layer already treats a missing GSTIN as a real case rather
-                than an error — is_intra_state (services/gst.py) reads "no
-                buyer GSTIN" as inter-state and bills IGST, and the invoice
-                PDF leaves Place of Supply blank. */}
+            {/* Optional: not every client is GST-registered. Typing one
+                fills in the State field below from its first two digits;
+                that field, not this one, is what the tax split reads (see
+                services/gst.py), so an unregistered client can still be
+                billed SGST + CGST on a same-state supply. */}
             <div>
               <label htmlFor="companyGst" className={styles.formLabel}>
                 GST number
@@ -254,10 +265,19 @@ export function CustomerFormModal({
                 id="companyGst"
                 type="text"
                 value={companyGst}
-                onChange={(e) => setCompanyGst(e.target.value.toUpperCase())}
+                onChange={(e) => {
+                  const next = e.target.value.toUpperCase();
+                  setCompanyGst(next);
+                  syncFromGstin(next);
+                }}
                 className={styles.formInput}
               />
             </div>
+
+            {/* Set even for a client with no GST number: a supply to an
+                unregistered client in our own state is still SGST + CGST,
+                and leaving this blank is what makes it fall back to IGST. */}
+            <GstStateSelect id="customerState" value={stateCode} onChange={setStateCode} />
 
             <div>
               <label htmlFor="points" className={styles.formLabel}>

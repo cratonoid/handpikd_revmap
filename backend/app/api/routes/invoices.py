@@ -7,6 +7,7 @@
 # routes/admin.py).
 import io
 import zipfile
+from dataclasses import dataclass
 from datetime import date, datetime, time
 
 from beanie.operators import In
@@ -42,6 +43,7 @@ from app.schemas.invoices import (
     UpdateProformaInvoiceDetailsResponse,
 )
 from app.services.counters import get_next_id
+from app.services.gst import TaxKind, resolve_state_code, split_tax, state_name_for_code, tax_kind_for
 from app.services.invoice_numbering import format_sales_invoice_no
 from app.services.invoice_pdf import InvoiceLineItem, generate_invoice_pdf
 from app.services.personal_details import get_personal_details
@@ -102,6 +104,54 @@ async def _validate_products_exist(product_ids: list[int], reject_deleted: bool 
             )
 
 
+@dataclass
+class _TaxContext:
+    """The GST facts an invoice freezes at the moment it's raised."""
+
+    kind: TaxKind
+    place_of_supply_code: str
+    place_of_supply_name: str
+
+    def totals(self, total_tax_amount: float) -> tuple[float, float, float]:
+        """`total_tax_amount` split into (igst, cgst, sgst)."""
+        split = split_tax(0.0, total_tax_amount, self.kind)
+        return split.igst_amount, split.cgst_amount, split.sgst_amount
+
+
+async def _tax_context_for_customer(cust_id: int) -> _TaxContext:
+    """Decides IGST vs CGST+SGST for a sale to `cust_id`.
+
+    Compares the client's state against our own (the profile's state_code),
+    both of which fall back to their party's GSTIN prefix for records
+    predating the state field. A client with no GSTIN but a state on file is
+    handled correctly here: a same-state supply to an unregistered buyer is
+    still CGST+SGST.
+    """
+    customer = await CustomerDetails.get(cust_id)
+    if customer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="customer not found")
+
+    personal = await get_personal_details()
+    buyer_state = resolve_state_code(customer.state_code, customer.company_gst)
+    seller_state = resolve_state_code(personal.get("state_code"), personal.get("gstin"))
+
+    return _TaxContext(
+        kind=tax_kind_for(buyer_state, seller_state),
+        place_of_supply_code=buyer_state or "",
+        place_of_supply_name=state_name_for_code(buyer_state) or "",
+    )
+
+
+def _apply_tax_context(invoice: InvoiceDetails, context: _TaxContext, total_tax: float) -> None:
+    igst, cgst, sgst = context.totals(total_tax)
+    invoice.tax_kind = context.kind
+    invoice.place_of_supply_code = context.place_of_supply_code
+    invoice.place_of_supply_name = context.place_of_supply_name
+    invoice.total_igst_amount = igst
+    invoice.total_cgst_amount = cgst
+    invoice.total_sgst_amount = sgst
+
+
 def _compute_line_items_and_totals(
     quantities: list[int], rates: list[float], tax_percs: list[float]
 ) -> tuple[list[float], list[float], float, float, float]:
@@ -150,6 +200,9 @@ async def create_new_invoice(
     sales_orders = await _get_sales_orders_or_404(payload.sales_ids)
     _check_same_customer(sales_orders)
     total_before_tax, total_tax, total_after_tax = _sum_sales_order_totals(sales_orders)
+    # All linked sales orders share one customer (just enforced above).
+    tax_context = await _tax_context_for_customer(sales_orders[0].cust_id)
+    total_igst, total_cgst, total_sgst = tax_context.totals(total_tax)
 
     invoice_no = await get_next_id(StandardInvoiceNoCounterMaster, "next_invoice_no", InvoiceDetails)
     invoice_id = await get_next_id(InvoiceIdCounter, "next_invoice_id", InvoiceDetails)
@@ -163,6 +216,12 @@ async def create_new_invoice(
         total_amount_before_tax=total_before_tax,
         total_tax_amount=total_tax,
         total_amount_after_tax=total_after_tax,
+        tax_kind=tax_context.kind,
+        place_of_supply_code=tax_context.place_of_supply_code,
+        place_of_supply_name=tax_context.place_of_supply_name,
+        total_igst_amount=total_igst,
+        total_cgst_amount=total_cgst,
+        total_sgst_amount=total_sgst,
         type=InvoiceType.standard,
         due_date=payload.due_date,
         online_or_offline=payload.online_or_offline,
@@ -184,6 +243,8 @@ async def create_new_proforma_invoice(
     line_totals_before_tax, tax_amounts, total_before_tax, total_tax, total_after_tax = (
         _compute_line_items_and_totals(payload.quantities, payload.rates, payload.tax_percs)
     )
+    tax_context = await _tax_context_for_customer(payload.cust_id)
+    total_igst, total_cgst, total_sgst = tax_context.totals(total_tax)
 
     invoice_no = await get_next_id(ProformaInvoiceNoCounterMaster, "next_invoice_no", InvoiceDetails)
     invoice_id = await get_next_id(InvoiceIdCounter, "next_invoice_id", InvoiceDetails)
@@ -197,6 +258,12 @@ async def create_new_proforma_invoice(
         total_amount_before_tax=total_before_tax,
         total_tax_amount=total_tax,
         total_amount_after_tax=total_after_tax,
+        tax_kind=tax_context.kind,
+        place_of_supply_code=tax_context.place_of_supply_code,
+        place_of_supply_name=tax_context.place_of_supply_name,
+        total_igst_amount=total_igst,
+        total_cgst_amount=total_cgst,
+        total_sgst_amount=total_sgst,
         type=InvoiceType.proforma,
         due_date=payload.due_date,
         online_or_offline=OnlineOrOffline.offline,
@@ -300,6 +367,11 @@ async def update_invoice_details(
     invoice.total_amount_before_tax = total_before_tax
     invoice.total_tax_amount = total_tax
     invoice.total_amount_after_tax = total_after_tax
+    # Re-decided alongside the totals: an edit is the point at which the
+    # admin has reviewed the invoice, so a client whose state was corrected
+    # in the meantime should take effect here rather than on the next
+    # reprint.
+    _apply_tax_context(invoice, await _tax_context_for_customer(sales_orders[0].cust_id), total_tax)
     invoice.due_date = payload.due_date
     invoice.online_or_offline = payload.online_or_offline
     invoice.transport = payload.transport
@@ -337,6 +409,7 @@ async def update_proforma_invoice_details(
     invoice.total_amount_before_tax = total_before_tax
     invoice.total_tax_amount = total_tax
     invoice.total_amount_after_tax = total_after_tax
+    _apply_tax_context(invoice, await _tax_context_for_customer(payload.cust_id), total_tax)
     invoice.description = payload.description
     invoice.is_deleted = payload.is_deleted
     await invoice.save()
@@ -454,6 +527,11 @@ async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict
         personal=personal,
         title_text="TAX INVOICE",
         show_signature=invoice.online_or_offline == OnlineOrOffline.offline,
+        # The heads this invoice was raised under, not whatever the two
+        # GSTINs say today (None for pre-tax_kind invoices, which the
+        # renderer still derives from the GSTINs).
+        tax_kind=invoice.tax_kind,
+        place_of_supply_code=invoice.place_of_supply_code,
     )
     filename = f"invoice-{invoice_no_display}.pdf"
     return pdf_bytes, filename

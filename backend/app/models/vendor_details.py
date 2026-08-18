@@ -17,6 +17,13 @@ class VendorDetails(Document):
     # vendor picker (see routes/vendors.py's get_vendors_list), since a
     # product's vendor needs to be GST-invoiceable.
     gst: str = ""
+    # The state this vendor is registered/located in, as a two-digit GST
+    # state code plus its name — same rules as CustomerDetails.state_code:
+    # auto-filled from `gst` when left blank, kept as its own field so a
+    # vendor with no GSTIN still resolves to CGST+SGST on a same-state
+    # purchase. "" for vendors predating the field.
+    state_code: str = ""
+    state_name: str = ""
     address: str
     # Populated later by the separate add_qr_code endpoint, not at creation.
     qr_code: str = ""

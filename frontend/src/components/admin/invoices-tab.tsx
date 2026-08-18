@@ -179,6 +179,42 @@ export function InvoicesTab() {
           </button>
         </div>
         <div className={styles.invoicesToolbarActions}>
+          {invoiceType === "standard" && (
+            <div className={`${styles.invoicesFilterRow} ${styles.invoicesToolbarFilters}`}>
+              <div className={styles.invoicesFilterField}>
+                <label htmlFor="bulkFromDate" className={styles.formLabel}>
+                  From
+                </label>
+                <input
+                  id="bulkFromDate"
+                  type="date"
+                  value={bulkFromDate}
+                  onChange={(e) => setBulkFromDate(e.target.value)}
+                  className={styles.formInput}
+                />
+              </div>
+              <div className={styles.invoicesFilterField}>
+                <label htmlFor="bulkToDate" className={styles.formLabel}>
+                  To
+                </label>
+                <input
+                  id="bulkToDate"
+                  type="date"
+                  value={bulkToDate}
+                  onChange={(e) => setBulkToDate(e.target.value)}
+                  className={styles.formInput}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void handleBulkDownload()}
+                disabled={!bulkFromDate || !bulkToDate || bulkDownloading}
+              >
+                {bulkDownloading ? "Preparing…" : "Download all"}
+              </Button>
+            </div>
+          )}
           <Button type="button" variant="tertiary" onClick={() => setShowCompanyDetails(true)}>
             Company details
           </Button>
@@ -192,43 +228,6 @@ export function InvoicesTab() {
         <p role="alert" aria-live="polite" className={styles.formError}>
           {downloadError}
         </p>
-      )}
-
-      {invoiceType === "standard" && (
-        <div className={`${styles.bulkDownloadRow} ${styles.invoicesFilterRow}`}>
-          <div>
-            <label htmlFor="bulkFromDate" className={styles.formLabel}>
-              From
-            </label>
-            <input
-              id="bulkFromDate"
-              type="date"
-              value={bulkFromDate}
-              onChange={(e) => setBulkFromDate(e.target.value)}
-              className={styles.formInput}
-            />
-          </div>
-          <div>
-            <label htmlFor="bulkToDate" className={styles.formLabel}>
-              To
-            </label>
-            <input
-              id="bulkToDate"
-              type="date"
-              value={bulkToDate}
-              onChange={(e) => setBulkToDate(e.target.value)}
-              className={styles.formInput}
-            />
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => void handleBulkDownload()}
-            disabled={!bulkFromDate || !bulkToDate || bulkDownloading}
-          >
-            {bulkDownloading ? "Preparing…" : "Download all"}
-          </Button>
-        </div>
       )}
 
       {bulkDownloadError && (

@@ -551,12 +551,27 @@ async def get_accounts_tax_summary(
 
     output_tax = 0.0
     output_taxable_value = 0.0
+    output_sgst = 0.0
+    output_cgst = 0.0
+    output_igst = 0.0
+    output_unclassified = 0.0
     for invoice in sales_invoices:
         output_tax += invoice.total_tax_amount
         output_taxable_value += invoice.total_amount_before_tax
         key = _month_key(invoice.date)
         if key in bucket_output:
             bucket_output[key] += invoice.total_tax_amount
+
+        # Unlike the input side, no apportioning is needed: the invoice
+        # stores the heads it was raised under. Invoices predating that
+        # (tax_kind is None) have no head on record and are reported as
+        # unclassified rather than guessed at.
+        if invoice.tax_kind is None:
+            output_unclassified += invoice.total_tax_amount
+        else:
+            output_sgst += invoice.total_sgst_amount
+            output_cgst += invoice.total_cgst_amount
+            output_igst += invoice.total_igst_amount
 
     input_tax = 0.0
     input_taxable_value = 0.0
@@ -592,6 +607,10 @@ async def get_accounts_tax_summary(
         output_tax=round(output_tax, 2),
         output_taxable_value=round(output_taxable_value, 2),
         output_invoice_count=len(sales_invoices),
+        output_sgst=round(output_sgst, 2),
+        output_cgst=round(output_cgst, 2),
+        output_igst=round(output_igst, 2),
+        output_unclassified=round(output_unclassified, 2),
         input_tax=round(input_tax, 2),
         input_taxable_value=round(input_taxable_value, 2),
         input_invoice_count=len(purchase_invoices),

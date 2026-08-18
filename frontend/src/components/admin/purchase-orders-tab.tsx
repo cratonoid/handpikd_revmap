@@ -4,11 +4,21 @@
 // <PurchaseOrdersTab> — "Purchase orders" tab on /admin/orders
 // ---------------------------------------------------------------------------
 // Mirrors components/admin/vendors-page-client.tsx, including its add/edit
-// split: "+ New purchase order" opens the popup in "add" mode; double-clicking
-// an existing row opens it in "edit" mode, pre-filled with that row's data.
-// Both modes save through the same popup (components/admin/
+// split: "+ New purchase order" starts the add flow; double-clicking an
+// existing row opens the popup in "edit" mode, pre-filled with that row's
+// data. Both modes save through the same popup (components/admin/
 // purchase-order-form-modal.tsx), which POSTs to create_new_purchase_order /
 // update_purchase_order_details (backend/app/api/routes/orders.py).
+//
+// Adding is a three-step flow rather than one popup, since a purchase order
+// can be started from the vendor's own invoice:
+//   "choose" -> purchase-order-source-modal.tsx asks which way
+//   "upload" -> purchase-invoice-upload-modal.tsx reads the vendor's PDF and
+//               hands back the values it found
+//   "add"    -> the ordinary form, empty or pre-filled with those values for
+//               review
+// Creating an order also raises its purchase invoice server-side, so both
+// paths show up on /admin/invoices without anything being added there.
 //
 // Two separate vendor fetches: the full get_vendor_details list (`vendors`)
 // resolves the table's vendor column, including for orders whose vendor has
@@ -17,13 +27,28 @@
 // vendors.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
+import { PurchaseInvoiceUploadModal } from "@/components/admin/purchase-invoice-upload-modal";
 import { PurchaseOrderFormModal } from "@/components/admin/purchase-order-form-modal";
-import { fetchPurchaseOrders, type PurchaseOrder } from "@/lib/purchase-orders";
+import { PurchaseOrderSourceModal } from "@/components/admin/purchase-order-source-modal";
+import {
+  fetchPurchaseOrders,
+  type ParsedPurchaseInvoice,
+  type PurchaseOrder,
+} from "@/lib/purchase-orders";
 import { fetchVendors, fetchVendorsList, type Vendor, type VendorOption } from "@/lib/vendors";
 import { fetchProducts, type Product } from "@/lib/products";
+import { fetchProfileDetails } from "@/lib/profile-details";
+import { resolveStateCode } from "@/lib/gst";
 import styles from "@/styles/dashboard.module.css";
 
-type ModalState = { mode: "add" } | { mode: "edit"; order: PurchaseOrder } | null;
+type ModalState =
+  | { mode: "choose" }
+  | { mode: "upload" }
+  // prefill/pdfFile are set only when the add form was reached by uploading
+  // an invoice; they're absent for an order being keyed in from scratch.
+  | { mode: "add"; prefill?: ParsedPurchaseInvoice; pdfFile?: File }
+  | { mode: "edit"; order: PurchaseOrder }
+  | null;
 type LoadState = "loading" | "loaded";
 
 export function PurchaseOrdersTab() {
@@ -31,6 +56,11 @@ export function PurchaseOrdersTab() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [vendorOptions, setVendorOptions] = useState<VendorOption[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  // Our own GST state. Fetched here rather than in the form modal so it
+  // rides along with the tab's existing load instead of costing a
+  // request every time the popup opens. The purchase order form compares
+  // it against the chosen vendor's state to default SGST + CGST vs IGST.
+  const [ownStateCode, setOwnStateCode] = useState("");
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
 
@@ -39,13 +69,20 @@ export function PurchaseOrdersTab() {
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([fetchPurchaseOrders(), fetchVendors(), fetchVendorsList(), fetchProducts()])
-      .then(([orderData, vendorData, vendorOptionData, productData]) => {
+    Promise.all([
+      fetchPurchaseOrders(),
+      fetchVendors(),
+      fetchVendorsList(),
+      fetchProducts(),
+      fetchProfileDetails(),
+    ])
+      .then(([orderData, vendorData, vendorOptionData, productData, profile]) => {
         if (cancelled) return;
         setOrders(orderData);
         setVendors(vendorData);
         setVendorOptions(vendorOptionData);
         setProducts(productData);
+        setOwnStateCode(resolveStateCode(profile.state_code, profile.gstin));
         setLoadState("loaded");
       })
       .catch(() => {
@@ -94,7 +131,7 @@ export function PurchaseOrdersTab() {
           type="button"
           variant="primary"
           className={styles.filterToggleRowAction}
-          onClick={() => setModalState({ mode: "add" })}
+          onClick={() => setModalState({ mode: "choose" })}
         >
           + New purchase order
         </Button>
@@ -135,12 +172,30 @@ export function PurchaseOrdersTab() {
         )}
       </div>
 
-      {modalState && (
+      {modalState?.mode === "choose" && (
+        <PurchaseOrderSourceModal
+          onChoose={(source) => setModalState(source === "upload" ? { mode: "upload" } : { mode: "add" })}
+          onClose={() => setModalState(null)}
+        />
+      )}
+
+      {modalState?.mode === "upload" && (
+        <PurchaseInvoiceUploadModal
+          onParsed={(prefill, pdfFile) => setModalState({ mode: "add", prefill, pdfFile })}
+          onFillManually={() => setModalState({ mode: "add" })}
+          onClose={() => setModalState(null)}
+        />
+      )}
+
+      {(modalState?.mode === "add" || modalState?.mode === "edit") && (
         <PurchaseOrderFormModal
           mode={modalState.mode}
           initialOrder={modalState.mode === "edit" ? modalState.order : undefined}
+          prefill={modalState.mode === "add" ? modalState.prefill : undefined}
+          initialPdfFile={modalState.mode === "add" ? modalState.pdfFile : undefined}
           vendors={vendorOptions}
           products={products}
+          ownStateCode={ownStateCode}
           nextPurchaseOrderNo={nextPurchaseOrderNo}
           onClose={() => setModalState(null)}
           onSaved={handleSaved}

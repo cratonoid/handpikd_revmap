@@ -13,6 +13,13 @@ class AddCustomerDetailsRequest(BaseModel):
     # missing buyer GSTIN as inter-state (IGST), and the invoice PDF renders
     # an empty Place of Supply rather than failing.
     company_gst: str = ""
+    # Two-digit GST state code (see services/gst.py's GST_STATE_CODES) and
+    # its name. Blank means "derive it from company_gst" — the route calls
+    # resolve_state_code before storing, so a client whose GSTIN is on file
+    # never has to have their state keyed in separately. state_name is
+    # always re-derived from the code rather than trusted.
+    state_code: str = ""
+    state_name: str = ""
     points: int
     is_deleted: bool = False
     contact_name: list[str]
@@ -38,6 +45,8 @@ class CustomerDetailItem(BaseModel):
     company_or_department: str
     address: str
     company_gst: str = ""
+    state_code: str = ""
+    state_name: str = ""
     points: int
     is_deleted: bool = False
     contact_name: list[str]
@@ -60,6 +69,13 @@ class UpdateCustomerDetailsRequest(BaseModel):
     company_or_department: str
     address: str
     company_gst: str = ""
+    # Two-digit GST state code (see services/gst.py's GST_STATE_CODES) and
+    # its name. Blank means "derive it from company_gst" — the route calls
+    # resolve_state_code before storing, so a client whose GSTIN is on file
+    # never has to have their state keyed in separately. state_name is
+    # always re-derived from the code rather than trusted.
+    state_code: str = ""
+    state_name: str = ""
     points: int
     is_deleted: bool = False
     contact_name: list[str]

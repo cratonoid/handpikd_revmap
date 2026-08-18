@@ -84,7 +84,6 @@ export function BrandCataloguesPageClient() {
                   <BrandCatalogueCard
                     key={catalogue.id}
                     catalogueName={catalogue.catalogueName}
-                    vendorName={catalogue.vendorName}
                     coverImagePath={catalogue.imagePaths[0]}
                     onOpen={() => setActiveCatalogue(catalogue)}
                   />

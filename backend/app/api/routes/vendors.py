@@ -4,7 +4,7 @@
 from beanie.operators import In
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from app.api.routes.admin import require_admin
+from app.api.routes.admin import party_state_or_400, require_admin
 from app.models import User, VendorDetails, VendorIdCounter, VendorPocDetails, VendorPocIdCounter
 from app.schemas.vendors import (
     AddVendorDetailsRequest,
@@ -26,11 +26,15 @@ async def add_vendor_details(
     payload: AddVendorDetailsRequest,
     _: User | None = Depends(require_admin),
 ) -> AddVendorDetailsResponse:
+    state_code, state_name = party_state_or_400(payload.state_code, payload.gst)
+
     vendor_id = await get_next_id(VendorIdCounter, "next_vendor_id", VendorDetails)
     vendor = VendorDetails(
         id=vendor_id,
         registered_name=payload.registered_name,
         gst=payload.gst,
+        state_code=state_code,
+        state_name=state_name,
         address=payload.address,
         description=payload.description,
         vendor_type=payload.vendor_type,
@@ -58,7 +62,14 @@ async def get_vendors_list(
     # GST-invoiceable vendors only — see product-form-modal.tsx.
     vendors = await VendorDetails.find(VendorDetails.is_deleted == False).to_list()
     return [
-        VendorListItem(vendor_id=vendor.id, vendor_name=vendor.registered_name, gst=vendor.gst) for vendor in vendors
+        VendorListItem(
+            vendor_id=vendor.id,
+            vendor_name=vendor.registered_name,
+            gst=vendor.gst,
+            state_code=vendor.state_code,
+            state_name=vendor.state_name,
+        )
+        for vendor in vendors
     ]
 
 
@@ -84,6 +95,8 @@ async def get_vendor_details(
                 id=vendor.id,
                 registered_name=vendor.registered_name,
                 gst=vendor.gst,
+                state_code=vendor.state_code,
+                state_name=vendor.state_name,
                 address=vendor.address,
                 description=vendor.description,
                 qr_code=vendor.qr_code,
@@ -108,6 +121,7 @@ async def update_vendor_details(
 
     vendor.registered_name = payload.registered_name
     vendor.gst = payload.gst
+    vendor.state_code, vendor.state_name = party_state_or_400(payload.state_code, payload.gst)
     vendor.address = payload.address
     vendor.qr_code = payload.qr_code
     vendor.description = payload.description

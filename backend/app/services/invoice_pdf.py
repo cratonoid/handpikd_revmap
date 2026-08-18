@@ -19,7 +19,13 @@ import qrcode
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from app.core.config import settings
-from app.services.gst import is_intra_state, split_tax, state_name_from_gstin
+from app.services.gst import (
+    TaxKind,
+    place_of_supply_text as _place_of_supply_text,
+    split_tax,
+    state_code_from_gstin,
+    tax_kind_for,
+)
 from app.services.number_to_words import rupees_to_words
 from app.services.pdf_renderer import render_html_to_pdf
 from app.services.storage import MEDIA_URL_PREFIX
@@ -117,12 +123,24 @@ async def generate_invoice_pdf(
     title_text: str = "TAX INVOICE",
     party_label: str = "Customer",
     show_signature: bool = False,
+    tax_kind: TaxKind | None = None,
+    place_of_supply_code: str = "",
 ) -> bytes:
-    intra_state = is_intra_state(customer_gstin, personal.get("gstin"))
+    # tax_kind/place_of_supply_code are the values the document was raised
+    # with (InvoiceDetails/PurchaseInvoiceDetails snapshot both), so a
+    # reprint states what went out originally even if the party's state has
+    # since been corrected. Documents raised before those columns existed
+    # pass neither, and fall back to deciding from the two GSTINs — which is
+    # all this function ever had to go on.
+    if tax_kind is None:
+        tax_kind = tax_kind_for(state_code_from_gstin(customer_gstin), state_code_from_gstin(personal.get("gstin")))
+    if not place_of_supply_code:
+        place_of_supply_code = state_code_from_gstin(customer_gstin) or ""
+    intra_state = tax_kind == TaxKind.cgst_sgst
 
     rendered_items = []
     for index, item in enumerate(line_items, start=1):
-        tax = split_tax(item.tax_perc, item.tax_amount, customer_gstin, personal.get("gstin"))
+        tax = split_tax(item.tax_perc, item.tax_amount, tax_kind)
         rendered_items.append(
             {
                 "sr_no": index,
@@ -141,9 +159,7 @@ async def generate_invoice_pdf(
 
     total_qty = sum(item.quantity for item in line_items)
 
-    place_of_supply = state_name_from_gstin(customer_gstin)
-    place_of_supply_code = customer_gstin[:2] if customer_gstin else ""
-    place_of_supply_text = f"{place_of_supply} ( {place_of_supply_code} )" if place_of_supply else "-"
+    place_of_supply = _place_of_supply_text(place_of_supply_code)
 
     signature_data_uri = None
     if show_signature:
@@ -175,7 +191,7 @@ async def generate_invoice_pdf(
         customer_address=customer_address,
         customer_phone=customer_phone or "-",
         customer_gstin=customer_gstin or "-",
-        place_of_supply=place_of_supply_text,
+        place_of_supply=place_of_supply,
         intra_state=intra_state,
         line_items=rendered_items,
         total_qty=_amount(total_qty),
