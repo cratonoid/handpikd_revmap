@@ -9,6 +9,7 @@ from app.api.routes import (
     authentication,
     catalogues,
     categories,
+    database,
     inquiry_form,
     inventory,
     invoices,
@@ -31,6 +32,7 @@ api_router.include_router(admin.router)
 api_router.include_router(analytics.router)
 api_router.include_router(accounts.router)
 api_router.include_router(categories.router)
+api_router.include_router(database.router)
 api_router.include_router(vendors.router)
 api_router.include_router(products.router)
 api_router.include_router(products.public_router)

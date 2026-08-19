@@ -431,6 +431,17 @@ export function PenIcon(props: IconProps) {
   );
 }
 
+// The Database module (dashboard-shell.tsx) — a classic stacked-cylinder mark.
+export function DatabaseIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <ellipse cx="12" cy="6" rx="7" ry="3" />
+      <path d="M5 6v12c0 1.66 3.13 3 7 3s7-1.34 7-3V6" />
+      <path d="M5 12c0 1.66 3.13 3 7 3s7-1.34 7-3" />
+    </svg>
+  );
+}
+
 export function TrophyIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>

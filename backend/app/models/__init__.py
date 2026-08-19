@@ -9,6 +9,8 @@ from app.models.customer_details import CustomerDetails
 from app.models.customer_id_counter import CustomerIdCounter
 from app.models.customer_poc_details import CustomerPocDetails
 from app.models.customer_poc_id_counter import CustomerPocIdCounter
+from app.models.database_vendor import DatabaseVendor
+from app.models.database_vendor_id_counter import DatabaseVendorIdCounter
 from app.models.inquiry_form_node import InquiryFormNode
 from app.models.inquiry_form_node_id_counter import InquiryFormNodeIdCounter
 from app.models.inquiry_form_submission import InquiryFormSubmission, SelectedInquiryFormNode
@@ -20,6 +22,8 @@ from app.models.inventory_id_counter import InventoryIdCounter
 from app.models.invoice_details import InvoiceDetails, InvoiceStatus, InvoiceType, OnlineOrOffline
 from app.models.invoice_id_counter import InvoiceIdCounter
 from app.models.invoice_no_counter_master import InvoiceNoCounterMaster
+from app.models.lead import Lead
+from app.models.lead_id_counter import LeadIdCounter
 from app.models.order_no_counter_master import OrderNoCounterMaster
 from app.models.order_status_master import OrderStatusMaster
 from app.models.personal_details import PersonalDetails
@@ -69,6 +73,8 @@ __all__ = [
     "CustomerIdCounter",
     "CustomerPocDetails",
     "CustomerPocIdCounter",
+    "DatabaseVendor",
+    "DatabaseVendorIdCounter",
     "InquiryFormNode",
     "InquiryFormNodeIdCounter",
     "InquiryFormSubmission",
@@ -84,6 +90,8 @@ __all__ = [
     "OnlineOrOffline",
     "InvoiceIdCounter",
     "InvoiceNoCounterMaster",
+    "Lead",
+    "LeadIdCounter",
     "OrderNoCounterMaster",
     "OrderStatusMaster",
     "PersonalDetails",
