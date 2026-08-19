@@ -5,19 +5,25 @@
 // The hierarchy (category -> item -> brand option -> ...) is one
 // self-referencing tree, same shape as lib/categories.ts's Category tree,
 // with extra per-node fields describing how THAT node's own children get
-// presented/selected: `note` (a short annotation next to the label, e.g.
-// "min 600"), `prompt` (the heading shown above the children when picking
-// among them), `selectionMode`/`maxSelections` (single-pick vs multi-pick
-// with an optional cap). Top-level nodes have no parent node to carry that
-// config, so the first step (picking categories) is always implicitly
-// multi/unlimited - see the public form page for where that's hardcoded.
+// presented/selected: `prompt` (the heading shown above the children when
+// picking among them), `selectionMode`/`maxSelections` (single-pick vs
+// multi-pick with an optional cap). Top-level nodes have no parent node to
+// carry that config, so the first step (picking categories) is always
+// implicitly multi/unlimited - see the public form page for where that's
+// hardcoded.
+//
+// `minAmount` is the one field that describes the node ITSELF rather than its
+// children: an optional minimum spend per hamper, in rupees. The public form
+// adds it up across everything the visitor has checked (see
+// collectSelectedMinAmounts below) and shows the running total before they
+// submit.
 import { apiFetch } from "@/lib/api";
 
 type InquiryFormNodeApiItem = {
   id: number;
   parent_id: number | null;
   label: string;
-  note: string | null;
+  min_amount: number | null;
   prompt: string | null;
   selection_mode: "single" | "multi";
   max_selections: number | null;
@@ -28,7 +34,7 @@ type InquiryFormNodeApiItem = {
 export type InquiryTreeNode = {
   id: number;
   label: string;
-  note: string | null;
+  minAmount: number | null;
   prompt: string | null;
   selectionMode: "single" | "multi";
   maxSelections: number | null;
@@ -43,7 +49,7 @@ function buildTree(items: InquiryFormNodeApiItem[]): InquiryTreeNode[] {
     nodesById.set(item.id, {
       id: item.id,
       label: item.label,
-      note: item.note,
+      minAmount: item.min_amount,
       prompt: item.prompt,
       selectionMode: item.selection_mode,
       maxSelections: item.max_selections,
@@ -86,6 +92,37 @@ export function collectDescendantIds(node: InquiryTreeNode): number[] {
     ids.push(child.id, ...collectDescendantIds(child));
   }
   return ids;
+}
+
+// Every checked node that carries a `minAmount`, in the order it appears in
+// the tree, each tagged with the labels of the checked ancestors it sits
+// under ("Electronics" -> "Headphone") so the form can show the visitor a
+// breakdown of exactly where their running minimum comes from.
+export type MinAmountLine = {
+  id: number;
+  label: string;
+  path: string[]; // checked ancestor labels, outermost first
+  minAmount: number;
+};
+
+export function collectSelectedMinAmounts(
+  nodes: InquiryTreeNode[],
+  selectedIds: Set<number>,
+  path: string[] = [],
+): MinAmountLine[] {
+  const lines: MinAmountLine[] = [];
+  for (const node of nodes) {
+    if (!selectedIds.has(node.id)) continue;
+    if (node.minAmount !== null) {
+      lines.push({ id: node.id, label: node.label, path, minAmount: node.minAmount });
+    }
+    lines.push(...collectSelectedMinAmounts(node.children, selectedIds, [...path, node.label]));
+  }
+  return lines;
+}
+
+export function sumMinAmounts(lines: MinAmountLine[]): number {
+  return lines.reduce((total, line) => total + line.minAmount, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -141,7 +178,7 @@ export async function fetchAdminInquiryFormTree(): Promise<InquiryTreeNode[]> {
 
 export type InquiryNodeFormValues = {
   label: string;
-  note: string;
+  minAmount: string; // numeric input value as a string; "" means no minimum
   prompt: string;
   selectionMode: "single" | "multi";
   maxSelections: string; // numeric input value as a string; "" means no cap
@@ -156,7 +193,7 @@ export async function addInquiryFormNode(parentId: number | null, values: Inquir
     body: JSON.stringify({
       parent_id: parentId,
       label: values.label.trim(),
-      note: values.note.trim() || null,
+      min_amount: values.minAmount.trim() ? Number(values.minAmount) : null,
       prompt: values.prompt.trim() || null,
       selection_mode: values.selectionMode,
       max_selections: values.maxSelections.trim() ? Number(values.maxSelections) : null,
@@ -179,7 +216,7 @@ export async function updateInquiryFormNode(nodeId: number, values: InquiryNodeF
     body: JSON.stringify({
       node_id: nodeId,
       label: values.label.trim(),
-      note: values.note.trim() || null,
+      min_amount: values.minAmount.trim() ? Number(values.minAmount) : null,
       prompt: values.prompt.trim() || null,
       selection_mode: values.selectionMode,
       max_selections: values.maxSelections.trim() ? Number(values.maxSelections) : null,
@@ -218,7 +255,7 @@ export type InquirySubmissionSelection = {
   nodeId: number;
   parentId: number | null;
   label: string;
-  note: string | null;
+  minAmount: number | null;
 };
 
 export type InquirySubmission = {
@@ -228,6 +265,7 @@ export type InquirySubmission = {
   itemQuantity: number;
   budgetPerItem: number;
   createdAt: string;
+  totalMinAmount: number;
   selections: InquirySubmissionSelection[];
 };
 
@@ -238,7 +276,8 @@ type InquiryFormSubmissionApiItem = {
   item_quantity: number;
   budget_per_item: number;
   created_at: string;
-  selections: { node_id: number; parent_id: number | null; label: string; note: string | null }[];
+  total_min_amount: number;
+  selections: { node_id: number; parent_id: number | null; label: string; min_amount: number | null }[];
 };
 
 export async function fetchInquirySubmissions(): Promise<InquirySubmission[]> {
@@ -254,18 +293,19 @@ export async function fetchInquirySubmissions(): Promise<InquirySubmission[]> {
     itemQuantity: item.item_quantity,
     budgetPerItem: item.budget_per_item,
     createdAt: item.created_at,
+    totalMinAmount: item.total_min_amount,
     selections: item.selections.map((sel) => ({
       nodeId: sel.node_id,
       parentId: sel.parent_id,
       label: sel.label,
-      note: sel.note,
+      minAmount: sel.min_amount,
     })),
   }));
 }
 
 // Groups a submission's flat, snapshotted `selections` back into a tree for
 // display - independent of the live hierarchy (which may have since changed)
-// since every selection already carries its own label/note/parent_id.
+// since every selection already carries its own label/minAmount/parent_id.
 export type SubmissionSelectionNode = InquirySubmissionSelection & { children: SubmissionSelectionNode[] };
 
 export function buildSubmissionSelectionTree(selections: InquirySubmissionSelection[]): SubmissionSelectionNode[] {

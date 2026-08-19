@@ -12,6 +12,12 @@
 // (a summary + submit). A successful submit swaps the whole form out for a
 // thank-you state, same pattern as home_page/contact-form.tsx.
 //
+// Every option can carry an optional `minAmount` (set per-node in admin).
+// Those are added up live as the visitor checks things — <MinAmountSummary>
+// shows the breakdown, the minimum per combo/item, and what that works out to
+// across the quantity they entered on step 1 — so nothing about the cost is
+// a surprise by the time they reach the submit button.
+//
 // The hierarchy is fetched once on mount (not lazily on reaching step 2) so
 // it's already loaded by the time the visitor gets there.
 import { useEffect, useState, type FormEvent } from "react";
@@ -20,10 +26,14 @@ import { CheckIcon } from "@/components/icons";
 import { InquiryTreeSelector } from "@/components/hamper-inquiry/inquiry-tree-selector";
 import {
   collectDescendantIds,
+  collectSelectedMinAmounts,
   fetchPublicInquiryFormTree,
   submitHamperInquiry,
+  sumMinAmounts,
   type InquiryTreeNode,
+  type MinAmountLine,
 } from "@/lib/inquiry-form";
+import { formatInr } from "@/lib/public-products";
 import styles from "@/styles/hamper-inquiry.module.css";
 
 type Step = "details" | "selection" | "review" | "success";
@@ -33,6 +43,70 @@ const STEPS: { key: Step; label: string }[] = [
   { key: "selection", label: "What you need" },
   { key: "review", label: "Review & submit" },
 ];
+
+// The running minimum: one line per checked option that has a minimum set,
+// then the per-combo/item total and what it comes to across `quantity` items.
+// Rendered on both the selection step (updating as boxes are ticked) and the
+// review step.
+function MinAmountSummary({
+  lines,
+  quantity,
+  budgetPerItem,
+}: {
+  lines: MinAmountLine[];
+  quantity: number;
+  budgetPerItem: number;
+}) {
+  if (lines.length === 0) return null;
+
+  const minPerItem = sumMinAmounts(lines);
+  const overBudget = budgetPerItem > 0 && minPerItem > budgetPerItem;
+
+  return (
+    <div className={styles.totalPanel}>
+      <p className={styles.totalPanelHeading}>Minimums from what you&apos;ve picked</p>
+
+      <ul className={styles.totalBreakdown}>
+        {lines.map((line) => (
+          <li key={line.id} className={styles.totalBreakdownRow}>
+            <span className={styles.totalBreakdownLabel}>
+              {line.path.length > 0 && (
+                <span className={styles.totalBreakdownPath}>{line.path.join(" › ")} › </span>
+              )}
+              {line.label}
+            </span>
+            <span className={styles.totalBreakdownValue}>{formatInr(line.minAmount)}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className={styles.totalRow}>
+        <span className={styles.totalRowLabel}>Minimum per combo/item</span>
+        <span className={styles.totalRowValue}>{formatInr(minPerItem)}</span>
+      </div>
+
+      {quantity > 0 && (
+        <div className={styles.totalRow}>
+          <span className={styles.totalRowLabel}>
+            Estimated minimum for {quantity} {quantity === 1 ? "item" : "items"}
+          </span>
+          <span className={styles.totalRowValue}>{formatInr(minPerItem * quantity)}</span>
+        </div>
+      )}
+
+      {overBudget && (
+        <p className={styles.totalWarning}>
+          That&apos;s above the {formatInr(budgetPerItem)} budget per item/combo you entered. You can still submit — we&apos;ll
+          come back with the closest fit — or go back and adjust your picks.
+        </p>
+      )}
+
+      <p className={styles.totalFootnote}>
+        Indicative minimums only, excluding GST. Final pricing is confirmed on your quotation.
+      </p>
+    </div>
+  );
+}
 
 function ReviewSelections({
   nodes,
@@ -51,7 +125,9 @@ function ReviewSelections({
       {checked.map((node) => (
         <li key={node.id} className={styles.reviewTreeItem}>
           {node.label}
-          {node.note && <span className={styles.reviewTreeNote}> ({node.note})</span>}
+          {node.minAmount !== null && (
+            <span className={styles.reviewTreeNote}> — min {formatInr(node.minAmount)}</span>
+          )}
           {node.children.length > 0 && (
             <ReviewSelections nodes={node.children} selectedIds={selectedIds} depth={depth + 1} />
           )}
@@ -78,6 +154,10 @@ export function HamperInquiryFormClient() {
 
   const [submitStatus, setSubmitStatus] = useState<"idle" | "submitting">("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const minAmountLines = tree ? collectSelectedMinAmounts(tree, selectedIds) : [];
+  const quantity = Number(itemQuantity) || 0;
+  const budget = Number(budgetPerItem) || 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -266,7 +346,7 @@ export function HamperInquiryFormClient() {
             </div>
             <div>
               <label htmlFor="budgetPerItem" className={styles.formLabel}>
-                Budget per item (without GST)
+                Budget per item/combo (without GST)
               </label>
               <input
                 id="budgetPerItem"
@@ -324,6 +404,8 @@ export function HamperInquiryFormClient() {
             <p className={styles.emptyText}>No categories are available right now. Please check back shortly.</p>
           )}
 
+          <MinAmountSummary lines={minAmountLines} quantity={quantity} budgetPerItem={budget} />
+
           {selectionError && (
             <p role="alert" aria-live="polite" className={styles.formError}>
               {selectionError}
@@ -362,7 +444,7 @@ export function HamperInquiryFormClient() {
               <span className={styles.reviewValue}>{itemQuantity}</span>
             </div>
             <div className={styles.reviewRow}>
-              <span className={styles.reviewLabel}>Budget per item (without GST)</span>
+              <span className={styles.reviewLabel}>Budget per item/combo (without GST)</span>
               <span className={styles.reviewValue}>₹{budgetPerItem}</span>
             </div>
           </div>
@@ -373,6 +455,8 @@ export function HamperInquiryFormClient() {
           ) : (
             <p className={styles.reviewEmpty}>Nothing selected.</p>
           )}
+
+          <MinAmountSummary lines={minAmountLines} quantity={quantity} budgetPerItem={budget} />
 
           {submitError && (
             <p role="alert" aria-live="polite" className={styles.formError}>

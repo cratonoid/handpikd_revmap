@@ -12,12 +12,15 @@
 // What differs from that simpler filter is that here EVERY node can carry
 // its own presentation config for its children (lib/inquiry-form.ts):
 // `selectionMode` ("single" picks like a radio group, "multi" like
-// checkboxes), an optional `maxSelections` cap, and a `prompt` heading. The
+// checkboxes), an optional `maxSelections` cap, and a `prompt` heading — plus
+// its own optional `minAmount`, shown next to the label here and added into
+// the running total the form keeps underneath this tree. The
 // component doesn't hold state itself — `selectedIds` (the full set of
 // checked node ids, across every level) lives in the parent form component,
 // with `onToggle` called to report a change; see hamper-inquiry-form-client.tsx
 // for how single-select/cap enforcement is applied there.
 import type { InquiryTreeNode } from "@/lib/inquiry-form";
+import { formatInr } from "@/lib/public-products";
 import { CheckIcon } from "@/components/icons";
 import styles from "@/styles/hamper-inquiry.module.css";
 
@@ -81,7 +84,9 @@ export function InquiryTreeSelector({
                 </span>
                 <span className={styles.optionLabel}>
                   {node.label}
-                  {node.note && <span className={styles.optionNote}> ({node.note})</span>}
+                  {node.minAmount !== null && (
+                    <span className={styles.optionNote}> · min {formatInr(node.minAmount)}</span>
+                  )}
                 </span>
               </button>
 

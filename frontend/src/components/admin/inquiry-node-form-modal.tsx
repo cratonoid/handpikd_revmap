@@ -18,7 +18,7 @@ import styles from "@/styles/dashboard.module.css";
 
 const DEFAULT_VALUES: InquiryNodeFormValues = {
   label: "",
-  note: "",
+  minAmount: "",
   prompt: "",
   selectionMode: "multi",
   maxSelections: "",
@@ -93,15 +93,17 @@ export function InquiryNodeFormModal({
               />
             </div>
             <div>
-              <label htmlFor="nodeNote" className={styles.formLabel}>
-                Note <span className={styles.formOptionalText}>(optional)</span>
+              <label htmlFor="nodeMinAmount" className={styles.formLabel}>
+                Minimum amount (₹) <span className={styles.formOptionalText}>(optional)</span>
               </label>
               <input
-                id="nodeNote"
-                type="text"
-                placeholder="e.g. min 600"
-                value={values.note}
-                onChange={(e) => setValues((prev) => ({ ...prev, note: e.target.value }))}
+                id="nodeMinAmount"
+                type="number"
+                min={0}
+                step="0.01"
+                placeholder="e.g. 600"
+                value={values.minAmount}
+                onChange={(e) => setValues((prev) => ({ ...prev, minAmount: e.target.value }))}
                 className={styles.formInput}
               />
             </div>

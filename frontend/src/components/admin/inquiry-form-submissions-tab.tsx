@@ -10,6 +10,9 @@
 // snapshotted `selections` (see lib/inquiry-form.ts's
 // buildSubmissionSelectionTree) rather than the live, possibly-since-edited
 // hierarchy, so a submission always renders exactly what the visitor picked.
+// The same goes for the money: each selection's `minAmount` and the
+// `totalMinAmount` shown here are the frozen figures the visitor saw on the
+// review step, not a re-sum against today's prices.
 import { Fragment, useEffect, useState } from "react";
 import { ChevronRightIcon } from "@/components/icons";
 import {
@@ -18,6 +21,7 @@ import {
   type InquirySubmission,
   type SubmissionSelectionNode,
 } from "@/lib/inquiry-form";
+import { formatInr } from "@/lib/public-products";
 import styles from "@/styles/dashboard.module.css";
 
 function SelectionNodeList({ nodes, depth = 0 }: { nodes: SubmissionSelectionNode[]; depth?: number }) {
@@ -29,7 +33,9 @@ function SelectionNodeList({ nodes, depth = 0 }: { nodes: SubmissionSelectionNod
             <div className={styles.treeNodeMain}>
               <span className={depth === 0 ? styles.treeNodeNameRoot : styles.treeNodeName}>
                 {node.label}
-                {node.note && <span className={styles.treeNodeNote}>({node.note})</span>}
+                {node.minAmount !== null && (
+                  <span className={styles.treeNodeNote}>(min {formatInr(node.minAmount)})</span>
+                )}
               </span>
             </div>
           </div>
@@ -94,6 +100,7 @@ export function InquiryFormSubmissionsTab() {
               <th className={styles.tableHeadCell}>Occasion</th>
               <th className={styles.tableHeadCell}>Item qty</th>
               <th className={styles.tableHeadCell}>Budget/item</th>
+              <th className={styles.tableHeadCell}>Min/combo</th>
               <th className={styles.tableHeadCell}>Submitted</th>
               <th className={styles.tableHeadCell}>Selections</th>
             </tr>
@@ -116,6 +123,7 @@ export function InquiryFormSubmissionsTab() {
                     <td className={styles.tableCell}>{submission.occasion}</td>
                     <td className={styles.tableCell}>{submission.itemQuantity}</td>
                     <td className={styles.tableCell}>₹{submission.budgetPerItem}</td>
+                    <td className={styles.tableCell}>{formatInr(submission.totalMinAmount)}</td>
                     <td className={styles.tableCell}>
                       {new Date(submission.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
                     </td>
@@ -132,7 +140,7 @@ export function InquiryFormSubmissionsTab() {
                   {isExpanded && (
                     <tr>
                       <td className={`${styles.tableCell} ${styles.tableCellSerial} ${styles.tableDropdownCell}`} />
-                      <td colSpan={6} className={styles.tableDropdownCell}>
+                      <td colSpan={7} className={styles.tableDropdownCell}>
                         {selectionTree.length > 0 ? (
                           <SelectionNodeList nodes={selectionTree} />
                         ) : (

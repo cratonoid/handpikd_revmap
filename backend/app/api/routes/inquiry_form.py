@@ -46,7 +46,7 @@ def _to_item(node: InquiryFormNode) -> InquiryFormNodeItem:
         id=node.id,
         parent_id=node.parent_id,
         label=node.label,
-        note=node.note,
+        min_amount=node.min_amount,
         prompt=node.prompt,
         selection_mode=node.selection_mode,
         max_selections=node.max_selections,
@@ -68,6 +68,8 @@ async def add_node(
 ) -> AddInquiryFormNodeResponse:
     if not payload.label.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="label is required")
+    if payload.min_amount is not None and payload.min_amount < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="minimum amount cannot be negative")
 
     if payload.parent_id is not None:
         parent = await InquiryFormNode.get(payload.parent_id)
@@ -79,7 +81,7 @@ async def add_node(
         id=node_id,
         parent_id=payload.parent_id,
         label=payload.label,
-        note=payload.note,
+        min_amount=payload.min_amount,
         prompt=payload.prompt,
         selection_mode=payload.selection_mode,
         max_selections=payload.max_selections,
@@ -109,9 +111,11 @@ async def update_node(
 
     if not payload.label.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="label is required")
+    if payload.min_amount is not None and payload.min_amount < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="minimum amount cannot be negative")
 
     node.label = payload.label
-    node.note = payload.note
+    node.min_amount = payload.min_amount
     node.prompt = payload.prompt
     node.selection_mode = payload.selection_mode
     node.max_selections = payload.max_selections
@@ -133,8 +137,11 @@ async def get_submissions(_: User | None = Depends(require_admin)) -> list[Inqui
             item_quantity=submission.item_quantity,
             budget_per_item=submission.budget_per_item,
             created_at=submission.created_at,
+            total_min_amount=submission.total_min_amount,
             selections=[
-                SelectedNodeItem(node_id=sel.node_id, parent_id=sel.parent_id, label=sel.label, note=sel.note)
+                SelectedNodeItem(
+                    node_id=sel.node_id, parent_id=sel.parent_id, label=sel.label, min_amount=sel.min_amount
+                )
                 for sel in submission.selections
             ],
         )
@@ -206,9 +213,14 @@ async def submit_inquiry_form(payload: SubmitInquiryFormRequest) -> SubmitInquir
         item_quantity=payload.item_quantity,
         budget_per_item=payload.budget_per_item,
         selections=[
-            SelectedInquiryFormNode(node_id=node.id, parent_id=node.parent_id, label=node.label, note=node.note)
+            SelectedInquiryFormNode(
+                node_id=node.id, parent_id=node.parent_id, label=node.label, min_amount=node.min_amount
+            )
             for node in nodes
         ],
+        # Recomputed here from the stored nodes rather than taken from the
+        # request, so the saved total always matches the live configuration.
+        total_min_amount=sum(node.min_amount or 0 for node in nodes),
         created_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
     await submission.insert()

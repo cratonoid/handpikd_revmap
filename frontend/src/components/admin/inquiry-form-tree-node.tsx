@@ -8,14 +8,15 @@
 // child in `node.children` becomes another <InquiryFormTreeNode> one level
 // deeper, so the tree goes to whatever depth the admin has built (category ->
 // item -> brand option -> ...). Unlike the plain category tree, each node
-// here carries extra form-builder config (note, prompt, selection mode, max
-// selections, active/inactive) — editing that opens <InquiryNodeFormModal>
+// here carries extra form-builder config (minimum amount, prompt, selection
+// mode, max selections, active/inactive) — editing that opens <InquiryNodeFormModal>
 // pre-filled with the node's current values, rather than an inline text
 // input, since there are too many fields to fit inline.
 import { useState } from "react";
 import { Button } from "@/components/button";
 import { InquiryNodeFormModal } from "@/components/admin/inquiry-node-form-modal";
 import type { InquiryNodeFormValues, InquiryTreeNode } from "@/lib/inquiry-form";
+import { formatInr } from "@/lib/public-products";
 import { ChevronRightIcon, PenIcon, PlusIcon, XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
@@ -81,7 +82,9 @@ export function InquiryFormTreeNode({
             title={hasChildren ? selectionSummary(node) : undefined}
           >
             {node.label}
-            {node.note && <span className={styles.treeNodeNote}>({node.note})</span>}
+            {node.minAmount !== null && (
+              <span className={styles.treeNodeNote}>(min {formatInr(node.minAmount)})</span>
+            )}
             {!node.isActive && <span className={styles.inactiveBadge}>Inactive</span>}
           </span>
         </div>
@@ -205,7 +208,7 @@ export function InquiryFormTreeNode({
           title={`Edit "${node.label}"`}
           initialValues={{
             label: node.label,
-            note: node.note ?? "",
+            minAmount: node.minAmount !== null ? String(node.minAmount) : "",
             prompt: node.prompt ?? "",
             selectionMode: node.selectionMode,
             maxSelections: node.maxSelections !== null ? String(node.maxSelections) : "",

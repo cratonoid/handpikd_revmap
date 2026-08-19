@@ -7,7 +7,7 @@
 // Same shape as category-tree-modal.tsx: shows the full hierarchy under one
 // top-level category via <InquiryFormTreeNode>, which does the recursive
 // rendering (and, unlike the plain category tree, also lets each node's own
-// note/prompt/selection config be edited in place).
+// minimum amount/prompt/selection config be edited in place).
 import { InquiryFormTreeNode } from "@/components/admin/inquiry-form-tree-node";
 import type { InquiryNodeFormValues, InquiryTreeNode } from "@/lib/inquiry-form";
 import { XMarkIcon } from "@/components/icons";

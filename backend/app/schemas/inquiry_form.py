@@ -13,7 +13,7 @@ class InquiryFormNodeItem(BaseModel):
     id: int
     parent_id: int | None
     label: str
-    note: str | None
+    min_amount: float | None
     prompt: str | None
     selection_mode: SelectionMode
     max_selections: int | None
@@ -24,7 +24,7 @@ class InquiryFormNodeItem(BaseModel):
 class AddInquiryFormNodeRequest(BaseModel):
     parent_id: int | None = None
     label: str
-    note: str | None = None
+    min_amount: float | None = None
     prompt: str | None = None
     selection_mode: SelectionMode = "multi"
     max_selections: int | None = None
@@ -42,7 +42,7 @@ class UpdateInquiryFormNodeRequest(BaseModel):
     node_id: int
     delete: bool = False
     label: str = ""
-    note: str | None = None
+    min_amount: float | None = None
     prompt: str | None = None
     selection_mode: SelectionMode = "multi"
     max_selections: int | None = None
@@ -58,7 +58,7 @@ class SelectedNodeItem(BaseModel):
     node_id: int
     parent_id: int | None
     label: str
-    note: str | None
+    min_amount: float | None
 
 
 class SubmitInquiryFormRequest(BaseModel):
@@ -80,4 +80,5 @@ class InquiryFormSubmissionItem(BaseModel):
     item_quantity: int
     budget_per_item: float
     created_at: datetime
+    total_min_amount: float
     selections: list[SelectedNodeItem]
