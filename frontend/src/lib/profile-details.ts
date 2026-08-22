@@ -29,3 +29,27 @@ export async function updateProfileDetails(values: Record<string, string>): Prom
     body: JSON.stringify({ values }),
   });
 }
+
+// GET /admin/get_backup_zip needs the Authorization bearer header, which a
+// plain <a href> can't attach — same blob-and-throwaway-link approach as
+// lib/invoices.ts's downloadInvoicesZip.
+export async function downloadBackupZip(): Promise<void> {
+  const response = await apiFetch("/admin/get_backup_zip");
+  if (!response.ok) {
+    throw new Error("Failed to generate backup");
+  }
+
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const filenameMatch = disposition.match(/filename="([^"]+)"/);
+  const filename = filenameMatch?.[1] ?? `handpikd-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}

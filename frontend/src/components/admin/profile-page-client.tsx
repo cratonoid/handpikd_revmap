@@ -14,8 +14,8 @@ import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { resolveMediaUrl } from "@/lib/api";
 import { uploadSignatureImage } from "@/lib/personal-details";
-import { fetchProfileDetails, updateProfileDetails } from "@/lib/profile-details";
-import { ArrowUpTrayIcon, DocumentTextIcon } from "@/components/icons";
+import { downloadBackupZip, fetchProfileDetails, updateProfileDetails } from "@/lib/profile-details";
+import { ArchiveBoxIcon, ArrowUpTrayIcon, DocumentTextIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
 type LoadState = "loading" | "loaded";
@@ -55,6 +55,8 @@ export function ProfilePageClient() {
   const [error, setError] = useState<string | null>(null);
   const [isUploadingSignature, setIsUploadingSignature] = useState(false);
   const [signatureUploadError, setSignatureUploadError] = useState<string | null>(null);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [backupError, setBackupError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,6 +101,19 @@ export function ProfilePageClient() {
     }
   }
 
+  async function handleBackup() {
+    setIsBackingUp(true);
+    setBackupError(null);
+
+    try {
+      await downloadBackupZip();
+    } catch {
+      setBackupError("Couldn't generate backup. Please try again.");
+    } finally {
+      setIsBackingUp(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaveStatus("saving");
@@ -126,7 +141,12 @@ export function ProfilePageClient() {
         <div>
           <h1 className={styles.pageHeading}>Profile</h1>
         </div>
+        <Button type="button" variant="secondary" onClick={handleBackup} disabled={isBackingUp}>
+          <ArchiveBoxIcon className="h-4 w-4" />
+          {isBackingUp ? "Preparing backup…" : "Backup"}
+        </Button>
       </div>
+      {backupError && <p className={styles.formError}>{backupError}</p>}
 
       {loadState === "loading" ? (
         <p className={styles.pageSubtext}>Loading profile…</p>

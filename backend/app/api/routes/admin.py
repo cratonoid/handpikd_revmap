@@ -1,7 +1,9 @@
 # Admin module: endpoints restricted to users with role "admin" (bypassed
 # entirely when settings.auth_enabled is False, matching get_current_user).
+from datetime import datetime, timezone
+
 from beanie.operators import In
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.api.deps import get_current_user
 from app.core.security import hash_password
@@ -22,6 +24,7 @@ from app.schemas.admin import (
     UpdateCustomerDetailsRequest,
     UpdateCustomerDetailsResponse,
 )
+from app.services.backup import build_backup_zip
 from app.services.counters import get_next_id
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -193,3 +196,19 @@ async def update_customer_details(
         await poc.insert()
 
     return UpdateCustomerDetailsResponse(message="customer updated successfully")
+
+
+# Full-data export for the profile page's "Backup" button: every Mongo
+# collection plus every locally-stored upload, zipped up (see
+# services/backup.py for the layout). Generated synchronously in-request —
+# fine at this app's current data volume, revisit with a background job if
+# the zip ever grows large enough to risk a request timeout.
+@router.get("/get_backup_zip")
+async def get_backup_zip(_: User | None = Depends(require_admin)) -> Response:
+    zip_bytes = await build_backup_zip()
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="handpikd-backup-{timestamp}.zip"'},
+    )
