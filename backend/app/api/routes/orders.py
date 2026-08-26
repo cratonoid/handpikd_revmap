@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from app.api.routes.admin import require_admin
 from app.models import (
     ProductDetails,
+    PurchaseInvoiceDetails,
     PurchaseOrderIdCounter,
     PurchaseOrders,
     PurchaseSummary,
@@ -59,6 +60,35 @@ from app.services.purchase_invoice_intake import (
 from app.services.purchase_invoices import create_purchase_invoice_for_order
 
 router = APIRouter(prefix="/admin", tags=["orders"])
+
+
+async def _reject_duplicate_vendor_invoice(vendor_id: int, vendor_invoice_no: str | None) -> None:
+    # The same rule parse_purchase_invoice_pdf applies to an upload (see
+    # _reject_if_already_recorded), applied again here because that one runs
+    # when the PDF is read and this runs when the order is finally saved —
+    # and the two are as far apart as the admin's review takes. Nothing else
+    # covers that window: the purchase order number check above is the wrong
+    # key, since the number is editable on the form and an invoice recorded
+    # under a different one still can't be recorded twice.
+    #
+    # Only uploads carry a vendor invoice number; orders keyed in by hand
+    # have nothing to collide on.
+    if not vendor_invoice_no:
+        return
+
+    existing = await PurchaseInvoiceDetails.find_one(
+        PurchaseInvoiceDetails.vendor_id == vendor_id,
+        PurchaseInvoiceDetails.vendor_invoice_no == vendor_invoice_no,
+        PurchaseInvoiceDetails.is_deleted == False,  # noqa: E712 — Beanie needs the comparison, not `is False`
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"invoice {vendor_invoice_no} from this vendor has already been recorded as "
+                f"purchase invoice {existing.purchase_invoice_no}"
+            ),
+        )
 
 
 def _require_vendor_has_gst(vendor: VendorDetails) -> None:
@@ -173,6 +203,8 @@ async def create_new_purchase_order(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="a purchase order with this number already exists"
         )
+
+    await _reject_duplicate_vendor_invoice(payload.vendor_id, payload.vendor_invoice_no)
 
     await _validate_products_belong_to_vendor(payload.product_ids, payload.vendor_id, reject_deleted=True)
     total_amount_before_tax, total_amount_after_tax = _compute_totals(

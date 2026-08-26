@@ -192,12 +192,13 @@ export type NewProductInput = {
 };
 
 // Creates a product outside the /admin/products form, for the purchase order
-// review screen's "create it from this invoice line" path (see
-// purchase-order-form-modal.tsx). Deliberately narrower than that form: no
-// images and no categories, because the only caller is resolving one invoice
-// line and has neither to offer. category_ids is sent empty rather than
-// guessed at — ProductDetails accepts that, and the admin completes the
-// product on /admin/products afterwards.
+// review screen's "add it from this invoice" path (see
+// purchase-order-form-modal.tsx, CreateMissingProduct). Deliberately narrower
+// than that form: no images and no categories, because the only caller is
+// resolving one invoice line and has neither to offer. category_ids is sent
+// empty rather than guessed at — ProductDetails accepts that, and the admin
+// completes the product on /admin/products afterwards, along with the
+// selling prices, which the caller can only derive from what was paid.
 //
 // Returns the saved Product so the caller can drop it straight into its own
 // list and select it, rather than re-fetching every product to find the one

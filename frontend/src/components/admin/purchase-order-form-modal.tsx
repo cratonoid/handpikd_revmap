@@ -34,10 +34,11 @@
 // purchase-invoice-upload-modal.tsx) — every field stays editable, since the
 // point of that path is that the admin reviews what was read before it
 // saves. A line the backend couldn't place against one of the vendor's
-// products arrives unresolved (productId null): the review notice says so
-// and offers to create the missing product from that line, and the row's own
-// product <select> — already `required` — is what stops the order being
-// saved until every line has one. Either way, saving also raises the order's purchase invoice
+// products arrives unresolved (productId null): the review notice says so and
+// offers to create that product from the invoice itself (see
+// CreateMissingProduct at the bottom of this file), and the row's own product
+// <select> — already `required` — is what stops the order being saved until
+// every line has one. Either way, saving also raises the order's purchase invoice
 // server-side, and the vendor PDF — the uploaded one, or an optional one
 // picked here — is attached to that invoice in a follow-up request once it
 // has an id.
@@ -98,6 +99,29 @@ function lineItemsFromParsedInvoice(parsed: ParsedPurchaseInvoice): LineItem[] {
     rate: String(item.rate),
     sourceLineIndex: index,
   }));
+}
+
+// What a product created from an invoice line is priced at, as multiples of
+// what the vendor charged. A purchase invoice records the cost and nothing
+// about the selling price, but add_product_details requires both (and
+// requires the discounted one to be below the actual one — see
+// AddProductDetailsRequest), so they're derived rather than left out.
+// Deliberately a starting point to correct on /admin/products, which is why
+// such a product is created hidden from the storefront.
+const ACTUAL_PRICE_MULTIPLIER = 2;
+const DISCOUNTED_PRICE_MULTIPLIER = 1.5;
+
+function sellingPricesFromCost(vendorRate: number): { actualPrice: number; discountedPrice: number } {
+  const round = (value: number) => Math.round(value * 100) / 100;
+  const actualPrice = round(vendorRate * ACTUAL_PRICE_MULTIPLIER);
+  const derived = round(vendorRate * DISCOUNTED_PRICE_MULTIPLIER);
+  return {
+    actualPrice,
+    // The multipliers keep these apart at any real rate; rounding to paise
+    // only collapses them for sub-paisa ones, where halving keeps the create
+    // valid rather than letting the backend reject it.
+    discountedPrice: derived < actualPrice ? derived : round(actualPrice / 2),
+  };
 }
 
 // The GST % dropdowns hold their value as text ("" for none), since that's
@@ -542,11 +566,11 @@ export function PurchaseOrderFormModal({
                           onClick={() => setCreatingForLine(creatingForLine === index ? null : index)}
                           className={styles.linkButton}
                         >
-                          {creatingForLine === index ? "cancel" : "create it from this line"}
+                          {creatingForLine === index ? "cancel" : "add it from this invoice"}
                         </button>
                         .
                         {creatingForLine === index && vendorId && (
-                          <NewProductFromInvoiceLine
+                          <CreateMissingProduct
                             line={item}
                             vendorId={Number(vendorId)}
                             onCreated={(product) => handleProductCreated(index, product)}
@@ -874,26 +898,24 @@ export function PurchaseOrderFormModal({
 
 
 // ---------------------------------------------------------------------------
-// <NewProductFromInvoiceLine> — creating the product an invoice line needs,
-// without leaving the purchase order
+// <CreateMissingProduct> — adding the product an invoice line needs, from the
+// invoice itself
 // ---------------------------------------------------------------------------
 // Opened from the review notice above for a line whose description didn't
-// resolve to one of the vendor's products. Deliberately not the full
-// /admin/products form (product-form-modal.tsx): that one carries images, a
-// category tree, and delete/restore, none of which this moment has anything
-// to say about.
+// resolve to one of the vendor's products. Nothing is typed here: everything
+// the product needs is either printed on the invoice or derived from it, and
+// the panel exists purely so the admin sees exactly what is about to be
+// created before it is. Confirming writes the product immediately (not when
+// the order saves) and points the line at it.
 //
-// What the invoice can answer, it answers — name, HSN code, rate and GST %
-// all arrive filled in, and the vendor is fixed to the one whose invoice this
-// is. What a purchase invoice fundamentally cannot answer is what we SELL the
-// thing for: a vendor's bill records what we paid. So the selling prices and
-// MOQ are the admin's to enter, and they're the only empty fields here.
-//
-// New products default to visible on the storefront (see
-// product-form-modal.tsx), but one created here starts hidden: it has no
-// images and no categories yet, so publishing it would put an empty card on
-// /products. The admin finishes it off there afterwards.
-function NewProductFromInvoiceLine({
+// The one thing an invoice fundamentally cannot supply is what we SELL the
+// thing for — a vendor's bill records what we paid. Those two prices are
+// derived from the cost by the multipliers below, which is a starting point
+// to correct on /admin/products, not a considered price. That's also why the
+// product is created hidden: priced by rule of thumb, with no images and no
+// categories, it has no business on the storefront until someone has been
+// over it.
+function CreateMissingProduct({
   line,
   vendorId,
   onCreated,
@@ -904,56 +926,27 @@ function NewProductFromInvoiceLine({
   vendorId: number;
   onCreated: (product: Product) => void;
 }) {
-  const [productName, setProductName] = useState(line.description);
-  const [hsnCode, setHsnCode] = useState(line.hsnCode);
-  const [vendorRate, setVendorRate] = useState(String(line.rate));
-  const [actualPrice, setActualPrice] = useState("");
-  const [discountedPrice, setDiscountedPrice] = useState("");
-  const [moq, setMoq] = useState(1);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+  const { actualPrice, discountedPrice } = sellingPricesFromCost(line.rate);
 
-  // Validated here rather than by the browser: this sits inside the purchase
-  // order's own <form>, so it can't be one itself (nested forms don't nest),
-  // and `required` on these inputs would block the ORDER's submit instead.
-  // The rules mirror add_product_details' own — see AddProductDetailsRequest
-  // in backend/app/schemas/products.py, which rejects the same combinations.
   async function handleCreate() {
-    const actual = Number(actualPrice);
-    const discounted = Number(discountedPrice);
-
-    if (!productName.trim()) {
-      setError("Please give the product a name.");
-      return;
-    }
-    if (!(Number(vendorRate) > 0)) {
-      setError("Vendor rate must be more than 0.");
-      return;
-    }
-    if (!(actual > 0) || !(discounted > 0)) {
-      setError("Both selling prices must be more than 0.");
-      return;
-    }
-    if (discounted >= actual) {
-      setError("The discounted price has to be below the actual price.");
-      return;
-    }
-
     setStatus("saving");
     setError(null);
 
     try {
       const product = await createProduct({
-        productName: productName.trim(),
-        hsnCode: hsnCode.trim(),
+        // The vendor's own wording for it, which is all we know it by. Also
+        // kept as the description, so there's a record of what this product
+        // was bought as.
+        productName: line.description,
+        hsnCode: line.hsnCode,
         vendorId,
-        vendorRate: Number(vendorRate),
-        actualPrice: actual,
-        discountedPrice: discounted,
+        vendorRate: line.rate,
+        actualPrice,
+        discountedPrice,
         gstPerc: line.gstPerc,
-        moq,
-        // The invoice's own wording, kept as the description so there's a
-        // record of what this product was bought as.
+        moq: 1,
         description: line.description,
         isVisible: false,
       });
@@ -970,94 +963,50 @@ function NewProductFromInvoiceLine({
 
   return (
     <div className={styles.newProductPanel}>
+      <dl className={styles.newProductSummary}>
+        <div>
+          <dt>Name</dt>
+          <dd>{line.description}</dd>
+        </div>
+        <div>
+          <dt>HSN code</dt>
+          <dd>{line.hsnCode || "—"}</dd>
+        </div>
+        <div>
+          <dt>Vendor rate</dt>
+          <dd>₹{line.rate.toFixed(2)}</dd>
+        </div>
+        <div>
+          <dt>GST</dt>
+          <dd>{line.gstPerc}%</dd>
+        </div>
+        <div>
+          <dt>Actual price</dt>
+          <dd>
+            ₹{actualPrice.toFixed(2)} <span className={styles.newProductDerived}>{ACTUAL_PRICE_MULTIPLIER}× cost</span>
+          </dd>
+        </div>
+        <div>
+          <dt>Discounted price</dt>
+          <dd>
+            ₹{discountedPrice.toFixed(2)}{" "}
+            <span className={styles.newProductDerived}>{DISCOUNTED_PRICE_MULTIPLIER}× cost</span>
+          </dd>
+        </div>
+        <div>
+          <dt>MOQ</dt>
+          <dd>1</dd>
+        </div>
+        <div>
+          <dt>Storefront</dt>
+          <dd>Hidden</dd>
+        </div>
+      </dl>
+
       <p className={styles.newProductHint}>
-        Read from the invoice: {line.gstPerc}% GST. You add what it sells for — the invoice only says what it
-        cost. Categories and images can be filled in later on Products.
+        The prices are worked out from what this invoice charged — set the real ones, and add categories and
+        images, on Products afterwards. Creating it saves the product straight away, before this order.
       </p>
-
-      <div className={styles.newProductGrid}>
-        <div>
-          <label htmlFor="newProductName" className={styles.formLabel}>
-            Product name
-          </label>
-          <input
-            id="newProductName"
-            type="text"
-            value={productName}
-            onChange={(e) => setProductName(e.target.value)}
-            className={styles.formInput}
-          />
-        </div>
-
-        <div>
-          <label htmlFor="newProductHsn" className={styles.formLabel}>
-            HSN code
-          </label>
-          <input
-            id="newProductHsn"
-            type="text"
-            value={hsnCode}
-            onChange={(e) => setHsnCode(e.target.value)}
-            className={styles.formInput}
-          />
-        </div>
-
-        <div>
-          <label htmlFor="newProductVendorRate" className={styles.formLabel}>
-            Vendor rate
-          </label>
-          <input
-            id="newProductVendorRate"
-            type="text"
-            inputMode="decimal"
-            value={vendorRate}
-            onChange={(e) => setVendorRate(sanitizeDecimalInput(e.target.value))}
-            className={styles.formInput}
-          />
-        </div>
-
-        <div>
-          <label htmlFor="newProductActualPrice" className={styles.formLabel}>
-            Actual price<span className={styles.requiredMark}>*</span>
-          </label>
-          <input
-            id="newProductActualPrice"
-            type="text"
-            inputMode="decimal"
-            value={actualPrice}
-            onChange={(e) => setActualPrice(sanitizeDecimalInput(e.target.value))}
-            className={styles.formInput}
-          />
-        </div>
-
-        <div>
-          <label htmlFor="newProductDiscountedPrice" className={styles.formLabel}>
-            Discounted price<span className={styles.requiredMark}>*</span>
-          </label>
-          <input
-            id="newProductDiscountedPrice"
-            type="text"
-            inputMode="decimal"
-            value={discountedPrice}
-            onChange={(e) => setDiscountedPrice(sanitizeDecimalInput(e.target.value))}
-            className={styles.formInput}
-          />
-        </div>
-
-        <div>
-          <label htmlFor="newProductMoq" className={styles.formLabel}>
-            MOQ
-          </label>
-          <input
-            id="newProductMoq"
-            type="number"
-            min={1}
-            value={moq}
-            onChange={(e) => setMoq(Number(e.target.value))}
-            className={styles.formInput}
-          />
-        </div>
-      </div>
 
       {error && (
         <p role="alert" aria-live="polite" className={styles.formError}>

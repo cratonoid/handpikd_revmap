@@ -2,6 +2,7 @@
 from datetime import datetime
 
 from beanie import Document
+from pymongo import IndexModel
 
 from app.services.gst import TaxKind
 
@@ -62,3 +63,26 @@ class PurchaseInvoiceDetails(Document):
 
     class Settings:
         name = "purchase_invoice_details"
+        # One live record per (vendor, their invoice number) — the database's
+        # own version of _reject_if_already_recorded in
+        # services/purchase_invoice_intake.py, which reads before it writes
+        # and so can't be relied on alone.
+        #
+        # Partial, on both counts that rule already makes:
+        #   - is_deleted False, because voiding an invoice is how an admin
+        #     corrects a bad upload and has to leave it re-uploadable.
+        #   - vendor_invoice_no an actual string, because orders keyed in by
+        #     hand carry no vendor document and store null here — without
+        #     this every one of them after the first would collide with the
+        #     rest.
+        indexes = [
+            IndexModel(
+                [("vendor_id", 1), ("vendor_invoice_no", 1)],
+                unique=True,
+                name="vendor_invoice_no_unique",
+                partialFilterExpression={
+                    "is_deleted": False,
+                    "vendor_invoice_no": {"$type": "string"},
+                },
+            ),
+        ]

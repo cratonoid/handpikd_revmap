@@ -2,6 +2,7 @@
 from datetime import datetime
 
 from beanie import Document
+from pymongo import IndexModel
 
 
 class PurchaseOrders(Document):
@@ -24,3 +25,16 @@ class PurchaseOrders(Document):
 
     class Settings:
         name = "purchase_orders"
+        # Uniqueness enforced by the database, not only by the check in
+        # create_new_purchase_order/update_purchase_order_details. Those
+        # checks read before they write, so two saves racing each other can
+        # both pass and both insert; this is what actually makes that
+        # impossible. They stay because they're what turns a collision into a
+        # sentence the admin can act on instead of a driver error.
+        #
+        # It also backs the duplicate-invoice rule: an uploaded invoice takes
+        # its own number as the purchase order number, so a second upload of
+        # the same document collides here even if nothing else caught it.
+        indexes = [
+            IndexModel("purchase_order_no", unique=True, name="purchase_order_no_unique"),
+        ]

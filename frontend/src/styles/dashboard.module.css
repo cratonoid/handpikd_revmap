@@ -3290,16 +3290,47 @@ select.formInput:disabled {
   color: var(--color-ink);
 }
 
-.newProductGrid {
+/* What is about to be created, as label/value pairs — read-only, since every
+   value comes off the invoice or is derived from it. */
+.newProductSummary {
   display: grid;
-  gap: 0.6rem;
+  gap: 0.35rem 1rem;
   grid-template-columns: 1fr;
+  margin: 0;
+  font-size: 0.8125rem;
 }
 
 @media (min-width: 560px) {
-  .newProductGrid {
-    grid-template-columns: 1fr 1fr 1fr;
+  .newProductSummary {
+    grid-template-columns: 1fr 1fr;
   }
+}
+
+.newProductSummary > div {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  border-bottom: 1px dotted var(--color-border);
+  padding-bottom: 0.2rem;
+}
+
+.newProductSummary dt {
+  color: var(--color-ink);
+}
+
+.newProductSummary dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+  color: var(--color-charcoal);
+}
+
+/* Marks a value the invoice didn't state — worked out from the cost, so it's
+   the one thing on this panel to go back and correct. */
+.newProductDerived {
+  font-weight: 400;
+  font-size: 0.75rem;
+  color: #92400e;
 }
 
 .newProductActions {
