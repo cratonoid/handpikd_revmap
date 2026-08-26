@@ -34,7 +34,7 @@ _GSTIN_RE = re.compile(r"\b\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]\b")
 # what's inside and strict only about where it starts.
 # The value is optional: plenty of invoices print the label in one table cell
 # and the number in the cell below it, which _find_invoice_no handles by
-# looking at the next line.
+# looking down the label's own column.
 _INVOICE_NO_LABEL_RE = re.compile(
     r"(?:tax\s+)?(?:invoice|bill)\s*(?:no|number|#)\s*\.?\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9/\-_]*)?",
     re.IGNORECASE,
@@ -60,6 +60,15 @@ _SUMMARY_ROW_PREFIXES = ("total", "sub total", "subtotal", "grand total", "amoun
 
 _TOTAL_LABEL_RE = re.compile(r"(?:grand\s+total|total\s+amount|amount\s+chargeable)", re.IGNORECASE)
 
+# How far apart two words may sit vertically and still count as one row, as
+# a fraction of the page's typical line height. Invoices set the cells of a
+# single row in different fonts and sizes — Tally prints a row's description,
+# serial number and HSN code at three baselines up to two points apart — so
+# grouping on the exact top coordinate shatters one row into fragments that
+# no longer read as a line item. Kept well under 1 because genuinely adjacent
+# rows sit close to a full line height apart.
+_ROW_TOLERANCE_RATIO = 0.4
+
 # A line item's quantity x rate has to land on its printed amount for the row
 # to be read as a line item at all. Half a rupee of slack absorbs the
 # per-line rounding vendors print with; anything looser starts matching
@@ -81,6 +90,11 @@ class ExtractedLineItem:
     # Exactly as printed on the invoice — matched against our own product
     # names later, in services/purchase_invoice_intake.py.
     description: str
+    # The line's HSN/SAC code. Not used for matching (a code covers a whole
+    # class of goods, not one product), but carried through so that a line
+    # whose product isn't on file yet can pre-fill the new product's own HSN
+    # code rather than making the admin read it back off the PDF.
+    hsn_code: str
     quantity: int
     rate: float
     gst_perc: float
@@ -108,27 +122,91 @@ def _to_number(text: str) -> float:
     return float(text.replace(",", ""))
 
 
-def page_lines(pdf_bytes: bytes) -> list[list[str]]:
-    """Returns each page's text as visually-ordered lines.
+@dataclass(frozen=True)
+class Row:
+    """One visual row of a page, with each cell's left edge kept.
+
+    The positions matter beyond ordering the text: a label and the value
+    printed underneath it are only related by sitting in the same column, so
+    _find_invoice_no needs to ask which cell that is rather than guess from
+    where the word falls in the joined line.
+    """
+
+    cells: tuple[tuple[float, str], ...]
+
+    @property
+    def text(self) -> str:
+        return " ".join(word for _left, word in self.cells)
+
+    def column_at(self, offset: int) -> float | None:
+        """Left edge of the cell holding the given offset into `text`."""
+        position = 0
+        for left, word in self.cells:
+            if position <= offset < position + len(word):
+                return left
+            position += len(word) + 1
+        return None
+
+    def word_in_column(self, left: float) -> str | None:
+        """The word in whichever of this row's cells sits nearest `left`."""
+        if not self.cells:
+            return None
+        return min(self.cells, key=lambda cell: abs(cell[0] - left))[1]
+
+
+def _group_into_rows(words: list[tuple[float, float, float, str]]) -> list[Row]:
+    """Regroups one page's (top, bottom, left, text) words into visual rows."""
+    if not words:
+        return []
+
+    # Sized off the page's own text rather than fixed in points, so the same
+    # rule holds for an invoice set in 7pt and one set in 12pt.
+    heights = sorted(bottom - top for top, bottom, _left, _text in words)
+    tolerance = _ROW_TOLERANCE_RATIO * heights[len(heights) // 2]
+
+    # Ordered and compared on each word's vertical centre rather than its top
+    # edge: a row's cells are routinely set in different sizes, and a taller
+    # cell's top edge sits further from its neighbours' than its centre does.
+    ordered = sorted(words, key=lambda word: ((word[0] + word[1]) / 2, word[2]))
+
+    rows: list[tuple[float, list[tuple[float, str]]]] = []
+    for top, bottom, left, text in ordered:
+        centre = (top + bottom) / 2
+        # Measured against the row's first centre, not its last, so that a
+        # run of slightly-offset words can't drag one row down the page.
+        if rows and centre - rows[-1][0] <= tolerance:
+            rows[-1][1].append((left, text))
+        else:
+            rows.append((centre, [(left, text)]))
+
+    return [Row(cells=tuple(sorted(cells))) for _centre, cells in rows]
+
+
+def page_rows(pdf_bytes: bytes) -> list[list[Row]]:
+    """Returns each page's text as visually-ordered rows.
 
     Words are regrouped by their position on the page rather than taken in
     the PDF's own content order: invoices are tables, and their content
     streams routinely emit a row's cells out of order (or bottom-up), which
     turns a naive text extraction into an unparseable jumble.
     """
-    pages: list[list[str]] = []
+    pages: list[list[Row]] = []
     with pymupdf.open(stream=pdf_bytes, filetype="pdf") as document:
         for page in document:
-            rows: dict[int, list[tuple[float, str]]] = {}
-            for x0, y0, _x1, _y1, word, _block, _line, _word_no in page.get_text("words"):
-                # Rounded to whole points so the cells of one visual row land
-                # in the same bucket even when their baselines differ
-                # slightly.
-                rows.setdefault(round(y0), []).append((x0, word))
             pages.append(
-                [" ".join(word for _x, word in sorted(cells)) for _y, cells in sorted(rows.items())]
+                _group_into_rows(
+                    [
+                        (y0, y1, x0, word)
+                        for x0, y0, _x1, y1, word, _block, _line, _word_no in page.get_text("words")
+                    ]
+                )
             )
     return pages
+
+
+def page_lines(pdf_bytes: bytes) -> list[list[str]]:
+    """Returns each page's text as visually-ordered lines."""
+    return [[row.text for row in page] for page in page_rows(pdf_bytes)]
 
 
 def _find_vendor_gstin(lines: list[str], our_gstin: str) -> str | None:
@@ -154,25 +232,34 @@ def _parse_date(value: str) -> datetime | None:
     return None
 
 
-def _find_invoice_no(lines: list[str]) -> str | None:
-    for index, line in enumerate(lines):
-        match = _INVOICE_NO_LABEL_RE.search(line)
+def _find_invoice_no(rows: list[Row]) -> str | None:
+    for index, row in enumerate(rows):
+        match = _INVOICE_NO_LABEL_RE.search(row.text)
         if match is None:
             continue
         value = (match.group(1) or "").strip(" .:-")
         if value and not value.lower().startswith(("date", "dated", "no")):
             return value
+
         # Label-only cell: vendors whose invoice number sits in the cell
         # below the label rather than beside it are common enough to be worth
-        # the one-line lookahead.
-        for following in lines[index + 1 : index + 3]:
-            candidate = following.strip().split(" ")[0].strip(" .:-")
-            if not candidate or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9/\-_]{2,}", candidate):
+        # the lookahead. The number is found by following the label's own
+        # column down, not by taking the row below's first word — that row
+        # spans the full page width and usually opens with whatever the
+        # letterhead prints on the left ("BRANCH OFFICE"), which has nothing
+        # to do with the invoice number.
+        column = row.column_at(match.start())
+        if column is None:
+            continue
+        for following in rows[index + 1 : index + 3]:
+            candidate = (following.word_in_column(column) or "").strip(" .:-")
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9/\-_]{2,}", candidate):
                 continue
-            # The cell under "Invoice No." is the number; the cell under the
-            # "Dated" label beside it is not, and reads as a plausible
-            # invoice number if it isn't ruled out.
-            if _parse_date(candidate) is None:
+            # A digit rules out the ordinary prose a wide row can put in this
+            # column ("Delivery"); every invoice number carries one. The date
+            # check rules out the cell under the "Dated" label beside it,
+            # which reads as a plausible invoice number otherwise.
+            if any(character.isdigit() for character in candidate) and _parse_date(candidate) is None:
                 return candidate
     return None
 
@@ -286,7 +373,13 @@ def _read_line_item(line: str, hsn_percentages: dict[str, float]) -> ExtractedLi
     if not description:
         return None
 
-    return ExtractedLineItem(description=description, quantity=quantity, rate=rate, gst_perc=gst_perc)
+    return ExtractedLineItem(
+        description=description,
+        hsn_code=hsn.group(1),
+        quantity=quantity,
+        rate=rate,
+        gst_perc=gst_perc,
+    )
 
 
 def _read_line_items(pages: list[list[str]], invoice_no: str | None) -> list[ExtractedLineItem]:
@@ -312,13 +405,14 @@ def _read_line_items(pages: list[list[str]], invoice_no: str | None) -> list[Ext
 
 def extract_invoice_from_text(pdf_bytes: bytes, our_gstin: str) -> ExtractedInvoice | None:
     """Deterministic pass. Returns None when the PDF isn't fully readable."""
-    pages = page_lines(pdf_bytes)
+    rows = page_rows(pdf_bytes)
+    pages = [[row.text for row in page] for page in rows]
     lines = [line for page in pages for line in page]
     if not lines:
         return None
 
     vendor_gstin = _find_vendor_gstin(lines, our_gstin)
-    invoice_no = _find_invoice_no(lines)
+    invoice_no = _find_invoice_no([row for page in rows for row in page])
     invoice_date = _find_invoice_date(lines)
     line_items = _read_line_items(pages, invoice_no)
 

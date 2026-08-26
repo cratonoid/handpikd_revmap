@@ -118,12 +118,21 @@ class ParsedPurchaseInvoiceLineItem(BaseModel):
     # on the invoice) — see _match_product in
     # services/purchase_invoice_intake.py. Both are returned so the review
     # screen can show what was matched to what.
-    product_id: int
-    product_name: str
+    #
+    # Both are None when the description didn't resolve to exactly one of the
+    # vendor's products, and unresolved_reason then says why in words meant
+    # for the admin. That isn't an error: the review screen asks them to
+    # point the line at an existing product or create one, and the order
+    # can't be saved until every line has a product. hsn_code and description
+    # come off the invoice either way, and pre-fill the new product's form.
+    product_id: int | None = None
+    product_name: str | None = None
     description: str
+    hsn_code: str = ""
     quantity: int
     rate: float
     gst_perc: float
+    unresolved_reason: str | None = None
 
 
 class ParsePurchaseInvoicePdfResponse(BaseModel):
@@ -136,7 +145,11 @@ class ParsePurchaseInvoicePdfResponse(BaseModel):
     vendor_gstin: str
     vendor_invoice_no: str
     date: datetime
-    product_ids: list[int]
+    # Parallel arrays in the shape create_new_purchase_order takes. A null in
+    # product_ids marks a line the admin still has to resolve, so these can
+    # only be submitted as-is once none are left — see
+    # ParsedPurchaseInvoiceLineItem.
+    product_ids: list[int | None]
     quantities: list[int]
     rates: list[float]
     line_items: list[ParsedPurchaseInvoiceLineItem]

@@ -1,10 +1,11 @@
 # Unit tests for the deterministic half of reading an uploaded vendor
-# invoice (app/services/invoice_extraction.py). The three fixtures below
-# rebuild the table layouts of three real vendor invoices — one where every
-# column including CGST/SGST/IGST % sits in the item row, one that stacks the
+# invoice (app/services/invoice_extraction.py). The fixtures below rebuild
+# the table layouts of four real vendor invoices — one where every column
+# including CGST/SGST/IGST % sits in the item row, one that stacks the
 # invoice number under its label and ships a duplicate copy as a second page,
-# and one that states GST only in the HSN-wise summary at the foot — since
-# those differences are exactly what the parser has to survive.
+# one that states GST only in the HSN-wise summary at the foot, and one whose
+# every row is set at several baselines at once — since those differences are
+# exactly what the parser has to survive.
 #
 # Text is placed by coordinate rather than written as lines: page_lines
 # regroups words by position (invoices are tables), so a fixture that
@@ -126,6 +127,31 @@ HELLO_PEN_LAYOUT = [
     ]
 ]
 
+# A Tally invoice, where the cells of one row are each set in their own font
+# and so land on baselines up to two points apart, and where the row under
+# the "Invoice No." label spans the page — carrying the letterhead's own
+# address on the left, well before the number itself.
+TALLY_LAYOUT = [
+    [
+        (14, [(225, "Tax Invoice")]),
+        (31, [(34, "Hello Pen Mart"), (260, "Invoice No."), (370, "Dated")]),
+        (40, [(260, "HPM/26-27/257"), (370, "9-Apr-26")]),
+        (42, [(34, "BRANCH OFFICE")]),
+        (53, [(34, "#186/1 1ST FLOOR KS GARDEN"), (260, "Delivery Note")]),
+        (97, [(34, "GSTIN/UIN: 29AFBPP6505R1ZS")]),
+        (253, [(34, "GSTIN/UIN : " + OUR_GSTIN)]),
+        (284, [(34, "Sl"), (79, "Description of Goods"), (208, "HSN/SAC"), (261, "Quantity")]),
+        # One item row across three baselines: the description and amount,
+        # the serial number, and the HSN code with the rate.
+        (313, [(44, "BALL PEN"), (270, "80 nos"), (440, "2,000.00")]),
+        (314, [(34, "1")]),
+        (315, [(205, "960810"), (330, "25.00"), (359, "nos")]),
+        (347, [(172, "IGST"), (449, "360.00")]),
+        (636, [(177, "Total"), (270, "80 nos"), (433, "2,360.00")]),
+        (702, [(34, "960810"), (300, "2,000.00"), (350, "18%"), (396, "360.00")]),
+    ]
+]
+
 
 def test_reads_an_invoice_with_every_column_in_the_item_row():
     extracted = extract_invoice_from_text(_pdf(KRAFT_LAYOUT), OUR_GSTIN)
@@ -203,6 +229,31 @@ def test_summary_and_total_rows_are_not_read_as_line_items():
     assert len(extracted.line_items) == 3
 
 
+def test_an_item_row_split_across_several_baselines_still_reads_as_one():
+    # This vendor sets each cell of a row in its own font, so the row's parts
+    # sit at baselines a point or two apart. Grouped on the exact coordinate
+    # they fragment into a description with no HSN code and an HSN code with
+    # no description, and the invoice reads as having no line items at all.
+    extracted = extract_invoice_from_text(_pdf(TALLY_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    (item,) = extracted.line_items
+    assert item.description == "BALL PEN"
+    assert (item.quantity, item.rate, item.gst_perc) == (80, 25.0, 18.0)
+
+
+def test_the_invoice_number_is_read_from_the_label_s_own_column():
+    # The row below the "Invoice No." label runs the width of the page, and
+    # opens with the letterhead's "BRANCH OFFICE" — which is a well-formed
+    # invoice number as far as shape goes. Only its column tells the two
+    # apart, and the "Dated" column beside it must not win either.
+    extracted = extract_invoice_from_text(_pdf(TALLY_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    assert extracted.invoice_no == "HPM/26-27/257"
+    assert extracted.invoice_date.date().isoformat() == "2026-04-09"
+
+
 def test_an_unreadable_layout_returns_none_for_the_claude_fallback():
     # A PDF with no item table at all: the deterministic pass has to say so
     # rather than return a header-only invoice, since that's what hands the
@@ -212,7 +263,7 @@ def test_an_unreadable_layout_returns_none_for_the_claude_fallback():
     assert extract_invoice_from_text(pdf, OUR_GSTIN) is None
 
 
-@pytest.mark.parametrize("layout", [KRAFT_LAYOUT, SHAH_LAYOUT, HELLO_PEN_LAYOUT])
+@pytest.mark.parametrize("layout", [KRAFT_LAYOUT, SHAH_LAYOUT, HELLO_PEN_LAYOUT, TALLY_LAYOUT])
 def test_every_line_item_carries_a_usable_quantity_and_rate(layout):
     extracted = extract_invoice_from_text(_pdf(layout), OUR_GSTIN)
 

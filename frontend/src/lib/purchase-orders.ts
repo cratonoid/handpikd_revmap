@@ -118,20 +118,33 @@ export async function fetchPurchaseOrders(): Promise<PurchaseOrder[]> {
 // create_new_purchase_order like any other order.
 //
 // The endpoint refuses the upload outright (rather than returning partial
-// values) if the vendor or a product isn't on file, the invoice has already
-// been recorded, its line items are taxed at different GST rates, or the PDF
+// values) if the vendor isn't on file, the invoice has already been
+// recorded, its line items are taxed at different GST rates, or the PDF
 // couldn't be read in full — parsePurchaseInvoicePdf surfaces the backend's
 // own explanation of which, since it names the record the admin has to add.
+//
+// A line item whose product it couldn't place is NOT a refusal: it comes
+// back with productId null and an unresolvedReason, and the review screen
+// asks the admin to point it at an existing product or create the missing
+// one there. The order simply can't be saved while any line is unresolved,
+// which the product <select>'s own `required` already enforces.
 
 export type ParsedInvoiceLineItem = {
-  productId: number;
+  // Both null when the invoice's wording didn't resolve to exactly one of
+  // this vendor's products — unresolvedReason then says why, in a sentence
+  // written for the admin.
+  productId: number | null;
   // Our product's name, and the text as printed on the invoice — both are
   // shown so the admin can see what was matched to what.
-  productName: string;
+  productName: string | null;
   description: string;
+  // The line's HSN/SAC code as printed. Carried so that creating the missing
+  // product from this line doesn't send the admin back to the PDF for it.
+  hsnCode: string;
   quantity: number;
   rate: number;
   gstPerc: number;
+  unresolvedReason: string | null;
 };
 
 export type ParsedPurchaseInvoice = {
@@ -165,12 +178,14 @@ type ParsePurchaseInvoicePdfResponse = {
   vendor_invoice_no: string;
   date: string;
   line_items: {
-    product_id: number;
-    product_name: string;
+    product_id: number | null;
+    product_name: string | null;
     description: string;
+    hsn_code: string;
     quantity: number;
     rate: number;
     gst_perc: number;
+    unresolved_reason: string | null;
   }[];
   sgst_perc: number | null;
   cgst_perc: number | null;
@@ -209,9 +224,11 @@ export async function parsePurchaseInvoicePdf(file: File): Promise<ParsedPurchas
       productId: item.product_id,
       productName: item.product_name,
       description: item.description,
+      hsnCode: item.hsn_code,
       quantity: item.quantity,
       rate: item.rate,
       gstPerc: item.gst_perc,
+      unresolvedReason: item.unresolved_reason,
     })),
     sgstPerc: parsed.sgst_perc,
     cgstPerc: parsed.cgst_perc,

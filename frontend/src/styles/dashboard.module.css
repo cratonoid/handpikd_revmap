@@ -3260,3 +3260,49 @@ select.formInput:disabled {
   line-height: 1.5;
   color: var(--color-ink);
 }
+
+/* An invoice line whose product couldn't be placed. Amber rather than
+   .formError's red: the values were read fine, the line just needs a product
+   chosen before the order can be saved. */
+.parsedInvoiceUnmatched {
+  font-weight: 600;
+  color: #92400e;
+}
+
+/* Inline "create the missing product" form, opened from an unmatched line
+   above (purchase-order-form-modal.tsx's NewProductFromInvoiceLine). Inset
+   and boxed so it reads as a detour off that one list item rather than as
+   more of the purchase order's own form. */
+.newProductPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0.6rem 0 0.2rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background-color: var(--color-white);
+}
+
+.newProductHint {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--color-ink);
+}
+
+.newProductGrid {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 560px) {
+  .newProductGrid {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+.newProductActions {
+  display: flex;
+  justify-content: flex-end;
+}

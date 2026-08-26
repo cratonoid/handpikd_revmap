@@ -33,7 +33,11 @@
 // PDF (the `prefill` prop, read by components/admin/
 // purchase-invoice-upload-modal.tsx) — every field stays editable, since the
 // point of that path is that the admin reviews what was read before it
-// saves. Either way, saving also raises the order's purchase invoice
+// saves. A line the backend couldn't place against one of the vendor's
+// products arrives unresolved (productId null): the review notice says so
+// and offers to create the missing product from that line, and the row's own
+// product <select> — already `required` — is what stops the order being
+// saved until every line has one. Either way, saving also raises the order's purchase invoice
 // server-side, and the vendor PDF — the uploaded one, or an optional one
 // picked here — is attached to that invoice in a follow-up request once it
 // has an id.
@@ -44,9 +48,9 @@ import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue } from "@/lib/datetime-input";
 import { GST_PERCENT_OPTIONS, isIntraState, resolveStateCode, stateNameForCode } from "@/lib/gst";
 import { attachPurchaseInvoicePdf } from "@/lib/purchase-invoices";
-import type { ParsedPurchaseInvoice, PurchaseOrder } from "@/lib/purchase-orders";
+import type { ParsedInvoiceLineItem, ParsedPurchaseInvoice, PurchaseOrder } from "@/lib/purchase-orders";
 import type { VendorOption } from "@/lib/vendors";
-import type { Product } from "@/lib/products";
+import { createProduct, type Product } from "@/lib/products";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
 import { XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
@@ -60,6 +64,11 @@ type LineItem = {
   // rather than a controlled type="number" input, so a leading "0" can just
   // be typed over instead of leaving stray zeros until blur.
   rate: string;
+  // Which of the uploaded invoice's lines this row was built from, for rows
+  // that came from a PDF. Kept so that creating the missing product from the
+  // review notice can find this row again — a bare index into
+  // prefill.lineItems would drift as soon as any row is added or removed.
+  sourceLineIndex?: number;
 };
 
 function emptyLineItem(): LineItem {
@@ -80,10 +89,14 @@ function lineItemsFromOrder(order: PurchaseOrder): LineItem[] {
 
 function lineItemsFromParsedInvoice(parsed: ParsedPurchaseInvoice): LineItem[] {
   if (parsed.lineItems.length === 0) return [emptyLineItem()];
-  return parsed.lineItems.map((item) => ({
-    productId: String(item.productId),
+  return parsed.lineItems.map((item, index) => ({
+    // Null for a line whose product the backend couldn't place: the row's
+    // <select> falls back to its "Select a product…" placeholder, and being
+    // `required` it blocks the save until the admin resolves it.
+    productId: item.productId != null ? String(item.productId) : null,
     quantity: item.quantity,
     rate: String(item.rate),
+    sourceLineIndex: index,
   }));
 }
 
@@ -131,6 +144,7 @@ export function PurchaseOrderFormModal({
   nextPurchaseOrderNo,
   onClose,
   onSaved,
+  onProductCreated,
 }: {
   mode: "add" | "edit";
   // Only present in "edit" mode — pre-fills every field.
@@ -151,6 +165,10 @@ export function PurchaseOrderFormModal({
   ownStateCode: string;
   nextPurchaseOrderNo: string;
   onClose: () => void;
+  // A product created from an unresolved invoice line. The parent owns the
+  // `products` list this form picks from, so it has to hear about the new one
+  // — otherwise the line it was created for couldn't select it.
+  onProductCreated?: (product: Product) => void;
   // No order payload — the backend only returns {message} (see
   // create_new_purchase_order/update_purchase_order_details), so the parent
   // re-fetches the authoritative list from GET /admin/get_purchase_order_details
@@ -199,6 +217,9 @@ export function PurchaseOrderFormModal({
   const [pdfFile, setPdfFile] = useState<File | null>(initialPdfFile ?? null);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+  // Index into prefill.lineItems of the unresolved line whose "create the
+  // missing product" form is open, or null when none is.
+  const [creatingForLine, setCreatingForLine] = useState<number | null>(null);
 
   // Normally the two states decide which GST heads apply, and the other
   // fields are greyed out so they can't be filled in by accident. Turning
@@ -333,6 +354,21 @@ export function PurchaseOrderFormModal({
     setSgstPerc(heads.sgst);
     setCgstPerc(heads.cgst);
     setIgstPerc(heads.igst);
+  }
+
+  // The product the admin just created for an unresolved invoice line. Its
+  // row is selected straight away rather than left for them to find in a
+  // dropdown that has only this second grown the option. The line keeps the
+  // rate the invoice printed: that's what was actually charged, whatever
+  // vendor_rate the new product was given.
+  function handleProductCreated(sourceLineIndex: number, product: Product) {
+    onProductCreated?.(product);
+    setLineItems((prev) =>
+      prev.map((item) =>
+        item.sourceLineIndex === sourceLineIndex ? { ...item, productId: String(product.id) } : item,
+      ),
+    );
+    setCreatingForLine(null);
   }
 
   function addLineItem() {
@@ -485,8 +521,39 @@ export function PurchaseOrderFormModal({
               <ul className={styles.parsedInvoiceList}>
                 {prefill.lineItems.map((item, index) => (
                   <li key={index}>
-                    &ldquo;{item.description}&rdquo; → {item.productName} ({item.quantity} × ₹{item.rate.toFixed(2)},{" "}
-                    {item.gstPerc}% GST)
+                    &ldquo;{item.description}&rdquo; →{" "}
+                    {item.productId != null ? (
+                      item.productName
+                    ) : (
+                      <span className={styles.parsedInvoiceUnmatched}>no product yet</span>
+                    )}{" "}
+                    ({item.quantity} × ₹{item.rate.toFixed(2)}, {item.gstPerc}% GST)
+                    {item.productId == null && (
+                      <>
+                        <br />
+                        {/* Not a failure — the values were all read fine.
+                            The line just needs a product before it can move
+                            any stock, which is either one we already have
+                            under a different name or one we've never
+                            bought. */}
+                        {item.unresolvedReason}. Pick it in the row below, or{" "}
+                        <button
+                          type="button"
+                          onClick={() => setCreatingForLine(creatingForLine === index ? null : index)}
+                          className={styles.linkButton}
+                        >
+                          {creatingForLine === index ? "cancel" : "create it from this line"}
+                        </button>
+                        .
+                        {creatingForLine === index && vendorId && (
+                          <NewProductFromInvoiceLine
+                            line={item}
+                            vendorId={Number(vendorId)}
+                            onCreated={(product) => handleProductCreated(index, product)}
+                          />
+                        )}
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -800,6 +867,208 @@ export function PurchaseOrderFormModal({
             </div>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------
+// <NewProductFromInvoiceLine> — creating the product an invoice line needs,
+// without leaving the purchase order
+// ---------------------------------------------------------------------------
+// Opened from the review notice above for a line whose description didn't
+// resolve to one of the vendor's products. Deliberately not the full
+// /admin/products form (product-form-modal.tsx): that one carries images, a
+// category tree, and delete/restore, none of which this moment has anything
+// to say about.
+//
+// What the invoice can answer, it answers — name, HSN code, rate and GST %
+// all arrive filled in, and the vendor is fixed to the one whose invoice this
+// is. What a purchase invoice fundamentally cannot answer is what we SELL the
+// thing for: a vendor's bill records what we paid. So the selling prices and
+// MOQ are the admin's to enter, and they're the only empty fields here.
+//
+// New products default to visible on the storefront (see
+// product-form-modal.tsx), but one created here starts hidden: it has no
+// images and no categories yet, so publishing it would put an empty card on
+// /products. The admin finishes it off there afterwards.
+function NewProductFromInvoiceLine({
+  line,
+  vendorId,
+  onCreated,
+}: {
+  line: ParsedInvoiceLineItem;
+  // The invoice's own vendor — a product created from this line belongs to
+  // them by construction, so it isn't offered as a choice.
+  vendorId: number;
+  onCreated: (product: Product) => void;
+}) {
+  const [productName, setProductName] = useState(line.description);
+  const [hsnCode, setHsnCode] = useState(line.hsnCode);
+  const [vendorRate, setVendorRate] = useState(String(line.rate));
+  const [actualPrice, setActualPrice] = useState("");
+  const [discountedPrice, setDiscountedPrice] = useState("");
+  const [moq, setMoq] = useState(1);
+  const [status, setStatus] = useState<Status>("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  // Validated here rather than by the browser: this sits inside the purchase
+  // order's own <form>, so it can't be one itself (nested forms don't nest),
+  // and `required` on these inputs would block the ORDER's submit instead.
+  // The rules mirror add_product_details' own — see AddProductDetailsRequest
+  // in backend/app/schemas/products.py, which rejects the same combinations.
+  async function handleCreate() {
+    const actual = Number(actualPrice);
+    const discounted = Number(discountedPrice);
+
+    if (!productName.trim()) {
+      setError("Please give the product a name.");
+      return;
+    }
+    if (!(Number(vendorRate) > 0)) {
+      setError("Vendor rate must be more than 0.");
+      return;
+    }
+    if (!(actual > 0) || !(discounted > 0)) {
+      setError("Both selling prices must be more than 0.");
+      return;
+    }
+    if (discounted >= actual) {
+      setError("The discounted price has to be below the actual price.");
+      return;
+    }
+
+    setStatus("saving");
+    setError(null);
+
+    try {
+      const product = await createProduct({
+        productName: productName.trim(),
+        hsnCode: hsnCode.trim(),
+        vendorId,
+        vendorRate: Number(vendorRate),
+        actualPrice: actual,
+        discountedPrice: discounted,
+        gstPerc: line.gstPerc,
+        moq,
+        // The invoice's own wording, kept as the description so there's a
+        // record of what this product was bought as.
+        description: line.description,
+        isVisible: false,
+      });
+      onCreated(product);
+    } catch (createError) {
+      setError(
+        createError instanceof Error && createError.message
+          ? createError.message
+          : "Couldn't create this product. Please try again.",
+      );
+      setStatus("idle");
+    }
+  }
+
+  return (
+    <div className={styles.newProductPanel}>
+      <p className={styles.newProductHint}>
+        Read from the invoice: {line.gstPerc}% GST. You add what it sells for — the invoice only says what it
+        cost. Categories and images can be filled in later on Products.
+      </p>
+
+      <div className={styles.newProductGrid}>
+        <div>
+          <label htmlFor="newProductName" className={styles.formLabel}>
+            Product name
+          </label>
+          <input
+            id="newProductName"
+            type="text"
+            value={productName}
+            onChange={(e) => setProductName(e.target.value)}
+            className={styles.formInput}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="newProductHsn" className={styles.formLabel}>
+            HSN code
+          </label>
+          <input
+            id="newProductHsn"
+            type="text"
+            value={hsnCode}
+            onChange={(e) => setHsnCode(e.target.value)}
+            className={styles.formInput}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="newProductVendorRate" className={styles.formLabel}>
+            Vendor rate
+          </label>
+          <input
+            id="newProductVendorRate"
+            type="text"
+            inputMode="decimal"
+            value={vendorRate}
+            onChange={(e) => setVendorRate(sanitizeDecimalInput(e.target.value))}
+            className={styles.formInput}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="newProductActualPrice" className={styles.formLabel}>
+            Actual price<span className={styles.requiredMark}>*</span>
+          </label>
+          <input
+            id="newProductActualPrice"
+            type="text"
+            inputMode="decimal"
+            value={actualPrice}
+            onChange={(e) => setActualPrice(sanitizeDecimalInput(e.target.value))}
+            className={styles.formInput}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="newProductDiscountedPrice" className={styles.formLabel}>
+            Discounted price<span className={styles.requiredMark}>*</span>
+          </label>
+          <input
+            id="newProductDiscountedPrice"
+            type="text"
+            inputMode="decimal"
+            value={discountedPrice}
+            onChange={(e) => setDiscountedPrice(sanitizeDecimalInput(e.target.value))}
+            className={styles.formInput}
+          />
+        </div>
+
+        <div>
+          <label htmlFor="newProductMoq" className={styles.formLabel}>
+            MOQ
+          </label>
+          <input
+            id="newProductMoq"
+            type="number"
+            min={1}
+            value={moq}
+            onChange={(e) => setMoq(Number(e.target.value))}
+            className={styles.formInput}
+          />
+        </div>
+      </div>
+
+      {error && (
+        <p role="alert" aria-live="polite" className={styles.formError}>
+          {error}
+        </p>
+      )}
+
+      <div className={styles.newProductActions}>
+        <Button type="button" variant="secondary" onClick={handleCreate} disabled={status === "saving"}>
+          {status === "saving" ? "Creating…" : "Create product"}
+        </Button>
       </div>
     </div>
   );

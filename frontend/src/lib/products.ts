@@ -176,6 +176,82 @@ export async function addProductImage(productId: number, dataUri: string): Promi
   return imagePath;
 }
 
+// Everything add_product_details needs that an invoice line can't supply —
+// see createProduct below.
+export type NewProductInput = {
+  productName: string;
+  hsnCode: string;
+  vendorId: number;
+  vendorRate: number;
+  actualPrice: number;
+  discountedPrice: number;
+  gstPerc: number;
+  moq: number;
+  description: string;
+  isVisible: boolean;
+};
+
+// Creates a product outside the /admin/products form, for the purchase order
+// review screen's "create it from this invoice line" path (see
+// purchase-order-form-modal.tsx). Deliberately narrower than that form: no
+// images and no categories, because the only caller is resolving one invoice
+// line and has neither to offer. category_ids is sent empty rather than
+// guessed at — ProductDetails accepts that, and the admin completes the
+// product on /admin/products afterwards.
+//
+// Returns the saved Product so the caller can drop it straight into its own
+// list and select it, rather than re-fetching every product to find the one
+// it just made.
+export async function createProduct(input: NewProductInput): Promise<Product> {
+  const response = await apiFetch("/admin/add_product_details", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      product_name: input.productName,
+      hsn_code: input.hsnCode,
+      vendor_id: input.vendorId,
+      vendor_rate: input.vendorRate,
+      actual_price: input.actualPrice,
+      discounted_price: input.discountedPrice,
+      gst_perc: input.gstPerc,
+      category_ids: [],
+      moq: input.moq,
+      description: input.description,
+      is_visible: input.isVisible,
+      image_paths: [],
+    }),
+  });
+
+  if (!response.ok) {
+    // add_product_details validates the prices (discounted must be below
+    // actual, both above zero) and names which rule failed, so its own
+    // message is shown rather than a generic one.
+    const body = await response.json().catch(() => null);
+    throw new Error(
+      typeof body?.detail === "string" ? body.detail : "Couldn't create this product. Please try again.",
+    );
+  }
+
+  const { id }: { id: number } = await response.json();
+  return {
+    id,
+    productName: input.productName,
+    hsnCode: input.hsnCode,
+    vendorId: input.vendorId,
+    vendorRate: input.vendorRate,
+    actualPrice: input.actualPrice,
+    discountedPrice: input.discountedPrice,
+    gstPerc: input.gstPerc,
+    categoryIds: [],
+    moq: input.moq,
+    description: input.description,
+    isVisible: input.isVisible,
+    isDeleted: false,
+    imagePaths: [],
+  };
+}
+
+
 export async function fetchProducts(): Promise<Product[]> {
   const response = await apiFetch("/admin/get_product_details");
   if (!response.ok) {

@@ -25,6 +25,8 @@
 // whether it was visible or not, which is why the Deleted filter is checked
 // first. The list itself is deliberately the unfiltered
 // get_product_details, so the tabs are pure client-side splits of one fetch.
+// The tabs share one table; the only per-tab difference is that Hidden drops
+// the MOQ column.
 //
 // Clicking a row opens the popup in "edit" mode, pre-filled with that row's
 // data; "+ Add new product" opens it in "add" mode.
@@ -212,7 +214,7 @@ export function ProductsPageClient() {
               <th className={styles.tableHeadCell}>Vendor</th>
               <th className={styles.tableHeadCell}>Vendor Rate</th>
               <th className={styles.tableHeadCell}>Price</th>
-              <th className={styles.tableHeadCell}>MOQ</th>
+              {view !== "hidden" && <th className={styles.tableHeadCell}>MOQ</th>}
             </tr>
           </thead>
           <tbody>
@@ -247,7 +249,7 @@ export function ProductsPageClient() {
                       <span className={styles.tableStrikePrice}>₹{product.actualPrice.toFixed(2)}</span>
                     )}
                   </td>
-                  <td className={styles.tableCell}>{product.moq}</td>
+                  {view !== "hidden" && <td className={styles.tableCell}>{product.moq}</td>}
                 </tr>
               );
             })}

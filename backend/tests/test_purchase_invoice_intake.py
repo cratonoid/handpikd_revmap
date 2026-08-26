@@ -1,19 +1,20 @@
 # Unit tests for the pure part of app/services/purchase_invoice_intake.py —
-# the two rules that decide whether an uploaded vendor invoice is accepted at
-# all, and neither of which touches Mongo. Same approach as test_accounts.py:
-# no database connection or TestClient, with the endpoint itself covered by
-# the frontend's round-trip.
+# how an uploaded vendor invoice's lines are resolved against our products,
+# and the one rule that can refuse the upload outright. Neither touches
+# Mongo. Same approach as test_accounts.py: no database connection or
+# TestClient, with the endpoint itself covered by the frontend's round-trip.
 #
-# Both rules exist to stop a wrong purchase order being created silently: a
-# purchase order moves stock and lands in the accounts totals, so matching
-# the wrong product or averaging two GST rates is worse than refusing the
-# upload and making the admin key it in.
+# Both exist to stop a wrong purchase order being created silently: a
+# purchase order moves stock and lands in the accounts totals. Averaging two
+# GST rates is worse than refusing the upload, so that one still refuses;
+# a line whose product can't be placed is handed back unresolved for the
+# admin to settle on the review screen, which is a question rather than a
+# guess and so is safe to let through.
 import pytest
 
 from app.models import ProductDetails
 from app.services.purchase_invoice_intake import (
     MatchedLineItem,
-    ProductNotFoundError,
     UnsupportedInvoiceError,
     _match_product,
     _single_gst_perc,
@@ -33,6 +34,7 @@ def _line_item(gst_perc: float) -> MatchedLineItem:
         product_id=1,
         product_name="Ab80 Gym Shaker Bottle",
         description="Ab80 Gym Shaker Bottle",
+        hsn_code="39249090",
         quantity=1,
         rate=85.0,
         gst_perc=gst_perc,
@@ -42,33 +44,39 @@ def _line_item(gst_perc: float) -> MatchedLineItem:
 def test_matches_a_product_whose_name_differs_only_in_case_and_punctuation():
     products = [_product(7, "Fogg Combo Set")]
 
-    assert _match_product("FOGG ( COMBO SET )", products).id == 7
+    product, reason = _match_product("FOGG ( COMBO SET )", products)
+
+    assert (product.id, reason) == (7, None)
 
 
 def test_matches_a_product_named_inside_a_longer_invoice_description():
     # Vendors pad the description with sizes, finishes and pack counts.
     products = [_product(3, "Frigde Magnet")]
 
-    assert _match_product("3 mm Frigde Magnet 100 pcs with UV print (58 x 58 mm)", products).id == 3
+    product, reason = _match_product("3 mm Frigde Magnet 100 pcs with UV print (58 x 58 mm)", products)
+
+    assert (product.id, reason) == (3, None)
 
 
-def test_refuses_a_description_that_matches_two_products():
+def test_a_description_that_matches_two_products_is_left_unresolved():
     # Choosing between them would be a guess about which product's stock
-    # moves, so the upload is refused and both candidates are named.
+    # moves, so neither is picked and both candidates are named for the admin.
     products = [_product(1, "Shaker Bottle"), _product(2, "Gym Shaker Bottle")]
 
-    with pytest.raises(ProductNotFoundError) as error:
-        _match_product("Ab80 Gym Shaker Bottle Green", products)
+    product, reason = _match_product("Ab80 Gym Shaker Bottle Green", products)
 
-    assert "Shaker Bottle" in str(error.value)
-    assert "Gym Shaker Bottle" in str(error.value)
+    assert product is None
+    assert "Shaker Bottle" in reason
+    assert "Gym Shaker Bottle" in reason
 
 
-def test_refuses_a_description_matching_nothing_in_the_vendors_catalogue():
-    with pytest.raises(ProductNotFoundError) as error:
-        _match_product("Ab80 Gym Shaker Bottle", [_product(1, "Fridge Magnet")])
+def test_a_description_matching_nothing_in_the_vendors_catalogue_is_left_unresolved():
+    # Not a refusal: the review screen offers to point this line at an
+    # existing product or create the missing one, so the upload survives.
+    product, reason = _match_product("Ab80 Gym Shaker Bottle", [_product(1, "Fridge Magnet")])
 
-    assert "add the product first" in str(error.value)
+    assert product is None
+    assert reason == "no product in this vendor's catalogue matches this description"
 
 
 def test_a_single_gst_rate_across_the_line_items_is_the_orders_rate():

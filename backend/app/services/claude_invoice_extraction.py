@@ -30,6 +30,7 @@ Rules:
 - invoice_date is the invoice's own date (not the e-invoice acknowledgement date, not a "printed on" date), as YYYY-MM-DD.
 - One line item per product row in the invoice's item table. Ignore tax summary rows, totals, round-off and freight/labour rows.
 - description is the product's description exactly as printed, without the serial number.
+- hsn_code is that row's HSN/SAC code, empty if the row doesn't carry one.
 - quantity is the number of units billed, as a whole number.
 - rate is the per-unit rate BEFORE tax. If the invoice prints both a tax-inclusive and a taxable rate, return the taxable one, and make sure quantity * rate equals the row's taxable amount.
 - gst_perc is that row's total GST percentage: IGST alone, or CGST + SGST added together. If the row itself doesn't state it, take it from the invoice's HSN-wise tax summary.
@@ -40,6 +41,7 @@ Rules:
 
 class _ExtractedLineItemModel(BaseModel):
     description: str = Field(description="Product description exactly as printed on the invoice")
+    hsn_code: str = Field(default="", description="That row's HSN/SAC code, empty if not printed")
     quantity: int = Field(description="Units billed, as a whole number")
     rate: float = Field(description="Per-unit rate before tax")
     gst_perc: float = Field(description="Total GST % for this row (IGST, or CGST + SGST)")
@@ -155,6 +157,7 @@ def _to_extracted_invoice(parsed: _ExtractedInvoiceModel) -> ExtractedInvoice:
         line_items=tuple(
             ExtractedLineItem(
                 description=item.description.strip(),
+                hsn_code=item.hsn_code.strip(),
                 quantity=item.quantity,
                 rate=item.rate,
                 gst_perc=item.gst_perc,

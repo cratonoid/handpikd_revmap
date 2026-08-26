@@ -195,6 +195,11 @@ export function PurchaseOrdersTab() {
           initialPdfFile={modalState.mode === "add" ? modalState.pdfFile : undefined}
           vendors={vendorOptions}
           products={products}
+          // A product created from an unresolved line of an uploaded invoice
+          // (see purchase-order-form-modal.tsx). Appended rather than
+          // re-fetching every product, so the line that needed it can select
+          // it immediately.
+          onProductCreated={(product) => setProducts((prev) => [...prev, product])}
           ownStateCode={ownStateCode}
           nextPurchaseOrderNo={nextPurchaseOrderNo}
           onClose={() => setModalState(null)}

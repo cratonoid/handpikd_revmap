@@ -6,10 +6,12 @@
 # create_new_purchase_order below:
 #   - keyed in by hand on the purchase order form, or
 #   - read off the vendor's own invoice PDF by parse_purchase_invoice_pdf,
-#     which writes nothing itself — it returns the values it read (and
-#     refuses the upload outright if any check fails, see
-#     services/purchase_invoice_intake.py) for the admin to review in the
-#     same form before submitting.
+#     which writes nothing itself — it returns the values it read for the
+#     admin to review in the same form before submitting. It refuses the
+#     upload outright if the vendor, the invoice number or the totals can't
+#     be trusted; a line item whose product it couldn't place comes back
+#     unresolved for the admin to settle instead. See
+#     services/purchase_invoice_intake.py.
 # Either way the order raises its purchase invoice as part of being created,
 # which is why /admin/create_new_purchase_invoice no longer exists: a
 # purchase invoice always belongs to an order, so there was never a correct
@@ -237,8 +239,9 @@ async def parse_purchase_invoice_pdf(
     except UnsupportedInvoiceError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
     except InvoiceIntakeError as error:
-        # Vendor or product not on file — the admin has to add the missing
-        # record before this invoice can be accepted.
+        # The vendor isn't on file — unlike an unmatched product, which comes
+        # back as an unresolved line for the review screen to settle, there's
+        # nothing to review without a vendor to hang the order on.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error))
 
     return ParsePurchaseInvoicePdfResponse(
@@ -248,7 +251,9 @@ async def parse_purchase_invoice_pdf(
         vendor_invoice_no=intake.invoice_no,
         date=intake.invoice_date,
         # The same parallel arrays create_new_purchase_order takes, so the
-        # form can submit what it was handed without rebuilding it.
+        # form can submit what it was handed without rebuilding it — except
+        # where a line came back unresolved, whose product_id is null until
+        # the admin picks or creates the product.
         product_ids=[item.product_id for item in intake.line_items],
         quantities=[item.quantity for item in intake.line_items],
         rates=[item.rate for item in intake.line_items],
@@ -257,9 +262,11 @@ async def parse_purchase_invoice_pdf(
                 product_id=item.product_id,
                 product_name=item.product_name,
                 description=item.description,
+                hsn_code=item.hsn_code,
                 quantity=item.quantity,
                 rate=item.rate,
                 gst_perc=item.gst_perc,
+                unresolved_reason=item.unresolved_reason,
             )
             for item in intake.line_items
         ],
