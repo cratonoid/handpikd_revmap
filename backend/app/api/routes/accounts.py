@@ -56,6 +56,7 @@ from app.models import (
     InvoiceStatus,
     InvoiceType,
     PrintingCost,
+    PrintingPurchaseInvoiceDetails,
     PurchaseInvoiceDetails,
     PurchaseOrders,
     SalesOrderCosting,
@@ -545,6 +546,22 @@ async def get_accounts_tax_summary(
     orders = await PurchaseOrders.find(In(PurchaseOrders.id, list(po_ids))).to_list() if po_ids else []
     orders_by_id = {order.id: order for order in orders}
 
+    # Printing purchases are ordinary input tax and roll into the same
+    # totals — a printing bill's GST is as reclaimable as a material one's,
+    # and splitting the ITC figure by what was bought would make it agree
+    # with no GST return. They come from their own collection (see
+    # models/printing_purchase_invoice_details.py) rather than a flag on the
+    # one above, so they're fetched and summed separately and added in.
+    #
+    # No order lookup for these: unlike PurchaseInvoiceDetails, every one of
+    # them stores its own tax_kind and head amounts, so there are no rows
+    # here needing the percentage apportioning below.
+    printing_purchase_invoices = await PrintingPurchaseInvoiceDetails.find(
+        PrintingPurchaseInvoiceDetails.is_deleted == False,  # noqa: E712 — Beanie needs the comparison
+        PrintingPurchaseInvoiceDetails.date >= start_dt,
+        PrintingPurchaseInvoiceDetails.date <= end_dt,
+    ).to_list()
+
     span = _month_span(start_date, end_date)
     bucket_output: dict[str, float] = {key: 0.0 for key, _ in span}
     bucket_input: dict[str, float] = {key: 0.0 for key, _ in span}
@@ -616,6 +633,20 @@ async def get_accounts_tax_summary(
         input_igst += igst
         input_unclassified += unclassified
 
+    for printing_invoice in printing_purchase_invoices:
+        tax = printing_invoice.total_tax_amount
+        input_tax += tax
+        input_taxable_value += printing_invoice.total_amount_before_tax
+        key = _month_key(printing_invoice.date)
+        if key in bucket_input:
+            bucket_input[key] += tax
+
+        # Always classifiable: PrintingPurchaseInvoiceDetails.tax_kind is not
+        # optional, so none of these can land in input_unclassified.
+        input_sgst += printing_invoice.total_sgst_amount
+        input_cgst += printing_invoice.total_cgst_amount
+        input_igst += printing_invoice.total_igst_amount
+
     return AccountsTaxSummaryResponse(
         output_tax=round(output_tax, 2),
         output_taxable_value=round(output_taxable_value, 2),
@@ -626,7 +657,7 @@ async def get_accounts_tax_summary(
         output_unclassified=round(output_unclassified, 2),
         input_tax=round(input_tax, 2),
         input_taxable_value=round(input_taxable_value, 2),
-        input_invoice_count=len(purchase_invoices),
+        input_invoice_count=len(purchase_invoices) + len(printing_purchase_invoices),
         input_sgst=round(input_sgst, 2),
         input_cgst=round(input_cgst, 2),
         input_igst=round(input_igst, 2),

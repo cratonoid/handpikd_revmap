@@ -37,6 +37,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.models import ProductDetails, PurchaseInvoiceDetails, PurchaseOrders, VendorDetails
+from app.models.vendor_details import VendorType
 from app.services.gst import TaxKind, resolve_state_code, tax_kind_for
 from app.services.invoice_extraction import ExtractedInvoice, InvoiceExtractionError, extract_invoice
 from app.services.personal_details import get_personal_details
@@ -61,6 +62,10 @@ class VendorNotFoundError(InvoiceIntakeError):
 
 class DuplicateInvoiceError(InvoiceIntakeError):
     pass
+
+
+class WrongVendorTypeError(InvoiceIntakeError):
+    """The invoice is a printing vendor's, so it belongs on the printing side."""
 
 
 @dataclass(frozen=True)
@@ -117,7 +122,13 @@ def _normalize(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
 
-async def _match_vendor(extracted: ExtractedInvoice) -> VendorDetails:
+async def match_vendor(extracted: ExtractedInvoice) -> VendorDetails:
+    """Resolves an extracted invoice to one of our vendors, or raises.
+
+    Public because services/printing_purchase_invoice_intake.py resolves
+    its vendor exactly the same way — on GSTIN, falling back to the
+    registered name — and two copies of that rule would drift.
+    """
     # GSTIN is the match key: it's the one identifier that is exact on both
     # sides, where a vendor's printed name routinely differs from their
     # registered name in our records. The name is only a fallback for
@@ -257,13 +268,26 @@ async def read_uploaded_invoice(pdf_bytes: bytes) -> PurchaseInvoiceIntake:
     personal = await get_personal_details()
     extracted = await extract_invoice(pdf_bytes, personal.get("gstin", ""))
 
-    vendor = await _match_vendor(extracted)
+    vendor = await match_vendor(extracted)
     if not vendor.gst:
         # Same rule the purchase order endpoints enforce (see
         # _require_vendor_has_gst in routes/orders.py) — reachable here only
         # via the registered-name fallback above.
         raise VendorNotFoundError(
             f"vendor {vendor.registered_name} has no GST number on file — add one before uploading their invoices"
+        )
+
+    # A printing vendor's bill is a service with no product behind it, and
+    # recording it here would try to resolve that service against a catalogue
+    # it was never in — and then move stock for it. It has its own side of
+    # the app (routes/printing_orders.py), so say so rather than letting the
+    # upload fail later as an unresolvable line. A vendor with no type at all
+    # is left alone: those are legacy rows that have always been recorded
+    # here, and every one of them is a material vendor.
+    if vendor.vendor_type == VendorType.printing:
+        raise WrongVendorTypeError(
+            f"{vendor.registered_name} is a printing vendor — record this invoice under "
+            "Purchase orders / Printing instead"
         )
 
     await _reject_if_already_recorded(vendor.id, extracted.invoice_no)
@@ -318,7 +342,9 @@ __all__ = [
     "InvoiceExtractionError",
     "InvoiceIntakeError",
     "MatchedLineItem",
+    "match_vendor",
     "PurchaseInvoiceIntake",
     "VendorNotFoundError",
+    "WrongVendorTypeError",
     "read_uploaded_invoice",
 ]

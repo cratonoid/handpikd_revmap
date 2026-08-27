@@ -15,6 +15,12 @@
 // createPurchaseOrder's flow in components/admin/purchase-order-form-modal.tsx
 // and services/purchase_invoices.py on the backend), so the Purchase
 // Invoices tab lists, edits and voids them but never adds one.
+//
+// Nor is there a branded PDF to download. A purchase invoice records what a
+// VENDOR billed us, so their own document is the authoritative one and the
+// only one served — downloadUploadedPurchaseInvoicePdf is the whole of it.
+// Sales invoices still render (lib/invoices.ts); those are documents we
+// genuinely issue.
 import { apiFetch } from "@/lib/api";
 
 export type PurchaseInvoice = {
@@ -114,39 +120,28 @@ export async function updatePurchaseInvoice(payload: UpdatePurchaseInvoicePayloa
   });
 }
 
-async function downloadPdf(path: string, filename: string): Promise<void> {
-  const response = await apiFetch(path);
+// The vendor's own PDF, and the only one there is. Named after our record
+// rather than their file so a folder of downloads sorts the way the list
+// does; it used to carry an "-original" suffix, back when there was a
+// generated PDF for it to be distinguished from.
+export async function downloadUploadedPurchaseInvoicePdf(
+  purchaseInvoiceId: number,
+  purchaseInvoiceNoDisplay: string,
+): Promise<void> {
+  const response = await apiFetch(
+    `/admin/get_purchase_invoice_uploaded_pdf?purchase_invoice_id=${purchaseInvoiceId}`,
+  );
   if (!response.ok) {
-    throw new Error("Failed to generate PDF");
+    throw new Error("Failed to download PDF");
   }
 
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = filename;
+  link.download = `${purchaseInvoiceNoDisplay}.pdf`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
-}
-
-export async function downloadPurchaseInvoicePdf(
-  purchaseInvoiceId: number,
-  purchaseInvoiceNoDisplay: string,
-): Promise<void> {
-  await downloadPdf(
-    `/admin/get_purchase_invoice_pdf?purchase_invoice_id=${purchaseInvoiceId}`,
-    `purchase-invoice-${purchaseInvoiceNoDisplay}.pdf`,
-  );
-}
-
-export async function downloadUploadedPurchaseInvoicePdf(
-  purchaseInvoiceId: number,
-  purchaseInvoiceNoDisplay: string,
-): Promise<void> {
-  await downloadPdf(
-    `/admin/get_purchase_invoice_uploaded_pdf?purchase_invoice_id=${purchaseInvoiceId}`,
-    `purchase-invoice-${purchaseInvoiceNoDisplay}-original.pdf`,
-  );
 }

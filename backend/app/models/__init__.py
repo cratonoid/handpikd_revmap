@@ -23,6 +23,13 @@ from app.models.invoice_no_counter_master import InvoiceNoCounterMaster
 from app.models.order_no_counter_master import OrderNoCounterMaster
 from app.models.order_status_master import OrderStatusMaster
 from app.models.personal_details import PersonalDetails
+from app.models.printing_purchase_invoice_details import PrintingPurchaseInvoiceDetails
+from app.models.printing_purchase_invoice_id_counter import PrintingPurchaseInvoiceIdCounter
+from app.models.printing_purchase_invoice_no_counter_master import PrintingPurchaseInvoiceNoCounterMaster
+from app.models.printing_purchase_order_id_counter import PrintingPurchaseOrderIdCounter
+from app.models.printing_purchase_orders import PrintingPurchaseOrders
+from app.models.printing_purchase_summary import PrintingPurchaseSummary
+from app.models.printing_purchase_summary_id_counter import PrintingPurchaseSummaryIdCounter
 from app.models.product_details import ProductDetails
 from app.models.product_id_counter import ProductIdCounter
 from app.models.product_image_details import ProductImageDetails
@@ -87,6 +94,13 @@ __all__ = [
     "OrderNoCounterMaster",
     "OrderStatusMaster",
     "PersonalDetails",
+    "PrintingPurchaseInvoiceDetails",
+    "PrintingPurchaseInvoiceIdCounter",
+    "PrintingPurchaseInvoiceNoCounterMaster",
+    "PrintingPurchaseOrderIdCounter",
+    "PrintingPurchaseOrders",
+    "PrintingPurchaseSummary",
+    "PrintingPurchaseSummaryIdCounter",
     "ProductDetails",
     "ProductIdCounter",
     "ProductImageDetails",

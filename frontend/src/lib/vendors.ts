@@ -74,6 +74,13 @@ export type VendorOption = {
   // IGST the moment a vendor is picked, without a second request.
   stateCode: string;
   stateName: string;
+  // Which side of purchasing this vendor belongs to. The material and
+  // printing purchase order forms each offer only their own kind — a
+  // printing order buys a service and moves no stock, so the two are
+  // recorded in entirely different collections and neither form can accept
+  // the other's vendor. "" for vendors saved before the field existed, which
+  // neither form offers.
+  vendorType: VendorType | "";
 };
 
 type VendorListItem = {
@@ -82,6 +89,7 @@ type VendorListItem = {
   gst: string;
   state_code: string;
   state_name: string;
+  vendor_type: VendorType | null;
 };
 
 // Lightweight id+name list for vendor-picker dropdowns (product and purchase
@@ -100,6 +108,7 @@ export async function fetchVendorsList(): Promise<VendorOption[]> {
     gst: item.gst,
     stateCode: item.state_code ?? "",
     stateName: item.state_name ?? "",
+    vendorType: item.vendor_type ?? "",
   }));
 }
 

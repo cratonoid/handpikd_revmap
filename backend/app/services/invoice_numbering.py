@@ -16,3 +16,10 @@ def format_sales_invoice_no(invoice_no: int, invoice_type: InvoiceType) -> str:
 
 def format_purchase_invoice_no(purchase_invoice_no: int) -> str:
     return f"PINV-{purchase_invoice_no:04d}"
+
+
+# Printing purchases run their own series off their own counter (see
+# models/printing_purchase_invoice_no_counter_master.py), so PPINV-0001 and
+# PINV-0001 can both exist and the prefix is what says which is which.
+def format_printing_purchase_invoice_no(printing_purchase_invoice_no: int) -> str:
+    return f"PPINV-{printing_purchase_invoice_no:04d}"

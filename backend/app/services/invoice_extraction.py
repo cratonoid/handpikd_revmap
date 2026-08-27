@@ -285,10 +285,20 @@ def _first_date_in(text: str) -> datetime | None:
     # number like "Sca/26-27/1147" reads as a date to any pattern loose
     # enough to cover the formats vendors actually print, and it routinely
     # sits in the cell right beside the real date.
-    for match in _DATE_VALUE_RE.finditer(text):
+    #
+    # Searching resumes one character past where a rejected candidate STARTED
+    # rather than past where it ended, because those two cells are printed
+    # adjacently and the pattern runs straight from one into the other:
+    # "PC/2026-27/72 24-Aug-26" matches "27/72 24", which is not a date and
+    # which has eaten the "24" the real date begins with. Skipping past it
+    # would lose that date entirely, which is exactly what used to send this
+    # invoice to the Claude fallback.
+    position = 0
+    while (match := _DATE_VALUE_RE.search(text, position)) is not None:
         parsed = _parse_date(match.group(1))
         if parsed is not None:
             return parsed
+        position = match.start() + 1
     return None
 
 

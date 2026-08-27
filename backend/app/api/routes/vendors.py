@@ -60,6 +60,8 @@ async def get_vendors_list(
     # don't need. gst rides along (rather than being skipped like
     # address/POC) so the product form's picker can filter down to
     # GST-invoiceable vendors only — see product-form-modal.tsx.
+    # vendor_type rides along for the same reason, so the material and
+    # printing purchase order forms can each offer only their own kind.
     vendors = await VendorDetails.find(VendorDetails.is_deleted == False).to_list()
     return [
         VendorListItem(
@@ -68,6 +70,7 @@ async def get_vendors_list(
             gst=vendor.gst,
             state_code=vendor.state_code,
             state_name=vendor.state_name,
+            vendor_type=vendor.vendor_type,
         )
         for vendor in vendors
     ]

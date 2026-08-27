@@ -14,6 +14,8 @@ from app.api.routes import (
     invoices,
     orders,
     personal_details,
+    printing_orders,
+    printing_purchase_invoices,
     product_inquiries,
     products,
     purchase_invoices,
@@ -46,4 +48,6 @@ api_router.include_router(inventory.router)
 api_router.include_router(personal_details.router)
 api_router.include_router(invoices.router)
 api_router.include_router(purchase_invoices.router)
+api_router.include_router(printing_orders.router)
+api_router.include_router(printing_purchase_invoices.router)
 api_router.include_router(quotations.router)

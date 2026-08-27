@@ -3,9 +3,13 @@
 # Jinja2-templated HTML document (app/templates/invoice.html) rasterized by
 # headless Chromium, the same pipeline quotation_pdf.py uses. Swap the
 # template's markup to restyle the document without touching this module.
-# Pure rendering only — routes/invoices.py (and purchase_invoice_pdf.py, a
-# thin relabeling wrapper around this same function) do all the DB lookups
-# and joins and pass plain data in.
+# Pure rendering only — routes/invoices.py does all the DB lookups and joins
+# and passes plain data in.
+#
+# Sales invoices only. Purchase invoices used to render through a thin
+# relabeling wrapper around this function; they don't any more, because a
+# purchase invoice records what a VENDOR billed us and their own document is
+# the one worth keeping (see routes/purchase_invoices.py).
 from __future__ import annotations
 
 import base64

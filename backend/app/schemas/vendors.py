@@ -55,6 +55,13 @@ class VendorListItem(BaseModel):
     # is taxed as SGST+CGST or IGST against our own state.
     state_code: str = ""
     state_name: str = ""
+    # Which side of purchasing this vendor belongs to. The material and
+    # printing purchase order forms each offer only their own kind, since
+    # the two record entirely different documents (a printing order buys a
+    # service and moves no stock — see routes/printing_orders.py), and the
+    # backend rejects a vendor of the wrong type either way. None for
+    # vendors predating the field, which neither form offers.
+    vendor_type: VendorType | None = None
 
 
 class VendorDetailItem(BaseModel):

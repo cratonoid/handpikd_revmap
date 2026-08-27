@@ -58,6 +58,7 @@ from app.services.personal_details import get_personal_details
 from app.services.purchase_invoice_intake import (
     DuplicateInvoiceError,
     InvoiceIntakeError,
+    WrongVendorTypeError,
     read_uploaded_invoice,
 )
 from app.services.purchase_invoices import create_purchase_invoice_for_order
@@ -339,6 +340,12 @@ async def parse_purchase_invoice_pdf(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error))
     except DuplicateInvoiceError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error))
+    except WrongVendorTypeError as error:
+        # A printing vendor's bill, which belongs on the printing side (see
+        # routes/printing_orders.py). Nothing is missing, so this is the
+        # upload being in the wrong place rather than a record to add — and
+        # the message says where it goes.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
     except InvoiceIntakeError as error:
         # The vendor isn't on file — unlike an unmatched product, which comes
         # back as an unresolved line for the review screen to settle, there's
