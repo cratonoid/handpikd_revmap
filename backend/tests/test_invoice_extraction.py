@@ -18,7 +18,7 @@
 import pymupdf
 import pytest
 
-from app.services.invoice_extraction import extract_invoice_from_text
+from app.services.invoice_extraction import _find_printed_total, extract_invoice_from_text
 
 OUR_GSTIN = "08DINPA7100K1ZA"
 
@@ -272,3 +272,73 @@ def test_every_line_item_carries_a_usable_quantity_and_rate(layout):
         assert item.quantity > 0
         assert item.rate > 0
         assert item.description
+
+# ---------------------------------------------------------------------------
+# The invoice's own printed grand total
+# ---------------------------------------------------------------------------
+# Exercised against line text rather than a rendered fixture: the grand total
+# of a Tally invoice is identified by the currency symbol printed beside it,
+# and _pdf's base-14 font has no glyph for the rupee sign, so a PDF built
+# here could never carry the very thing under test. These strings are the
+# rows as page_lines actually returns them from the real documents.
+
+# "Total 5 nos <cur> 2,936.00" — the grand total, followed further down the
+# page by the HSN-wise tax summary's own "Total", which is a subtotal of the
+# taxable value and must not be taken for the invoice's total.
+def _tally_total_lines(currency: str) -> list[str]:
+    return [
+        "3 PAPER BOARD 481920 1 nos 65.00 nos 65.00",
+        "2,495.00",
+        "IGST 440.65",
+        "Round Off 0.35",
+        f"Total 5 nos {currency} 2,936.00",
+        "Amount Chargeable (in words) E. & O.E",
+        "INR Two Thousand Nine Hundred Thirty Six Only",
+        "HSN/SAC Taxable IGST Total",
+        "33072000 2,430.00 18% 437.40 437.40",
+        "481920 65.00 5% 3.25 3.25",
+        "Total 2,495.00 440.65 440.65",
+    ]
+
+
+@pytest.mark.parametrize(
+    "currency",
+    [
+        # As printed.
+        "\u20b9",
+        # As the rupee sign comes back out of some of these PDFs: Tally's
+        # embedded subset font maps the glyph to U+012B, so the same vendor's
+        # invoices extract one way or the other depending on the build that
+        # wrote them. Both have to read, or the cross-check is dead on half
+        # of them.
+        "\u012b",
+    ],
+)
+def test_reads_the_grand_total_from_a_bare_total_row_with_a_currency_symbol(currency):
+    # Without this the cross-check was dead on every Tally invoice:
+    # "Amount Chargeable (in words)" is a label with no number beside it, and
+    # nothing else on the page says "grand total" or "total amount", so the
+    # invoice's own total came back as None and could never disagree with
+    # what the line items add up to.
+    assert _find_printed_total(_tally_total_lines(currency)) == 2936.00
+
+
+def test_the_hsn_summary_subtotal_is_not_mistaken_for_the_grand_total():
+    # It is the last row matching "total" on the page and holds a plausible
+    # figure, so scanning bottom-up for that word alone would take it — which
+    # is why the currency symbol, and not the word, is what identifies the
+    # grand total row.
+    assert _find_printed_total(_tally_total_lines("\u20b9")) != 2495.00
+
+
+def test_an_explicit_grand_total_label_still_wins():
+    # The labelled pass runs first, so an invoice that names its total
+    # properly is unaffected by the looser currency-row rule — even with a
+    # currency-marked "Total" row sitting further down the page.
+    lines = [
+        "Total 100.00 35.00 0.00 0.00 3500.00 0.00 0.00 4130.00",
+        "Grand Total 4,130.00",
+        "Total Value (In Words) : Rs. 4130/-",
+    ]
+
+    assert _find_printed_total(lines) == 4130.00

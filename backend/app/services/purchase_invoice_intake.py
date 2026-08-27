@@ -11,10 +11,13 @@
 #   - the vendor on the invoice isn't one of ours (matched on GSTIN)
 #   - this invoice has already been recorded
 #   - any required value couldn't be read off the PDF at all
-#   - the invoice mixes GST rates across its line items (see
-#     _single_gst_perc for why that one can't be represented yet)
 #
-# Two things are deliberately not failures:
+# Three things are deliberately not failures:
+#   - An invoice that taxes its lines at different rates. Each line carries
+#     its own GST % all the way onto its #purchase_summary row, so a bill
+#     with paper board at 5% next to toiletries at 18% records exactly as
+#     printed. Only the HEADS (CGST + SGST vs IGST) are decided per order,
+#     from the two parties' states.
 #   - A total that doesn't tie out is reported alongside the parsed values
 #     (total_mismatch) for the admin to judge on the review screen, since
 #     vendors legitimately add freight, labour and round-off lines that no
@@ -34,7 +37,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.models import ProductDetails, PurchaseInvoiceDetails, PurchaseOrders, VendorDetails
-from app.services.gst import is_intra_state, resolve_state_code
+from app.services.gst import TaxKind, resolve_state_code, tax_kind_for
 from app.services.invoice_extraction import ExtractedInvoice, InvoiceExtractionError, extract_invoice
 from app.services.personal_details import get_personal_details
 
@@ -57,10 +60,6 @@ class VendorNotFoundError(InvoiceIntakeError):
 
 
 class DuplicateInvoiceError(InvoiceIntakeError):
-    pass
-
-
-class UnsupportedInvoiceError(InvoiceIntakeError):
     pass
 
 
@@ -94,6 +93,13 @@ class PurchaseInvoiceIntake:
     invoice_no: str
     invoice_date: datetime
     line_items: tuple[MatchedLineItem, ...]
+    # Which heads this purchase falls under. Decided from the two parties'
+    # states, so it holds whether or not the lines share a rate.
+    tax_kind: TaxKind
+    # The single rate every line is taxed at, filed under the heads above —
+    # all three None on an invoice whose lines are taxed at different rates,
+    # where no one percentage is true of the order. The rate that applies to
+    # a line is always the line's own gst_perc.
     sgst_perc: float | None
     cgst_perc: float | None
     igst_perc: float | None
@@ -152,14 +158,26 @@ def _match_product(
         return exact[0], None
 
     # Vendors pad a line's description with sizes, finishes and pack counts
-    # ("3 mm Frigde Magnet 100 pcs with UV print"), so a product whose whole
-    # name appears inside the description counts as a match — but only if
-    # exactly one does, since picking between two is a guess about which
-    # product's stock moves.
+    # ("3 mm Frigde Magnet 100 pcs with UV print"), and just as often print
+    # LESS than we store ("Ab80 Gym Shaker Bottle" against our "Ab80 Gym
+    # Shaker Bottle (green)"), so a name and a description that contain one
+    # another either way round count as a candidate.
+    #
+    # Both directions are needed, and the pair of them has to be searched
+    # together rather than one after the other. Looking only for our name
+    # inside the description made "Ab80 Gym Shaker Bottle" resolve, silently
+    # and with no warning, to a vendor's other product plainly named
+    # "bottle": that one WAS contained, the product actually meant was not,
+    # so exactly one candidate came back and it was the wrong one — and a
+    # purchase order moves that product's stock. With both directions in
+    # scope the two are seen as the competing candidates they are, and the
+    # line goes to the review screen naming both.
+    padded_description = f" {normalized_description} "
     contained = [
         product
         for product in products
-        if f" {normalized_description} ".find(f" {_normalize(product.product_name)} ") != -1
+        if padded_description.find(f" {_normalize(product.product_name)} ") != -1
+        or f" {_normalize(product.product_name)} ".find(padded_description) != -1
     ]
     if len(contained) == 1:
         return contained[0], None
@@ -194,20 +212,16 @@ async def _match_line_items(extracted: ExtractedInvoice, vendor_id: int) -> tupl
     return tuple(matched)
 
 
-def _single_gst_perc(line_items: tuple[MatchedLineItem, ...]) -> float:
-    # PurchaseOrders holds one header-level GST rate for the whole order (see
-    # its sgst_perc/cgst_perc/igst_perc fields), so an invoice whose lines are
-    # taxed at different rates has no faithful representation here. Rejected
-    # rather than blended into an average, which would put the wrong tax on
-    # every line.
+def _single_gst_perc(line_items: tuple[MatchedLineItem, ...]) -> float | None:
+    """The one rate every line is taxed at, or None when they differ.
+
+    Only ever used to fill in PurchaseOrders' derived header percentages —
+    the rate that actually applies to a line is the line's own, which is what
+    the totals and the purchase invoice are built from. None here is an
+    ordinary mixed-rate invoice, not an error.
+    """
     rates = {item.gst_perc for item in line_items}
-    if len(rates) > 1:
-        printed = ", ".join(f"{rate:g}%" for rate in sorted(rates))
-        raise UnsupportedInvoiceError(
-            f"this invoice mixes GST rates across its line items ({printed}), which a single purchase order "
-            "can't represent — enter it manually as one purchase order per rate"
-        )
-    return rates.pop()
+    return rates.pop() if len(rates) == 1 else None
 
 
 async def _reject_if_already_recorded(vendor_id: int, invoice_no: str) -> None:
@@ -255,20 +269,27 @@ async def read_uploaded_invoice(pdf_bytes: bytes) -> PurchaseInvoiceIntake:
     await _reject_if_already_recorded(vendor.id, extracted.invoice_no)
 
     line_items = await _match_line_items(extracted, vendor.id)
-    gst_perc = _single_gst_perc(line_items)
 
     # An intra-state purchase is taxed as CGST + SGST and an inter-state one
     # as IGST alone — decided from the two parties' states rather than from
     # whichever columns the invoice happened to print, so it agrees with how
     # the rest of the app splits tax (services/gst.py).
-    intra_state = is_intra_state(
+    tax_kind = tax_kind_for(
         resolve_state_code(vendor.state_code, vendor.gst),
         resolve_state_code(personal.get("state_code"), personal.get("gstin")),
     )
-    half = gst_perc / 2
+    intra_state = tax_kind == TaxKind.cgst_sgst
 
+    # Per line, because the lines needn't share a rate. This is the same sum
+    # _compute_totals in routes/orders.py does on the values the admin
+    # finally submits, so the review screen's totals and the saved order's
+    # agree by construction.
     total_before_tax = sum(item.quantity * item.rate for item in line_items)
-    total_after_tax = total_before_tax * (1 + gst_perc / 100)
+    total_after_tax = sum(item.quantity * item.rate * (1 + item.gst_perc / 100) for item in line_items)
+
+    # None on a mixed-rate invoice — see PurchaseInvoiceIntake.sgst_perc.
+    gst_perc = _single_gst_perc(line_items)
+    half = gst_perc / 2 if gst_perc is not None else None
 
     return PurchaseInvoiceIntake(
         vendor_id=vendor.id,
@@ -277,6 +298,7 @@ async def read_uploaded_invoice(pdf_bytes: bytes) -> PurchaseInvoiceIntake:
         invoice_no=extracted.invoice_no,
         invoice_date=extracted.invoice_date,
         line_items=line_items,
+        tax_kind=tax_kind,
         sgst_perc=half if intra_state else None,
         cgst_perc=half if intra_state else None,
         igst_perc=None if intra_state else gst_perc,
@@ -297,7 +319,6 @@ __all__ = [
     "InvoiceIntakeError",
     "MatchedLineItem",
     "PurchaseInvoiceIntake",
-    "UnsupportedInvoiceError",
     "VendorNotFoundError",
     "read_uploaded_invoice",
 ]

@@ -1,24 +1,16 @@
 # Unit tests for the pure part of app/services/purchase_invoice_intake.py —
 # how an uploaded vendor invoice's lines are resolved against our products,
-# and the one rule that can refuse the upload outright. Neither touches
-# Mongo. Same approach as test_accounts.py: no database connection or
-# TestClient, with the endpoint itself covered by the frontend's round-trip.
+# and how one rate is read off them. Neither touches Mongo. Same approach as
+# test_accounts.py: no database connection or TestClient, with the endpoint
+# itself covered by the frontend's round-trip.
 #
 # Both exist to stop a wrong purchase order being created silently: a
-# purchase order moves stock and lands in the accounts totals. Averaging two
-# GST rates is worse than refusing the upload, so that one still refuses;
-# a line whose product can't be placed is handed back unresolved for the
-# admin to settle on the review screen, which is a question rather than a
-# guess and so is safe to let through.
-import pytest
-
+# purchase order moves stock and lands in the accounts totals. So a line
+# whose product can't be placed — or can be placed two ways — is handed back
+# unresolved for the admin to settle on the review screen, which is a
+# question rather than a guess and so is safe to let through.
 from app.models import ProductDetails
-from app.services.purchase_invoice_intake import (
-    MatchedLineItem,
-    UnsupportedInvoiceError,
-    _match_product,
-    _single_gst_perc,
-)
+from app.services.purchase_invoice_intake import MatchedLineItem, _match_product, _single_gst_perc
 
 
 def _product(id: int, product_name: str) -> ProductDetails:
@@ -58,6 +50,16 @@ def test_matches_a_product_named_inside_a_longer_invoice_description():
     assert (product.id, reason) == (3, None)
 
 
+def test_matches_a_product_whose_name_says_more_than_the_invoice_did():
+    # The other direction: we hold the fuller name and the vendor prints the
+    # short one. Only one product can be meant, so it resolves.
+    products = [_product(5, "Ab80 Gym Shaker Bottle (green)")]
+
+    product, reason = _match_product("Ab80 Gym Shaker Bottle", products)
+
+    assert (product.id, reason) == (5, None)
+
+
 def test_a_description_that_matches_two_products_is_left_unresolved():
     # Choosing between them would be a guess about which product's stock
     # moves, so neither is picked and both candidates are named for the admin.
@@ -68,6 +70,22 @@ def test_a_description_that_matches_two_products_is_left_unresolved():
     assert product is None
     assert "Shaker Bottle" in reason
     assert "Gym Shaker Bottle" in reason
+
+
+def test_a_generic_product_name_no_longer_beats_the_specific_one():
+    # Regression: matching only looked for our name inside the description,
+    # so "Ab80 Gym Shaker Bottle" found this vendor's product plainly named
+    # "bottle" — contained, and the only candidate, because the product
+    # actually meant is LONGER than the description and so wasn't looked for
+    # at all. One candidate meant it resolved silently, against the wrong
+    # product, and moved that product's stock.
+    products = [_product(5, "bottle "), _product(50, "Ab80 Gym Shaker Bottle (green)")]
+
+    product, reason = _match_product("Ab80 Gym Shaker Bottle", products)
+
+    assert product is None
+    assert "bottle" in reason
+    assert "Ab80 Gym Shaker Bottle (green)" in reason
 
 
 def test_a_description_matching_nothing_in_the_vendors_catalogue_is_left_unresolved():
@@ -83,12 +101,9 @@ def test_a_single_gst_rate_across_the_line_items_is_the_orders_rate():
     assert _single_gst_perc((_line_item(18.0), _line_item(18.0))) == 18.0
 
 
-def test_line_items_taxed_at_different_rates_are_refused():
-    # A purchase order holds one header-level GST rate, so a mixed-rate
-    # invoice has no faithful representation — blending them would put the
-    # wrong tax on every line.
-    with pytest.raises(UnsupportedInvoiceError) as error:
-        _single_gst_perc((_line_item(18.0), _line_item(5.0)))
-
-    assert "5%" in str(error.value)
-    assert "18%" in str(error.value)
+def test_line_items_taxed_at_different_rates_have_no_single_order_rate():
+    # Not an error any more — the rate lives on each line item, and this only
+    # decides whether the order can also carry a header-level summary of it.
+    # None is what keeps a mixed invoice from being stored as an average,
+    # which would put the wrong tax on every line.
+    assert _single_gst_perc((_line_item(18.0), _line_item(5.0))) is None

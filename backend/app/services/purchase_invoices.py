@@ -73,18 +73,25 @@ async def create_purchase_invoice_for_order(
 async def _tax_context_for_order(purchase_order: PurchaseOrders) -> tuple[TaxKind, str, str]:
     """The GST heads and place of supply to snapshot onto the invoice.
 
-    The heads come from the order's own igst_perc vs sgst_perc/cgst_perc,
-    not from a fresh comparison of the two states: the order form already
-    made that call (defaulting from the states, with the admin free to
-    override), and an invoice that contradicted the order it was raised
-    against would be worse than one that follows a deliberate override.
-    A vendor's state still supplies the place-of-supply line, and is the
-    fallback when the order carries no percentages at all.
+    The heads come from the order itself, not from a fresh comparison of the
+    two states: the order form already made that call (defaulting from the
+    states, with the admin free to override), and an invoice that
+    contradicted the order it was raised against would be worse than one that
+    follows a deliberate override. A vendor's state still supplies the
+    place-of-supply line, and is the fallback when the order says nothing.
+
+    tax_kind is the order's own answer and is read first. The percentages
+    below are the older, implicit way of saying the same thing — still the
+    only answer on orders raised before tax_kind existed, and now also None
+    on any order whose lines are taxed at different rates, which is exactly
+    why the heads can no longer be inferred from them alone.
     """
     vendor = await VendorDetails.get(purchase_order.vendor_id)
     vendor_state = resolve_state_code(vendor.state_code, vendor.gst) if vendor else None
 
-    if purchase_order.igst_perc:
+    if purchase_order.tax_kind is not None:
+        tax_kind = purchase_order.tax_kind
+    elif purchase_order.igst_perc:
         tax_kind = TaxKind.igst
     elif purchase_order.sgst_perc or purchase_order.cgst_perc:
         tax_kind = TaxKind.cgst_sgst

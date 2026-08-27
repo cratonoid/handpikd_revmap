@@ -12,10 +12,13 @@
 // attaches the PDF to the purchase invoice once the order is saved.
 //
 // Failures are shown here rather than swallowed, because every one of them
-// names something the admin has to fix first — a vendor or product that
-// isn't on file, an invoice already recorded, mixed GST rates, a PDF that
-// couldn't be read. From that state they can pick a different file or switch
-// to filling the form in by hand.
+// names something the admin has to fix first — a vendor that isn't on file,
+// an invoice already recorded, a PDF that couldn't be read. From that state
+// they can pick a different file or switch to filling the form in by hand.
+//
+// An invoice that taxes its lines at different rates used to land here too.
+// It doesn't any more: GST is recorded per line item, so such a bill is read
+// as printed and goes straight to the review screen like any other.
 import { useState, type ChangeEvent } from "react";
 import { Button } from "@/components/button";
 import { parsePurchaseInvoicePdf, type ParsedPurchaseInvoice } from "@/lib/purchase-orders";

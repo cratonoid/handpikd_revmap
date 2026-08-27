@@ -7,6 +7,7 @@ from pymongo import AsyncMongoClient
 from pymongo.asynchronous.database import AsyncDatabase
 
 from app.core.config import settings
+from app.services.gst import TaxKind
 from app.models import (
     CatalogueDetails,
     CatalogueIdCounter,
@@ -213,6 +214,58 @@ async def _backfill_product_delete_flag() -> None:
     await db["product_details"].update_many({"is_deleted": {"$exists": False}}, {"$set": {"is_deleted": False}})
 
 
+async def _backfill_purchase_order_tax_kind() -> None:
+    # `tax_kind` was added to PurchaseOrders when the GST rate moved onto the
+    # line items (see PurchaseSummary.gst_perc): the rate is per line now, so
+    # the order itself only says which heads carry it. Existing orders
+    # recorded that implicitly, in whichever of their percentage fields was
+    # non-zero, so it can be read straight back out of them.
+    #
+    # Orders with no percentages at all (zero-rated) are deliberately left
+    # None — every amount is 0 either way, and services/purchase_invoices.py
+    # already falls back to the two parties' states for those.
+    db = get_db()
+    await db["purchase_orders"].update_many(
+        {"tax_kind": {"$exists": False}, "igst_perc": {"$gt": 0}},
+        {"$set": {"tax_kind": TaxKind.igst.value}},
+    )
+    await db["purchase_orders"].update_many(
+        {
+            "tax_kind": {"$exists": False},
+            "$or": [{"sgst_perc": {"$gt": 0}}, {"cgst_perc": {"$gt": 0}}],
+        },
+        {"$set": {"tax_kind": TaxKind.cgst_sgst.value}},
+    )
+
+
+async def _backfill_purchase_summary_gst() -> None:
+    # Line items written before PurchaseSummary.gst_perc existed carry no
+    # rate of their own; their order's header rate is the one that applied to
+    # every line, so copying it down leaves those orders costing exactly what
+    # they always did.
+    #
+    # Done here rather than left to the model default because that default is
+    # 0.0 — a line silently taxed at nothing, which the purchase invoice PDF
+    # and the accounts input tax would both then report as real.
+    db = get_db()
+    orders = (
+        await db["purchase_orders"]
+        .find({}, {"_id": 1, "sgst_perc": 1, "cgst_perc": 1, "igst_perc": 1})
+        .to_list(length=None)
+    )
+    rate_by_order_id = {
+        order["_id"]: (order.get("sgst_perc") or 0) + (order.get("cgst_perc") or 0) + (order.get("igst_perc") or 0)
+        for order in orders
+    }
+
+    stale = await db["purchase_summary"].find({"gst_perc": {"$exists": False}}, {"_id": 1, "purchase_order_id": 1}).to_list(length=None)
+    for row in stale:
+        await db["purchase_summary"].update_one(
+            {"_id": row["_id"]},
+            {"$set": {"gst_perc": float(rate_by_order_id.get(row.get("purchase_order_id"), 0.0))}},
+        )
+
+
 async def connect_to_mongo() -> None:
     global client
     client = AsyncMongoClient(settings.mongodb_uri)
@@ -283,6 +336,8 @@ async def connect_to_mongo() -> None:
     await _seed_personal_details()
     await _backfill_order_dates()
     await _backfill_product_delete_flag()
+    await _backfill_purchase_order_tax_kind()
+    await _backfill_purchase_summary_gst()
 
 
 async def close_mongo_connection() -> None:

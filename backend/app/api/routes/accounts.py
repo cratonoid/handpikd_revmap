@@ -588,9 +588,22 @@ async def get_accounts_tax_summary(
         if key in bucket_input:
             bucket_input[key] += tax
 
-        # A purchase invoice whose order is missing (hard-deleted, or the id
-        # never resolved) is treated the same as one with no percentages:
-        # its tax is real, just not attributable to a head.
+        # The invoice's own stored heads first, exactly as the output side
+        # reads them — they're snapshotted from the order when it's raised,
+        # and they're the only answer for an order whose lines are taxed at
+        # different rates, since such an order has no single percentage to
+        # apportion by (see PurchaseOrders.sgst_perc).
+        if invoice.tax_kind is not None:
+            input_sgst += invoice.total_sgst_amount
+            input_cgst += invoice.total_cgst_amount
+            input_igst += invoice.total_igst_amount
+            continue
+
+        # Invoices predating tax_kind carry no heads of their own, so they
+        # still take their split from the order's percentages. One whose
+        # order is missing (hard-deleted, or the id never resolved) is
+        # treated the same as one with no percentages: its tax is real, just
+        # not attributable to a head.
         order = orders_by_id.get(invoice.po_id)
         sgst, cgst, igst, unclassified = _apportion_input_tax(
             tax,

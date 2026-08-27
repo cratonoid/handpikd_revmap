@@ -10,7 +10,9 @@
 #     admin to review in the same form before submitting. It refuses the
 #     upload outright if the vendor, the invoice number or the totals can't
 #     be trusted; a line item whose product it couldn't place comes back
-#     unresolved for the admin to settle instead. See
+#     unresolved for the admin to settle instead. An invoice that taxes its
+#     lines at different rates is read as printed rather than refused — the
+#     GST rate belongs to the line item, not the order. See
 #     services/purchase_invoice_intake.py.
 # Either way the order raises its purchase invoice as part of being created,
 # which is why /admin/create_new_purchase_invoice no longer exists: a
@@ -51,10 +53,11 @@ from app.services.inventory import (
     get_applied_purchase_quantities,
     totals_by_product,
 )
+from app.services.gst import TaxKind, resolve_state_code, tax_kind_for
+from app.services.personal_details import get_personal_details
 from app.services.purchase_invoice_intake import (
     DuplicateInvoiceError,
     InvoiceIntakeError,
-    UnsupportedInvoiceError,
     read_uploaded_invoice,
 )
 from app.services.purchase_invoices import create_purchase_invoice_for_order
@@ -128,17 +131,76 @@ async def _validate_products_belong_to_vendor(
             )
 
 
-def _compute_totals(
-    quantities: list[int],
-    rates: list[float],
-    sgst_perc: float | None,
-    cgst_perc: float | None,
-    igst_perc: float | None,
-) -> tuple[float, float]:
+def _compute_totals(quantities: list[int], rates: list[float], gst_percs: list[float]) -> tuple[float, float]:
+    # Taxed line by line at each line's own rate, rather than by applying one
+    # order-level percentage to the subtotal: the lines of a vendor invoice
+    # routinely carry different rates, and any single percentage would put the
+    # wrong tax on some of them.
     total_before_tax = sum(quantity * rate for quantity, rate in zip(quantities, rates))
-    tax_perc = (sgst_perc or 0) + (cgst_perc or 0) + (igst_perc or 0)
-    total_after_tax = total_before_tax * (1 + tax_perc / 100)
+    total_after_tax = sum(
+        quantity * rate * (1 + gst_perc / 100)
+        for quantity, rate, gst_perc in zip(quantities, rates, gst_percs)
+    )
     return total_before_tax, total_after_tax
+
+
+def _line_gst_percs(payload: CreateNewPurchaseOrderRequest | UpdatePurchaseOrderDetailsRequest) -> list[float]:
+    """Each line's GST rate, from the payload's own per-line list if it sent one.
+
+    Falling back to the header percentages keeps a caller that only knows
+    about the old order-level rate working: applied to every line, they mean
+    exactly what they always did.
+    """
+    if payload.gst_percs is not None:
+        return payload.gst_percs
+
+    header_perc = (payload.sgst_perc or 0) + (payload.cgst_perc or 0) + (payload.igst_perc or 0)
+    return [header_perc] * len(payload.product_ids)
+
+
+async def _resolve_tax_kind(
+    payload: CreateNewPurchaseOrderRequest | UpdatePurchaseOrderDetailsRequest,
+    vendor: VendorDetails,
+) -> TaxKind:
+    """Which heads this order's rates fall under.
+
+    The payload's own choice wins — the form defaults it from the two states
+    but lets the admin override it, for the cases the states can't express (a
+    bill-to/ship-to split). Then the header percentages, for callers that
+    predate tax_kind and say it implicitly by which field they filled in.
+    Only with neither does this compare the two states itself.
+    """
+    if payload.tax_kind is not None:
+        return payload.tax_kind
+    if payload.igst_perc:
+        return TaxKind.igst
+    if payload.sgst_perc or payload.cgst_perc:
+        return TaxKind.cgst_sgst
+
+    personal = await get_personal_details()
+    return tax_kind_for(
+        resolve_state_code(vendor.state_code, vendor.gst),
+        resolve_state_code(personal.get("state_code"), personal.get("gstin")),
+    )
+
+
+def _header_percs(gst_percs: list[float], tax_kind: TaxKind) -> tuple[float | None, float | None, float | None]:
+    """The order's derived (sgst, cgst, igst) summary percentages.
+
+    All None when the lines are taxed at different rates: no single percentage
+    is true of such an order, and storing an average would be the blending this
+    whole arrangement exists to avoid. See PurchaseOrders.sgst_perc.
+    """
+    rates = set(gst_percs)
+    if len(rates) != 1:
+        return None, None, None
+
+    rate = rates.pop()
+    if not rate:
+        return None, None, None
+    if tax_kind == TaxKind.cgst_sgst:
+        return rate / 2, rate / 2, None
+    return None, None, rate
 
 
 async def _reject_stock_going_negative(stock_deltas: dict[int, int]) -> None:
@@ -175,9 +237,13 @@ async def _flag_related_sales_orders(purchase_order_id: int) -> None:
 
 
 async def _insert_purchase_summary_rows(
-    purchase_order_id: int, product_ids: list[int], quantities: list[int], rates: list[float]
+    purchase_order_id: int,
+    product_ids: list[int],
+    quantities: list[int],
+    rates: list[float],
+    gst_percs: list[float],
 ) -> None:
-    for product_id, quantity, rate in zip(product_ids, quantities, rates):
+    for product_id, quantity, rate, gst_perc in zip(product_ids, quantities, rates, gst_percs):
         summary_id = await get_next_id(PurchaseSummaryIdCounter, "next_purchase_summary_id", PurchaseSummary)
         await PurchaseSummary(
             id=summary_id,
@@ -185,6 +251,7 @@ async def _insert_purchase_summary_rows(
             product_id=product_id,
             quantity=quantity,
             rate=rate,
+            gst_perc=gst_perc,
         ).insert()
 
 
@@ -207,9 +274,10 @@ async def create_new_purchase_order(
     await _reject_duplicate_vendor_invoice(payload.vendor_id, payload.vendor_invoice_no)
 
     await _validate_products_belong_to_vendor(payload.product_ids, payload.vendor_id, reject_deleted=True)
-    total_amount_before_tax, total_amount_after_tax = _compute_totals(
-        payload.quantities, payload.rates, payload.sgst_perc, payload.cgst_perc, payload.igst_perc
-    )
+    gst_percs = _line_gst_percs(payload)
+    tax_kind = await _resolve_tax_kind(payload, vendor)
+    sgst_perc, cgst_perc, igst_perc = _header_percs(gst_percs, tax_kind)
+    total_amount_before_tax, total_amount_after_tax = _compute_totals(payload.quantities, payload.rates, gst_percs)
 
     purchase_order_id = await get_next_id(PurchaseOrderIdCounter, "next_purchase_order_id", PurchaseOrders)
     purchase_order = PurchaseOrders(
@@ -218,15 +286,18 @@ async def create_new_purchase_order(
         vendor_id=payload.vendor_id,
         date=payload.date,
         total_amount_before_tax=total_amount_before_tax,
-        sgst_perc=payload.sgst_perc,
-        cgst_perc=payload.cgst_perc,
-        igst_perc=payload.igst_perc,
+        tax_kind=tax_kind,
+        sgst_perc=sgst_perc,
+        cgst_perc=cgst_perc,
+        igst_perc=igst_perc,
         total_amount_after_tax=total_amount_after_tax,
         description=payload.description,
     )
     await purchase_order.insert()
 
-    await _insert_purchase_summary_rows(purchase_order_id, payload.product_ids, payload.quantities, payload.rates)
+    await _insert_purchase_summary_rows(
+        purchase_order_id, payload.product_ids, payload.quantities, payload.rates, gst_percs
+    )
     # Nothing is applied yet for a brand new order, so the deltas are just
     # the ordered quantities — all of them stock coming in, never negative.
     await apply_purchase_order_stock(
@@ -268,8 +339,6 @@ async def parse_purchase_invoice_pdf(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error))
     except DuplicateInvoiceError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error))
-    except UnsupportedInvoiceError as error:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error))
     except InvoiceIntakeError as error:
         # The vendor isn't on file — unlike an unmatched product, which comes
         # back as an unresolved line for the review screen to settle, there's
@@ -289,6 +358,7 @@ async def parse_purchase_invoice_pdf(
         product_ids=[item.product_id for item in intake.line_items],
         quantities=[item.quantity for item in intake.line_items],
         rates=[item.rate for item in intake.line_items],
+        gst_percs=[item.gst_perc for item in intake.line_items],
         line_items=[
             ParsedPurchaseInvoiceLineItem(
                 product_id=item.product_id,
@@ -302,6 +372,7 @@ async def parse_purchase_invoice_pdf(
             )
             for item in intake.line_items
         ],
+        tax_kind=intake.tax_kind,
         sgst_perc=intake.sgst_perc,
         cgst_perc=intake.cgst_perc,
         igst_perc=intake.igst_perc,
@@ -365,7 +436,9 @@ async def get_purchase_order_details(
                 product_ids=[item.product_id for item in line_items],
                 quantities=[item.quantity for item in line_items],
                 rates=[item.rate for item in line_items],
+                gst_percs=[item.gst_perc for item in line_items],
                 total_amount_before_tax=order.total_amount_before_tax,
+                tax_kind=order.tax_kind,
                 sgst_perc=order.sgst_perc,
                 cgst_perc=order.cgst_perc,
                 igst_perc=order.igst_perc,
@@ -398,17 +471,18 @@ async def update_purchase_order_details(
         )
 
     await _validate_products_belong_to_vendor(payload.product_ids, payload.vendor_id)
-    total_amount_before_tax, total_amount_after_tax = _compute_totals(
-        payload.quantities, payload.rates, payload.sgst_perc, payload.cgst_perc, payload.igst_perc
-    )
+    gst_percs = _line_gst_percs(payload)
+    tax_kind = await _resolve_tax_kind(payload, vendor)
+    total_amount_before_tax, total_amount_after_tax = _compute_totals(payload.quantities, payload.rates, gst_percs)
 
     purchase_order.purchase_order_no = payload.purchase_order_no
     purchase_order.vendor_id = payload.vendor_id
     purchase_order.date = payload.date
     purchase_order.total_amount_before_tax = total_amount_before_tax
-    purchase_order.sgst_perc = payload.sgst_perc
-    purchase_order.cgst_perc = payload.cgst_perc
-    purchase_order.igst_perc = payload.igst_perc
+    purchase_order.tax_kind = tax_kind
+    purchase_order.sgst_perc, purchase_order.cgst_perc, purchase_order.igst_perc = _header_percs(
+        gst_percs, tax_kind
+    )
     purchase_order.total_amount_after_tax = total_amount_after_tax
     # Stock moves by the difference between what this order has already added
     # to #inventory and what it adds after the edit, so raising a quantity
@@ -425,7 +499,9 @@ async def update_purchase_order_details(
     await purchase_order.save()
 
     await PurchaseSummary.find(PurchaseSummary.purchase_order_id == purchase_order.id).delete()
-    await _insert_purchase_summary_rows(purchase_order.id, payload.product_ids, payload.quantities, payload.rates)
+    await _insert_purchase_summary_rows(
+        purchase_order.id, payload.product_ids, payload.quantities, payload.rates, gst_percs
+    )
     await apply_purchase_order_stock(
         purchase_order.id, payload.product_ids, payload.quantities, stock_deltas
     )

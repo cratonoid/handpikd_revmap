@@ -60,6 +60,22 @@ _SUMMARY_ROW_PREFIXES = ("total", "sub total", "subtotal", "grand total", "amoun
 
 _TOTAL_LABEL_RE = re.compile(r"(?:grand\s+total|total\s+amount|amount\s+chargeable)", re.IGNORECASE)
 
+# The grand total of a Tally-style invoice, which labels it with a bare
+# "Total" that _TOTAL_LABEL_RE can't take (far too many rows open with that
+# word) but prints against a currency symbol that nothing else on the page
+# does. Both parts are needed: the HSN-wise tax summary at the foot ends in
+# its own "Total 2,495.00 440.65 440.65" row, which is a subtotal of the
+# taxable value and would otherwise be read as the invoice's total — and
+# being further down the page, it would win.
+#
+# "ī" is in there because that is what the rupee sign extracts as from some
+# of these PDFs: Tally embeds a subset font whose ₹ glyph sits at a codepoint
+# the encoding maps to U+012B, so the same vendor's invoices come out as
+# "Total 5 nos ₹ 2,936.00" or "Total ī 40,515.00" depending on which build
+# wrote them. Matching the mis-decode is what makes the second kind readable
+# at all; it costs nothing, since no invoice prints a real ī here.
+_CURRENCY_TOTAL_ROW_RE = re.compile(r"^total\b.*(?:₹|ī|\bRs\.?\b|\bINR\b)", re.IGNORECASE)
+
 # How far apart two words may sit vertically and still count as one row, as
 # a fraction of the page's typical line height. Invoices set the cells of a
 # single row in different fonts and sizes — Tally prints a row's description,
@@ -299,8 +315,23 @@ def _find_invoice_date(lines: list[str]) -> datetime | None:
 
 
 def _find_printed_total(lines: list[str]) -> float | None:
+    # An explicit label wins wherever there is one, which is the whole of
+    # this on invoices that print "Grand Total" or "Total Amount".
     for line in reversed(lines):
         if _TOTAL_LABEL_RE.search(line) is None:
+            continue
+        numbers = [_to_number(match.group(0)) for match in _NUMBER_RE.finditer(line)]
+        if numbers:
+            return max(numbers)
+
+    # Only then the bare-"Total"-with-a-currency-symbol row. Second because
+    # it's the looser of the two rules, and because an invoice that labels
+    # its total properly shouldn't have that reading overridden by a row
+    # further down the page. Reached by every Tally invoice, which prints
+    # "Amount Chargeable (in words)" as a label with no number beside it and
+    # so gets nothing out of the pass above.
+    for line in reversed(lines):
+        if _CURRENCY_TOTAL_ROW_RE.match(line.strip()) is None:
             continue
         numbers = [_to_number(match.group(0)) for match in _NUMBER_RE.finditer(line)]
         if numbers:

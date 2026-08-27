@@ -20,11 +20,11 @@ from app.api.routes import orders
 from app.api.routes.admin import require_admin
 from app.main import app
 from app.services.invoice_extraction import InvoiceExtractionError
+from app.services.gst import TaxKind
 from app.services.purchase_invoice_intake import (
     DuplicateInvoiceError,
     MatchedLineItem,
     PurchaseInvoiceIntake,
-    UnsupportedInvoiceError,
     VendorNotFoundError,
 )
 
@@ -74,14 +74,30 @@ _UNRESOLVED_LINE_ITEM = MatchedLineItem(
 )
 
 
-def _intake(line_items=(_MATCHED_LINE_ITEM,)) -> PurchaseInvoiceIntake:
-    return PurchaseInvoiceIntake(
+# A line taxed at a different rate from _MATCHED_LINE_ITEM's 18%. Real
+# invoices mix them freely — 5% paper board billed alongside 18%
+# toiletries — and the response has to carry every line's own rate
+# rather than one for the order.
+_LOWER_RATED_LINE_ITEM = MatchedLineItem(
+    product_id=11,
+    product_name="Paper Board",
+    description="PAPER BOARD",
+    hsn_code="481920",
+    quantity=1,
+    rate=65.0,
+    gst_perc=5.0,
+)
+
+
+def _intake(line_items=(_MATCHED_LINE_ITEM,), **overrides) -> PurchaseInvoiceIntake:
+    fields = dict(
         vendor_id=4,
         vendor_name="Shah Clock Agencies",
         vendor_gstin="29ABJPN9424H1Z7",
         invoice_no="Sca/26-27/1147",
         invoice_date=datetime(2026, 4, 22),
         line_items=line_items,
+        tax_kind=TaxKind.igst,
         sgst_perc=None,
         cgst_perc=None,
         igst_perc=18.0,
@@ -91,6 +107,7 @@ def _intake(line_items=(_MATCHED_LINE_ITEM,)) -> PurchaseInvoiceIntake:
         total_mismatch=False,
         source="text",
     )
+    return PurchaseInvoiceIntake(**{**fields, **overrides})
 
 
 def test_a_read_invoice_comes_back_in_the_shape_the_order_form_submits(monkeypatch):
@@ -105,6 +122,10 @@ def test_a_read_invoice_comes_back_in_the_shape_the_order_form_submits(monkeypat
     # The parallel arrays create_new_purchase_order takes, so the form can
     # submit what it was handed without rebuilding it.
     assert (body["product_ids"], body["quantities"], body["rates"]) == ([9], [20], [85.0])
+    # One GST rate per line, alongside them — what the order is actually
+    # taxed by, since the header percentages can't speak for a mixed invoice.
+    assert body["gst_percs"] == [18.0]
+    assert body["tax_kind"] == "igst"
     assert body["igst_perc"] == 18.0
     assert body["source"] == "text"
     # What each invoice line was matched to, for the admin to check.
@@ -155,8 +176,6 @@ def test_a_resolved_line_carries_no_unresolved_reason(monkeypatch):
         (VendorNotFoundError("no vendor with GSTIN 29ABJPN9424H1Z7"), 404),
         # Already recorded — a re-upload, not a second purchase.
         (DuplicateInvoiceError("invoice Sca/26-27/1147 from this vendor has already been recorded"), 409),
-        # Readable and matched, but not representable as one purchase order.
-        (UnsupportedInvoiceError("this invoice mixes GST rates across its line items (5%, 18%)"), 400),
     ],
 )
 def test_every_refusal_answers_with_its_own_status_and_reason(monkeypatch, error, expected_status):
@@ -168,3 +187,33 @@ def test_every_refusal_answers_with_its_own_status_and_reason(monkeypatch, error
     # The message is written for the admin and is shown to them verbatim, so
     # it has to survive the trip rather than being replaced by a generic one.
     assert response.json()["detail"] == str(error)
+
+
+def test_a_mixed_rate_invoice_comes_back_with_each_line_at_its_own_rate(monkeypatch):
+    # This upload used to be refused with a 400: a purchase order held one
+    # header-level rate, so there was nowhere to put the second one. The rate
+    # belongs to the line item now, and the only thing the order still decides
+    # is which heads carry it — so the invoice records exactly as printed.
+    _stub(
+        monkeypatch,
+        _intake(
+            line_items=(_MATCHED_LINE_ITEM, _LOWER_RATED_LINE_ITEM),
+            # No single percentage is true of this order, so it carries none.
+            sgst_perc=None,
+            cgst_perc=None,
+            igst_perc=None,
+            total_amount_before_tax=1765.0,
+            total_amount_after_tax=2074.25,
+            printed_total=2074.25,
+        ),
+    )
+
+    response = _post()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["gst_percs"] == [18.0, 5.0]
+    # The heads still hold — they come from the two states, not the rates.
+    assert body["tax_kind"] == "igst"
+    assert (body["sgst_perc"], body["cgst_perc"], body["igst_perc"]) == (None, None, None)
+    assert [item["gst_perc"] for item in body["line_items"]] == [18.0, 5.0]

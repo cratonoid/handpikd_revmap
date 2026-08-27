@@ -24,10 +24,21 @@
 // display, but the backend re-derives them server-side from the submitted
 // product_ids/quantities/rates rather than trusting these fields.
 //
-// Line items are submitted as parallel product_ids/quantities/rates arrays
-// (see CreateNewPurchaseOrderRequest in backend/app/schemas/purchase_orders.py),
-// each persisted as its own #purchase_summary row tied back to the new
-// purchase order via purchase_order_id.
+// Line items are submitted as parallel product_ids/quantities/rates/gst_percs
+// arrays (see CreateNewPurchaseOrderRequest in
+// backend/app/schemas/purchase_orders.py), each persisted as its own
+// #purchase_summary row tied back to the new purchase order via
+// purchase_order_id.
+//
+// GST is entered per line, not once for the order: a vendor invoice routinely
+// taxes its lines at different rates (5% paper board billed alongside 18%
+// toiletries), which one order-level rate could only have represented by
+// averaging. What the order still decides is which HEADS carry those rates —
+// CGST + SGST for an intra-state purchase, IGST for an inter-state one —
+// since that follows from the two parties' states rather than from the goods.
+// The heads panel below the line items shows what that works out to and lets
+// the admin override the direction; there is nowhere left to type a rate
+// twice.
 //
 // In "add" mode the form can arrive pre-filled from a vendor's own invoice
 // PDF (the `prefill` prop, read by components/admin/
@@ -49,7 +60,7 @@ import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue } from "@/lib/datetime-input";
 import { GST_PERCENT_OPTIONS, isIntraState, resolveStateCode, stateNameForCode } from "@/lib/gst";
 import { attachPurchaseInvoicePdf } from "@/lib/purchase-invoices";
-import type { ParsedInvoiceLineItem, ParsedPurchaseInvoice, PurchaseOrder } from "@/lib/purchase-orders";
+import type { ParsedInvoiceLineItem, ParsedPurchaseInvoice, PurchaseOrder, TaxKind } from "@/lib/purchase-orders";
 import type { VendorOption } from "@/lib/vendors";
 import { createProduct, type Product } from "@/lib/products";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
@@ -65,6 +76,10 @@ type LineItem = {
   // rather than a controlled type="number" input, so a leading "0" can just
   // be typed over instead of leaving stray zeros until blur.
   rate: string;
+  // This line's GST rate, as the <select> holds it ("" for none). The whole
+  // rate, not a half: splitting it across CGST and SGST is what the heads
+  // do with it, and only on an intra-state purchase.
+  gstPerc: string;
   // Which of the uploaded invoice's lines this row was built from, for rows
   // that came from a PDF. Kept so that creating the missing product from the
   // review notice can find this row again — a bare index into
@@ -73,18 +88,19 @@ type LineItem = {
 };
 
 function emptyLineItem(): LineItem {
-  return { productId: null, quantity: 1, rate: "" };
+  return { productId: null, quantity: 1, rate: "", gstPerc: "" };
 }
 
-// Reassembles an existing order's parallel productIds/quantities/rates
-// arrays (see lib/purchase-orders.ts) back into per-line-item rows for the
-// form's local state.
+// Reassembles an existing order's parallel productIds/quantities/rates/
+// gstPercs arrays (see lib/purchase-orders.ts) back into per-line-item rows
+// for the form's local state.
 function lineItemsFromOrder(order: PurchaseOrder): LineItem[] {
   if (order.productIds.length === 0) return [emptyLineItem()];
   return order.productIds.map((productId, index) => ({
     productId: String(productId),
     quantity: order.quantities[index] ?? 1,
     rate: String(order.rates[index] ?? ""),
+    gstPerc: percentValue(order.gstPercs[index]),
   }));
 }
 
@@ -97,6 +113,9 @@ function lineItemsFromParsedInvoice(parsed: ParsedPurchaseInvoice): LineItem[] {
     productId: item.productId != null ? String(item.productId) : null,
     quantity: item.quantity,
     rate: String(item.rate),
+    // The rate this line was actually billed at, which on a mixed invoice is
+    // not the rate any other line was billed at.
+    gstPerc: percentValue(item.gstPerc),
     sourceLineIndex: index,
   }));
 }
@@ -130,31 +149,34 @@ function percentValue(percent: number | null | undefined): string {
   return percent != null ? String(percent) : "";
 }
 
-// GST_PERCENT_OPTIONS lists the standard slabs, but an intra-state purchase
-// splits one of them in half (18% -> 9% SGST + 9% CGST), and a parsed
-// invoice can carry a rate that isn't a slab at all. `halved` is what the
-// SGST and CGST dropdowns pass once the form knows the purchase is
-// intra-state, so the admin picks 9% out of a list of real half-slabs
-// instead of hunting for it among the full ones. Folding the current value
-// in keeps the dropdown able to show what's actually selected instead of
-// silently falling back to "—".
-function percentOptions(selected: string, halved = false): number[] {
-  const slabs = halved ? GST_PERCENT_OPTIONS.map((percent) => percent / 2) : GST_PERCENT_OPTIONS;
+// GST_PERCENT_OPTIONS lists the standard slabs; a parsed invoice can carry a
+// rate that isn't one of them at all. Folding the current value in keeps the
+// dropdown able to show what's actually selected instead of silently falling
+// back to "—". Always the full rate: halving it across CGST and SGST is what
+// the heads do with it, not something the line is entered as.
+function percentOptions(selected: string): number[] {
   const value = Number(selected);
-  if (!selected || !Number.isFinite(value) || slabs.includes(value)) {
-    return slabs;
+  if (!selected || !Number.isFinite(value) || GST_PERCENT_OPTIONS.includes(value)) {
+    return GST_PERCENT_OPTIONS;
   }
-  return [...slabs, value].sort((a, b) => a - b);
+  return [...GST_PERCENT_OPTIONS, value].sort((a, b) => a - b);
 }
 
-// One GST rate, expressed under the heads the supply's direction calls for:
-// intra-state splits it in half across SGST and CGST, inter-state puts all of
-// it on IGST. Mirrors split_tax in backend/app/services/gst.py.
-function taxHeadsFor(intraState: boolean, totalPerc: number): { sgst: string; cgst: string; igst: string } {
-  if (!totalPerc) return { sgst: "", cgst: "", igst: "" };
-  return intraState
-    ? { sgst: String(totalPerc / 2), cgst: String(totalPerc / 2), igst: "" }
-    : { sgst: "", cgst: "", igst: String(totalPerc) };
+// How the line items' rates read once filed under the given heads: intra-state
+// splits each rate in half across CGST and SGST, inter-state puts all of it on
+// IGST. Mirrors split_tax in backend/app/services/gst.py.
+//
+// Plural because the lines needn't agree — a mixed invoice genuinely is
+// "IGST 5% + 18%", and saying so is the point of showing this at all.
+function taxHeadSummary(taxKind: TaxKind, percs: number[]): string {
+  const rates = [...new Set(percs.filter((percent) => percent > 0))].sort((a, b) => a - b);
+  if (rates.length === 0) return "No GST on this order.";
+
+  const listed = (halved: boolean) =>
+    rates.map((rate) => `${halved ? rate / 2 : rate}%`).join(" + ");
+  return taxKind === "cgst_sgst"
+    ? `CGST ${listed(true)} + SGST ${listed(true)}`
+    : `IGST ${listed(false)}`;
 }
 
 export function PurchaseOrderFormModal({
@@ -224,14 +246,6 @@ export function PurchaseOrderFormModal({
         ? lineItemsFromParsedInvoice(prefill)
         : [emptyLineItem()],
   );
-  // Percentages (of the line items' subtotal), not rupee amounts — chosen
-  // from the hardcoded GST_PERCENT_OPTIONS dropdown (see lib/gst.ts).
-  // Indian GST rules mean a purchase order is taxed as EITHER sgstPerc +
-  // cgstPerc (intra-state) OR igstPerc alone (inter-state), never both —
-  // enforced in handleSubmit below.
-  const [sgstPerc, setSgstPerc] = useState(percentValue(initialOrder?.sgstPerc ?? prefill?.sgstPerc));
-  const [cgstPerc, setCgstPerc] = useState(percentValue(initialOrder?.cgstPerc ?? prefill?.cgstPerc));
-  const [igstPerc, setIgstPerc] = useState(percentValue(initialOrder?.igstPerc ?? prefill?.igstPerc));
   const [description, setDescription] = useState(
     initialOrder?.description ?? (prefill ? `Vendor invoice ${prefill.vendorInvoiceNo}` : ""),
   );
@@ -245,29 +259,24 @@ export function PurchaseOrderFormModal({
   // missing product" form is open, or null when none is.
   const [creatingForLine, setCreatingForLine] = useState<number | null>(null);
 
-  // Normally the two states decide which GST heads apply, and the other
-  // fields are greyed out so they can't be filled in by accident. Turning
-  // this on hands all three back to the admin — for the cases the states
-  // can't express, like a bill-to/ship-to split. An edit whose stored heads
-  // already contradict the states starts overridden, so re-opening an order
-  // never silently rewrites what was deliberately entered.
-  const [taxHeadsOverridden, setTaxHeadsOverridden] = useState(() => {
+  // Normally the two states decide which GST heads apply. This holds a
+  // deliberate departure from that — for the cases the states can't express,
+  // like a bill-to/ship-to split — and null the rest of the time, so that
+  // changing the vendor re-decides the heads on its own.
+  //
+  // An order whose stored heads already contradict the states starts
+  // overridden, so re-opening one never silently rewrites what was entered.
+  const [taxKindOverride, setTaxKindOverride] = useState<TaxKind | null>(() => {
     const orderVendorId = initialOrder?.vendorId ?? prefill?.vendorId;
-    if (orderVendorId == null || !ownStateCode) return false;
+    const storedKind = initialOrder?.taxKind ?? prefill?.taxKind ?? null;
+    if (orderVendorId == null || !ownStateCode || storedKind == null) return null;
 
-    const stateCode = resolveStateCode(
-      vendors.find((v) => v.id === orderVendorId)?.stateCode,
-      vendors.find((v) => v.id === orderVendorId)?.gst,
-    );
-    if (!stateCode) return false;
+    const vendor = vendors.find((v) => v.id === orderVendorId);
+    const stateCode = resolveStateCode(vendor?.stateCode, vendor?.gst);
+    if (!stateCode) return null;
 
-    const usesIgst = Boolean(initialOrder?.igstPerc ?? prefill?.igstPerc);
-    const usesPair = Boolean(
-      (initialOrder?.sgstPerc ?? prefill?.sgstPerc) || (initialOrder?.cgstPerc ?? prefill?.cgstPerc),
-    );
-    // Nothing recorded at all (a tax-free order) isn't a contradiction.
-    if (!usesIgst && !usesPair) return false;
-    return isIntraState(stateCode, ownStateCode) ? usesIgst : usesPair;
+    const kindFromStates: TaxKind = isIntraState(stateCode, ownStateCode) ? "cgst_sgst" : "igst";
+    return storedKind === kindFromStates ? null : storedKind;
   });
 
   const isEdit = mode === "edit";
@@ -310,74 +319,58 @@ export function PurchaseOrderFormModal({
   // anything; with either missing it leaves all three heads open.
   const taxDirectionKnown = Boolean(vendorStateCode) && Boolean(ownStateCode);
   const intraState = isIntraState(vendorStateCode, ownStateCode);
-  const taxHeadsLocked = taxDirectionKnown && !taxHeadsOverridden;
+  // What the two states call for, and then what this order is actually filed
+  // under. They differ only where the admin has deliberately overridden it.
+  const taxKindFromStates: TaxKind = intraState ? "cgst_sgst" : "igst";
+  const taxKind: TaxKind = taxKindOverride ?? taxKindFromStates;
+  const taxHeadsOverridden = taxKindOverride != null;
   const vendorHasNoProducts = Boolean(vendorId) && availableProducts.length === 0;
 
+  const lineGstPercs = lineItems.map((item) => Number(item.gstPerc) || 0);
   const totalAmountBeforeTax = lineItems.reduce((sum, item) => sum + item.quantity * (Number(item.rate) || 0), 0);
-  const totalTaxPerc = (Number(sgstPerc) || 0) + (Number(cgstPerc) || 0) + (Number(igstPerc) || 0);
-  const totalTaxAmount = totalAmountBeforeTax * (totalTaxPerc / 100);
+  // Taxed line by line at each line's own rate, the same sum _compute_totals
+  // in backend/app/api/routes/orders.py does on what this form submits — so
+  // the figure shown here is the figure that gets saved.
+  const totalTaxAmount = lineItems.reduce(
+    (sum, item, index) => sum + item.quantity * (Number(item.rate) || 0) * (lineGstPercs[index] / 100),
+    0,
+  );
   const totalAmountAfterTax = totalAmountBeforeTax + totalTaxAmount;
 
   function updateLineItem(index: number, changes: Partial<LineItem>) {
     setLineItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...changes } : item)));
   }
 
+  // Picking a product fills in both of the things we already know about it:
+  // what this vendor charges for it, and what it's taxed at. Either can be
+  // overridden — an invoice is what was actually billed, not what our
+  // catalogue expected.
   function handleProductChange(index: number, productId: string) {
     const product = productsById.get(productId);
-    updateLineItem(index, { productId, rate: product ? String(product.vendorRate) : "" });
+    updateLineItem(index, {
+      productId,
+      rate: product ? String(product.vendorRate) : "",
+      gstPerc: product ? percentValue(product.gstPerc) : "",
+    });
   }
 
   // Switching vendors invalidates any products already picked for the old
-  // one, since the product picker is scoped to a single vendor's catalogue.
+  // one, since the product picker is scoped to a single vendor's catalogue —
+  // and with them the rates, which were that vendor's.
+  //
+  // The heads need no adjusting: they follow the new vendor's state through
+  // taxKindFromStates on the next render, unless the admin has overridden
+  // them, in which case the override is left alone.
   function handleVendorChange(newVendorId: string | null) {
     setVendorId(newVendorId);
-    setLineItems((prev) => prev.map((item) => ({ ...item, productId: null, rate: "" })));
-
-    // The rate the admin already chose is kept; only which heads carry it
-    // changes, since that's the part the new vendor's state decides. An
-    // explicit override is left alone.
-    if (taxHeadsOverridden) return;
-    const newVendor = newVendorId ? vendorsById.get(newVendorId) : undefined;
-    const newStateCode = resolveStateCode(newVendor?.stateCode, newVendor?.gst);
-    if (!newStateCode || !ownStateCode) return;
-
-    const heads = taxHeadsFor(isIntraState(newStateCode, ownStateCode), totalTaxPerc);
-    setSgstPerc(heads.sgst);
-    setCgstPerc(heads.cgst);
-    setIgstPerc(heads.igst);
+    setLineItems((prev) => prev.map((item) => ({ ...item, productId: null, rate: "", gstPerc: "" })));
   }
 
-  // Editing one head under a locked direction sets the pair: typing 9 into
-  // SGST on an intra-state order fills CGST in to match, and typing a rate
-  // into IGST on an inter-state one is the whole rate.
-  function handleTaxHeadChange(head: "sgst" | "cgst" | "igst", value: string) {
-    if (!taxHeadsLocked) {
-      if (head === "sgst") setSgstPerc(value);
-      else if (head === "cgst") setCgstPerc(value);
-      else setIgstPerc(value);
-      return;
-    }
-
-    if (head === "igst") {
-      setIgstPerc(value);
-      return;
-    }
-    setSgstPerc(value);
-    setCgstPerc(value);
-  }
-
-  // Leaving override mode re-files whatever rate is showing under the heads
-  // the states call for, so the form can't be left in a state its own rules
-  // would reject.
+  // Toggles between the heads the two states call for and the other pair.
+  // There are only ever two, so "override" is a single choice rather than
+  // three fields handed back to the admin.
   function handleOverrideToggle() {
-    const next = !taxHeadsOverridden;
-    setTaxHeadsOverridden(next);
-    if (next || !taxDirectionKnown) return;
-
-    const heads = taxHeadsFor(intraState, totalTaxPerc);
-    setSgstPerc(heads.sgst);
-    setCgstPerc(heads.cgst);
-    setIgstPerc(heads.igst);
+    setTaxKindOverride(taxHeadsOverridden ? null : taxKindFromStates === "igst" ? "cgst_sgst" : "igst");
   }
 
   // The product the admin just created for an unresolved invoice line. Its
@@ -412,18 +405,6 @@ export function PurchaseOrderFormModal({
       return;
     }
 
-    const sgstPercValue = Number(sgstPerc) || null;
-    const cgstPercValue = Number(cgstPerc) || null;
-    const igstPercValue = Number(igstPerc) || null;
-
-    // Indian GST: a purchase order is taxed as EITHER SGST+CGST (intra-state)
-    // OR IGST alone (inter-state), never both at once — enforced again on
-    // the backend (see _check_gst_combo in schemas/purchase_orders.py).
-    if ((sgstPercValue || cgstPercValue) && igstPercValue) {
-      setError("Use either SGST + CGST or IGST, not both.");
-      return;
-    }
-
     if (!form.checkValidity()) {
       form.reportValidity();
       return;
@@ -432,9 +413,9 @@ export function PurchaseOrderFormModal({
     setStatus("saving");
     setError(null);
 
-    // product_ids/quantities/rates are parallel arrays, one entry per line
-    // item — the backend re-derives the totals from these rather than
-    // trusting totalAmountBeforeTax/AfterTax computed here.
+    // product_ids/quantities/rates/gst_percs are parallel arrays, one entry
+    // per line item — the backend re-derives the totals from these rather
+    // than trusting totalAmountBeforeTax/AfterTax computed here.
     const productIds = lineItems.map((item) => Number(item.productId));
     const quantities = lineItems.map((item) => item.quantity);
     const rates = lineItems.map((item) => Number(item.rate) || 0);
@@ -447,9 +428,12 @@ export function PurchaseOrderFormModal({
       product_ids: productIds,
       quantities,
       rates,
-      sgst_perc: sgstPercValue,
-      cgst_perc: cgstPercValue,
-      igst_perc: igstPercValue,
+      gst_percs: lineGstPercs,
+      // Which heads carry those rates. Sent instead of the three percentage
+      // fields, which the backend now derives from these two: on a mixed-rate
+      // order there is no single percentage to send, so they could no longer
+      // be what says whether this purchase is intra- or inter-state.
+      tax_kind: taxKind,
       description,
       // Only an uploaded invoice has a vendor invoice number — it's what
       // stops the same document being recorded twice, so it's stored on the
@@ -678,17 +662,14 @@ export function PurchaseOrderFormModal({
               <span className={styles.formLabel}>
                 Rate<span className={styles.requiredMark}>*</span>
               </span>
-              <span className={styles.formLabel}>GST %</span>
+              <span className={styles.formLabel}>
+                GST %<span className={styles.requiredMark}>*</span>
+              </span>
               <span className={styles.formLabel}>Line total</span>
               <span />
             </div>
 
             {lineItems.map((item, index) => {
-              // Read-only reference value pulled straight from the selected
-              // product's own gst_perc — purely informational alongside this
-              // form's order-level SGST/CGST/IGST% combo below, not summed
-              // into it.
-              const lineGstPerc = productsById.get(item.productId ?? "")?.gstPerc;
               return (
                 <div key={index} className={styles.lineItemRow}>
                   <select
@@ -733,13 +714,28 @@ export function PurchaseOrderFormModal({
                     className={styles.formInput}
                   />
 
-                  <input
-                    type="text"
-                    disabled
-                    value={lineGstPerc != null ? `${lineGstPerc}%` : "—"}
-                    aria-label={`Line ${index + 1} product GST percent`}
+                  {/* The rate this line is taxed at, and the only place a
+                      rate is entered. Pre-filled from the product's own
+                      gst_perc, or from the invoice on an upload, but always
+                      editable: what the vendor billed wins over what our
+                      catalogue expected. */}
+                  <select
+                    value={item.gstPerc}
+                    onChange={(e) => updateLineItem(index, { gstPerc: e.target.value })}
+                    required
+                    aria-label={`Line ${index + 1} GST percent`}
                     className={styles.formInput}
-                  />
+                  >
+                    <option value="" disabled>
+                      —
+                    </option>
+                    {/* Hardcoded placeholder slabs — see lib/gst.ts */}
+                    {percentOptions(item.gstPerc).map((percent) => (
+                      <option key={percent} value={percent}>
+                        {percent}%
+                      </option>
+                    ))}
+                  </select>
 
                   <input
                     type="text"
@@ -763,85 +759,36 @@ export function PurchaseOrderFormModal({
             })}
           </div>
 
-          <div className={styles.totalsGrid}>
-            <div>
-              <label htmlFor="sgstPerc" className={styles.formLabel}>
-                SGST %<span className={styles.requiredMark}>*</span>
-              </label>
-              <select
-                id="sgstPerc"
-                value={sgstPerc}
-                onChange={(e) => handleTaxHeadChange("sgst", e.target.value)}
-                disabled={taxHeadsLocked && !intraState}
-                className={styles.formInput}
-              >
-                <option value="">—</option>
-                {/* Hardcoded placeholder slabs — see lib/gst.ts */}
-                {percentOptions(sgstPerc, taxHeadsLocked && intraState).map((percent) => (
-                  <option key={percent} value={percent}>
-                    {percent}%
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="cgstPerc" className={styles.formLabel}>
-                CGST %<span className={styles.requiredMark}>*</span>
-              </label>
-              <select
-                id="cgstPerc"
-                value={cgstPerc}
-                onChange={(e) => handleTaxHeadChange("cgst", e.target.value)}
-                disabled={taxHeadsLocked && !intraState}
-                className={styles.formInput}
-              >
-                <option value="">—</option>
-                {percentOptions(cgstPerc, taxHeadsLocked && intraState).map((percent) => (
-                  <option key={percent} value={percent}>
-                    {percent}%
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="igstPerc" className={styles.formLabel}>
-                IGST %<span className={styles.requiredMark}>*</span>
-              </label>
-              <select
-                id="igstPerc"
-                value={igstPerc}
-                onChange={(e) => handleTaxHeadChange("igst", e.target.value)}
-                disabled={taxHeadsLocked && intraState}
-                className={styles.formInput}
-              >
-                <option value="">—</option>
-                {percentOptions(igstPerc).map((percent) => (
-                  <option key={percent} value={percent}>
-                    {percent}%
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* The heads the line items' rates are filed under. Derived rather
+              than entered: the rates come from the rows above, and which
+              heads carry them follows from the two parties' states, so there
+              is nothing here to type — only a direction to correct where the
+              states get it wrong. */}
+          <div>
+            <span className={styles.formLabel}>GST heads</span>
+            <input
+              type="text"
+              disabled
+              value={taxHeadSummary(taxKind, lineGstPercs)}
+              aria-label="GST heads"
+              className={styles.formInput}
+            />
           </div>
 
-          {/* Says which heads apply and why, so a greyed-out IGST box reads
-              as a decision the form made rather than a broken field. */}
+          {/* Says which heads apply and why, so the read-only box above reads
+              as a decision the form made rather than a missing field. */}
           {taxDirectionKnown && (
             <p className={styles.formHint}>
-              {intraState
-                ? `Vendor is in ${stateNameForCode(vendorStateCode)}, the same state as us — SGST + CGST.`
-                : `Vendor is in ${stateNameForCode(vendorStateCode)}, we're in ${stateNameForCode(ownStateCode)} — IGST.`}{" "}
+              {taxHeadsOverridden
+                ? `Set manually to ${taxKind === "cgst_sgst" ? "CGST + SGST" : "IGST"}, against what the states call for.`
+                : intraState
+                  ? `Vendor is in ${stateNameForCode(vendorStateCode)}, the same state as us — SGST + CGST.`
+                  : `Vendor is in ${stateNameForCode(vendorStateCode)}, we're in ${stateNameForCode(ownStateCode)} — IGST.`}{" "}
               <button type="button" onClick={handleOverrideToggle} className={styles.linkButton}>
-                {taxHeadsOverridden ? "Use the vendor's state" : "Set the heads manually"}
+                {taxHeadsOverridden
+                  ? "Use the vendor's state"
+                  : `Use ${taxKindFromStates === "igst" ? "CGST + SGST" : "IGST"} instead`}
               </button>
-            </p>
-          )}
-
-          {(Number(sgstPerc) || Number(cgstPerc)) > 0 && Number(igstPerc) > 0 && (
-            <p role="alert" aria-live="polite" className={styles.formError}>
-              Use either SGST + CGST or IGST, not both.
             </p>
           )}
 
@@ -865,7 +812,10 @@ export function PurchaseOrderFormModal({
               <p className={styles.totalsRowValue}>₹{totalAmountBeforeTax.toFixed(2)}</p>
             </div>
             <div className={styles.totalsRowItem}>
-              <p className={styles.totalsRowLabel}>Total tax ({totalTaxPerc}%)</p>
+              {/* No single percentage where the lines disagree, so the heads
+                  summary stands in for one — "IGST 5% + 18%" rather than a
+                  blended figure that matches no line on the invoice. */}
+              <p className={styles.totalsRowLabel}>Total tax ({taxHeadSummary(taxKind, lineGstPercs)})</p>
               <p className={styles.totalsRowValue}>₹{totalTaxAmount.toFixed(2)}</p>
             </div>
             <div className={styles.totalsRowItem}>

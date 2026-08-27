@@ -135,11 +135,13 @@ async def update_purchase_invoice_details(
 
 
 async def _build_purchase_invoice_line_items(purchase_order: PurchaseOrders) -> list[PurchaseInvoiceLineItem]:
-    # PurchaseSummary carries no per-line tax (GST on PurchaseOrders is
-    # header-level) — synthesize each line's tax_perc as the order's
-    # combined GST %, same blended-rate convention _compute_totals in
-    # routes/orders.py already uses.
-    tax_perc = (purchase_order.sgst_perc or 0) + (purchase_order.cgst_perc or 0) + (purchase_order.igst_perc or 0)
+    # Each line is taxed at its own rate, off its #purchase_summary row —
+    # the same values _compute_totals in routes/orders.py summed to reach the
+    # invoice's stored totals, so the rendered lines add back to them.
+    # Falling back to the order's header rate covers rows written before
+    # PurchaseSummary.gst_perc existed and somehow missed the backfill (see
+    # _backfill_purchase_summary_gst in core/db.py).
+    header_perc = (purchase_order.sgst_perc or 0) + (purchase_order.cgst_perc or 0) + (purchase_order.igst_perc or 0)
 
     summaries = await PurchaseSummary.find(PurchaseSummary.purchase_order_id == purchase_order.id).to_list()
     product_ids = [summary.product_id for summary in summaries]
@@ -149,6 +151,7 @@ async def _build_purchase_invoice_line_items(purchase_order: PurchaseOrders) -> 
     line_items = []
     for summary in summaries:
         product = products_by_id.get(summary.product_id)
+        tax_perc = summary.gst_perc or header_perc
         taxable_value = summary.quantity * summary.rate
         tax_amount = taxable_value * (tax_perc / 100)
         line_items.append(

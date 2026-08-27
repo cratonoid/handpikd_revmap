@@ -13,9 +13,21 @@
 // as vendorId on ProductDetailItem — the frontend resolves names against
 // its own vendor/product lists rather than the backend embedding them).
 // purchase-order-form-modal.tsx submits/edits them the same way, as parallel
-// product_ids/quantities/rates arrays, to create_new_purchase_order /
+// product_ids/quantities/rates/gst_percs arrays, to create_new_purchase_order /
 // update_purchase_order_details.
+//
+// The GST RATE is one of those per-line arrays, because a vendor invoice
+// routinely taxes its lines at different rates (5% paper board billed
+// alongside 18% toiletries). What the order decides is only which HEADS
+// carry that rate — taxKind, CGST + SGST for an intra-state purchase or IGST
+// for an inter-state one — since that follows from the two parties' states
+// rather than from the goods. sgstPerc/cgstPerc/igstPerc below are a derived
+// summary of a single-rate order and are all null when the lines differ.
 import { apiFetch } from "@/lib/api";
+
+// Which GST heads a document is taxed under. Mirrors TaxKind in
+// backend/app/services/gst.py.
+export type TaxKind = "igst" | "cgst_sgst";
 
 export type PurchaseOrder = {
   id: number;
@@ -25,9 +37,15 @@ export type PurchaseOrder = {
   productIds: number[];
   quantities: number[];
   rates: number[];
+  // One GST rate per line item, parallel to the arrays above — the rate each
+  // line is actually taxed at, and what the totals are built from.
+  gstPercs: number[];
   totalAmountBeforeTax: number;
-  // Percentages (not rupee amounts) applied to totalAmountBeforeTax — see
-  // purchase-order-form-modal.tsx.
+  // Which heads the rates fall under. Null only on orders saved before this
+  // was recorded, where the percentages below are the only thing that says.
+  taxKind: TaxKind | null;
+  // The order's single rate under its heads — a derived summary, all null
+  // when the line items are taxed at different rates.
   sgstPerc: number | null;
   cgstPerc: number | null;
   igstPerc: number | null;
@@ -44,7 +62,9 @@ type PurchaseOrderDetailItem = {
   product_ids: number[];
   quantities: number[];
   rates: number[];
+  gst_percs: number[];
   total_amount_before_tax: number;
+  tax_kind: TaxKind | null;
   sgst_perc: number | null;
   cgst_perc: number | null;
   igst_perc: number | null;
@@ -98,7 +118,9 @@ export async function fetchPurchaseOrders(): Promise<PurchaseOrder[]> {
     productIds: item.product_ids,
     quantities: item.quantities,
     rates: item.rates,
+    gstPercs: item.gst_percs,
     totalAmountBeforeTax: item.total_amount_before_tax,
+    taxKind: item.tax_kind,
     sgstPerc: item.sgst_perc,
     cgstPerc: item.cgst_perc,
     igstPerc: item.igst_perc,
@@ -119,9 +141,15 @@ export async function fetchPurchaseOrders(): Promise<PurchaseOrder[]> {
 //
 // The endpoint refuses the upload outright (rather than returning partial
 // values) if the vendor isn't on file, the invoice has already been
-// recorded, its line items are taxed at different GST rates, or the PDF
-// couldn't be read in full — parsePurchaseInvoicePdf surfaces the backend's
-// own explanation of which, since it names the record the admin has to add.
+// recorded, or the PDF couldn't be read in full — parsePurchaseInvoicePdf
+// surfaces the backend's own explanation of which, since it names the record
+// the admin has to add.
+//
+// An invoice whose lines are taxed at different rates is NOT a refusal: each
+// line carries its own gstPerc through to its purchase order line item, so
+// such a bill records exactly as printed. It used to be turned away, because
+// a purchase order held one rate for the whole order and there was nowhere
+// to put the second one.
 //
 // A line item whose product it couldn't place is NOT a refusal: it comes
 // back with productId null and an unresolvedReason, and the review screen
@@ -154,6 +182,10 @@ export type ParsedPurchaseInvoice = {
   vendorInvoiceNo: string;
   date: string;
   lineItems: ParsedInvoiceLineItem[];
+  // Which heads this purchase falls under, from our state vs the vendor's.
+  // Always present, unlike the percentages below, which are all null when the
+  // invoice taxes its lines at different rates.
+  taxKind: TaxKind;
   sgstPerc: number | null;
   cgstPerc: number | null;
   igstPerc: number | null;
@@ -187,6 +219,7 @@ type ParsePurchaseInvoicePdfResponse = {
     gst_perc: number;
     unresolved_reason: string | null;
   }[];
+  tax_kind: TaxKind;
   sgst_perc: number | null;
   cgst_perc: number | null;
   igst_perc: number | null;
@@ -230,6 +263,7 @@ export async function parsePurchaseInvoicePdf(file: File): Promise<ParsedPurchas
       gstPerc: item.gst_perc,
       unresolvedReason: item.unresolved_reason,
     })),
+    taxKind: parsed.tax_kind,
     sgstPerc: parsed.sgst_perc,
     cgstPerc: parsed.cgst_perc,
     igstPerc: parsed.igst_perc,

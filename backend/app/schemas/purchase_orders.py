@@ -3,6 +3,20 @@ from datetime import datetime
 
 from pydantic import BaseModel, model_validator
 
+from app.services.gst import TaxKind
+
+
+def _check_line_item_arrays(
+    product_ids: list[int], quantities: list[int], rates: list[float], gst_percs: list[float] | None
+) -> None:
+    lengths = {len(product_ids), len(quantities), len(rates)}
+    if gst_percs is not None:
+        lengths.add(len(gst_percs))
+    if len(lengths) > 1:
+        raise ValueError("product_ids, quantities, rates and gst_percs must have the same number of entries")
+    if len(product_ids) == 0:
+        raise ValueError("at least one line item is required")
+
 
 def _check_gst_combo(sgst_perc: float | None, cgst_perc: float | None, igst_perc: float | None) -> None:
     # Indian GST: a purchase is taxed as EITHER sgst+cgst (intra-state) OR
@@ -21,8 +35,24 @@ class CreateNewPurchaseOrderRequest(BaseModel):
     product_ids: list[int]
     quantities: list[int]
     rates: list[float]
-    # Percentages applied to the line items' subtotal — see _compute_totals
-    # in routes/orders.py.
+    # One GST rate per line item, parallel to the arrays above — the rate that
+    # actually applies to each line, and what the totals are computed from
+    # (see _compute_totals in routes/orders.py). Per line because a vendor
+    # invoice routinely mixes rates, e.g. paper board at 5% billed alongside
+    # toiletries at 18%.
+    #
+    # Optional so that a caller which still sends only the header percentages
+    # keeps working: they are then taken to be the rate on every line. New
+    # callers should send this.
+    gst_percs: list[float] | None = None
+    # Which heads the rates fall under. Sent explicitly because a mixed-rate
+    # order has no single header percentage to infer it from; when it's
+    # omitted the endpoint falls back to reading it off the percentages
+    # below, then off the two parties' states.
+    tax_kind: TaxKind | None = None
+    # The order's single GST rate under its heads, or all None when the lines
+    # are taxed at different rates. Stored on PurchaseOrders for the screens
+    # that read it, never used to compute a total.
     sgst_perc: float | None = None
     cgst_perc: float | None = None
     igst_perc: float | None = None
@@ -35,10 +65,7 @@ class CreateNewPurchaseOrderRequest(BaseModel):
 
     @model_validator(mode="after")
     def _check_line_items_match(self) -> "CreateNewPurchaseOrderRequest":
-        if len(self.product_ids) != len(self.quantities) or len(self.product_ids) != len(self.rates):
-            raise ValueError("product_ids, quantities, and rates must have the same number of entries")
-        if len(self.product_ids) == 0:
-            raise ValueError("at least one line item is required")
+        _check_line_item_arrays(self.product_ids, self.quantities, self.rates, self.gst_percs)
         return self
 
     @model_validator(mode="after")
@@ -64,7 +91,16 @@ class PurchaseOrderDetailItem(BaseModel):
     product_ids: list[int]
     quantities: list[int]
     rates: list[float]
+    # One per line item, parallel to the arrays above. The edit form fills
+    # its per-line GST column from these; sgst_perc/cgst_perc/igst_perc below
+    # are the derived single-rate summary and are all None when these differ.
+    gst_percs: list[float]
     total_amount_before_tax: float
+    # Which heads the order is taxed under. The edit form needs it in its own
+    # right: on a mixed-rate order the three percentages below are all None,
+    # so they no longer say whether an admin deliberately overrode the heads
+    # the two states call for.
+    tax_kind: TaxKind | None = None
     sgst_perc: float | None = None
     cgst_perc: float | None = None
     igst_perc: float | None = None
@@ -80,6 +116,17 @@ class UpdatePurchaseOrderDetailsRequest(BaseModel):
     product_ids: list[int]
     quantities: list[int]
     rates: list[float]
+    # One GST rate per line item, parallel to the arrays above — the rate that
+    # actually applies to each line, and what the totals are computed from
+    # (see _compute_totals in routes/orders.py). Per line because a vendor
+    # invoice routinely mixes rates, e.g. paper board at 5% billed alongside
+    # toiletries at 18%.
+    #
+    # Optional so that a caller which still sends only the header percentages
+    # keeps working: they are then taken to be the rate on every line. New
+    # callers should send this.
+    gst_percs: list[float] | None = None
+    tax_kind: TaxKind | None = None
     sgst_perc: float | None = None
     cgst_perc: float | None = None
     igst_perc: float | None = None
@@ -87,10 +134,7 @@ class UpdatePurchaseOrderDetailsRequest(BaseModel):
 
     @model_validator(mode="after")
     def _check_line_items_match(self) -> "UpdatePurchaseOrderDetailsRequest":
-        if len(self.product_ids) != len(self.quantities) or len(self.product_ids) != len(self.rates):
-            raise ValueError("product_ids, quantities, and rates must have the same number of entries")
-        if len(self.product_ids) == 0:
-            raise ValueError("at least one line item is required")
+        _check_line_item_arrays(self.product_ids, self.quantities, self.rates, self.gst_percs)
         return self
 
     @model_validator(mode="after")
@@ -152,7 +196,12 @@ class ParsePurchaseInvoicePdfResponse(BaseModel):
     product_ids: list[int | None]
     quantities: list[int]
     rates: list[float]
+    gst_percs: list[float]
     line_items: list[ParsedPurchaseInvoiceLineItem]
+    # The heads this purchase falls under, from our state vs the vendor's.
+    # Always present, unlike the percentages below, which are all None when
+    # the invoice taxes its lines at different rates.
+    tax_kind: TaxKind
     sgst_perc: float | None = None
     cgst_perc: float | None = None
     igst_perc: float | None = None
