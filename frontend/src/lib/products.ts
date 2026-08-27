@@ -188,7 +188,9 @@ export type NewProductInput = {
   gstPerc: number;
   moq: number;
   description: string;
-  isVisible: boolean;
+  // No isVisible: a product created this way is ALWAYS hidden from the
+  // storefront, so there is nothing here for a caller to decide. See
+  // createProduct.
 };
 
 // Creates a product outside the /admin/products form, for the purchase order
@@ -199,6 +201,19 @@ export type NewProductInput = {
 // empty rather than guessed at — ProductDetails accepts that, and the admin
 // completes the product on /admin/products afterwards, along with the
 // selling prices, which the caller can only derive from what was paid.
+//
+// Always created HIDDEN from the storefront, and not as a default the
+// caller may override — is_visible is hardcoded below and isn't a field of
+// NewProductInput at all. A product born from a vendor's invoice line knows
+// only what we PAID for it: its selling prices are a rule-of-thumb multiple
+// of that (see sellingPricesFromCost), its name is the vendor's own wording,
+// and it has no images and no categories. Publishing that to the storefront
+// is never the right outcome, so the path that creates it cannot ask for it.
+// The admin makes it visible on /admin/products once it has been gone over.
+//
+// Note this is the invoice path's guarantee, not a global rule: the ordinary
+// product form posts to add_product_details directly with its own visibility
+// checkbox, as it should.
 //
 // Returns the saved Product so the caller can drop it straight into its own
 // list and select it, rather than re-fetching every product to find the one
@@ -218,7 +233,7 @@ export async function createProduct(input: NewProductInput): Promise<Product> {
       category_ids: [],
       moq: input.moq,
       description: input.description,
-      is_visible: input.isVisible,
+      is_visible: false,
       image_paths: [],
     }),
   });
@@ -246,7 +261,7 @@ export async function createProduct(input: NewProductInput): Promise<Product> {
     categoryIds: [],
     moq: input.moq,
     description: input.description,
-    isVisible: input.isVisible,
+    isVisible: false,
     isDeleted: false,
     imagePaths: [],
   };

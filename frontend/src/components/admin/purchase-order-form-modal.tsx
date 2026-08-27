@@ -861,10 +861,12 @@ export function PurchaseOrderFormModal({
 // The one thing an invoice fundamentally cannot supply is what we SELL the
 // thing for — a vendor's bill records what we paid. Those two prices are
 // derived from the cost by the multipliers below, which is a starting point
-// to correct on /admin/products, not a considered price. That's also why the
-// product is created hidden: priced by rule of thumb, with no images and no
-// categories, it has no business on the storefront until someone has been
-// over it.
+// to correct on /admin/products, not a considered price. That's also why a
+// product created here is ALWAYS hidden from the storefront, with no way to
+// ask for otherwise (see createProduct in lib/products.ts, which hardcodes
+// it): priced by rule of thumb, named in the vendor's wording, with no
+// images and no categories, it has no business on the storefront until
+// someone has been over it. The admin makes it visible on /admin/products.
 function CreateMissingProduct({
   line,
   vendorId,
@@ -898,7 +900,8 @@ function CreateMissingProduct({
         gstPerc: line.gstPerc,
         moq: 1,
         description: line.description,
-        isVisible: false,
+        // Visibility isn't passed: createProduct always creates hidden, and
+        // doesn't accept anything else.
       });
       onCreated(product);
     } catch (createError) {
@@ -949,7 +952,7 @@ function CreateMissingProduct({
         </div>
         <div>
           <dt>Storefront</dt>
-          <dd>Hidden</dd>
+          <dd>Always hidden</dd>
         </div>
       </dl>
 
