@@ -41,7 +41,7 @@ export function BrandCatalogueCard({
         <h3 className={styles.cardTitle}>{catalogueName}</h3>
         <span className={styles.cardViewGallery}>
           View Catalogue
-          <ArrowUpRightIcon className="h-3.5 w-3.5" />
+          <ArrowUpRightIcon className="h-3 w-3" />
         </span>
       </div>
     </button>

@@ -79,22 +79,33 @@
   color: var(--color-charcoal);
 }
 
+/* Card size is set by the column count, not by the card: the tiles fill the
+   track they're given, so more columns is what makes them smaller. Was
+   2/3/4 — one column more at each of the two larger widths, which takes a
+   desktop card from roughly a quarter of the row to a fifth.
+
+   Phones stay at two. A third column there would put each cover under
+   ~100px wide, which is too small to tell two catalogues apart by their
+   cover — and the cover is the only thing distinguishing them at a glance.
+   That's also why this uses explicit counts rather than
+   auto-fill/minmax(): a minimum track width big enough to be worth having
+   on desktop collapses a 375px phone to a single column. */
 .categoryGrid {
   margin-top: 1.5rem;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1.25rem;
+  gap: 1rem;
 }
 
 @media (min-width: 640px) {
   .categoryGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 1024px) {
   .categoryGrid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 
@@ -113,7 +124,7 @@
   flex-direction: column;
   text-align: left;
   cursor: pointer;
-  border-radius: 1rem;
+  border-radius: 0.75rem;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--color-charcoal) 12%, transparent);
   background-color: var(--color-cream-deep);
@@ -124,7 +135,7 @@
 }
 
 .card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-3px);
   box-shadow: 0 8px 16px -4px color-mix(in srgb, var(--color-charcoal) 22%, transparent);
 }
 
@@ -149,25 +160,27 @@
   align-items: center;
   justify-content: center;
   color: color-mix(in srgb, var(--color-ink) 45%, transparent);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
+  text-align: center;
 }
 
 .cardBody {
-  padding: 0.875rem 1rem 1rem;
+  padding: 0.625rem 0.75rem 0.75rem;
 }
 
 .cardTitle {
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   font-weight: 600;
+  line-height: 1.35;
   color: var(--color-charcoal);
 }
 
 .cardViewGallery {
-  margin-top: 0.5rem;
+  margin-top: 0.375rem;
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 500;
   color: color-mix(in srgb, var(--color-ink) 70%, transparent);
 }

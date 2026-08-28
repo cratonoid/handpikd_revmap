@@ -7,11 +7,16 @@
 // Fetches GET /catalogues/get_public_catalogues (lib/catalogues.ts's
 // fetchPublicCatalogueSections), which comes back already grouped by
 // catalogue_type and then by root category. This component just turns that
-// into: one tab per catalogue_type ("brand" -> Brand Catalogs, "regular" ->
-// Category Wise Catalogs), and within the active tab, one subheading per
+// into: one tab per catalogue_type ("regular" -> Category Wise Catalogs,
+// "brand" -> Brand Catalogs), and within the active tab, one subheading per
 // category with that category's catalogues as cards. Clicking a card opens
 // the same <GalleryLightbox> the static /catalogue page uses, showing that
 // catalogue's converted PDF pages.
+//
+// Tab ORDER is the backend's, not this component's — the sections arrive in
+// display order (see _SECTION_ORDER in the backend's routes/catalogues.py)
+// and are rendered as they come, with the first one open on load. Only the
+// labels live here.
 import { useEffect, useState } from "react";
 import { resolveMediaUrl } from "@/lib/api";
 import { fetchPublicCatalogueSections, type PublicCatalogueItem, type PublicCatalogueSection } from "@/lib/catalogues";
@@ -21,9 +26,11 @@ import styles from "@/styles/brand-catalogues.module.css";
 
 type LoadState = "loading" | "loaded" | "error";
 
+// Listed in the order the backend returns them, purely so this reads the
+// way the page does — the object's own order decides nothing.
 const SECTION_TITLES: Record<string, string> = {
-  brand: "Brand Catalogs",
   regular: "Category Wise Catalogs",
+  brand: "Brand Catalogs",
 };
 
 function sectionTitle(catalogueType: string): string {
@@ -40,6 +47,7 @@ export function BrandCataloguesPageClient() {
     fetchPublicCatalogueSections()
       .then((data) => {
         setSections(data);
+        // First section wins: the backend returns them in display order.
         setActiveType(data[0]?.catalogueType ?? null);
         setLoadState("loaded");
       })

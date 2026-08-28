@@ -309,6 +309,19 @@ async def delete_catalogue_image(
     return DeleteCatalogueImageResponse(message="image deleted successfully")
 
 
+# The order the storefront shows its catalogue tabs in. Anything not listed
+# here — a catalogue_type added later and not yet placed — falls to the end
+# rather than silently jumping the queue.
+_SECTION_ORDER = ("regular", "brand")
+
+
+def _section_order(section: PublicCatalogueSection) -> tuple[int, str]:
+    try:
+        return (_SECTION_ORDER.index(section.catalogue_type), "")
+    except ValueError:
+        return (len(_SECTION_ORDER), section.catalogue_type)
+
+
 @public_router.get("/get_public_catalogues", response_model=list[PublicCatalogueSection])
 async def get_public_catalogues() -> list[PublicCatalogueSection]:
     catalogues = await CatalogueDetails.find_all().to_list()
@@ -355,7 +368,15 @@ async def get_public_catalogues() -> list[PublicCatalogueSection]:
         category_groups.sort(key=lambda group: group.category_name)
         sections.append(PublicCatalogueSection(catalogue_type=catalogue_type, categories=category_groups))
 
-    # "brand" sorts before "regular" alphabetically, which also happens to be
-    # the desired tab order (Brand Catalogs, then Category Wise Catalogs).
-    sections.sort(key=lambda section: section.catalogue_type)
+    # Display order, and the storefront takes it literally: the tabs are
+    # rendered in this order and the FIRST section is the one open when the
+    # page loads (see brand-catalogues-page-client.tsx). Category Wise leads
+    # because it's how most visitors look for something — by what they want,
+    # not by who makes it.
+    #
+    # Spelled out rather than sorted alphabetically. It used to be the
+    # latter, which put Brand first purely because "brand" < "regular", so
+    # the tab order was an accident of the two strings and would have moved
+    # again the moment a third catalogue type was added.
+    sections.sort(key=_section_order)
     return sections
