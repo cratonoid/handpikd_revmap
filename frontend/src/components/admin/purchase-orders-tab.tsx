@@ -74,6 +74,24 @@ type LoadState = "loading" | "loaded";
 //
 // The two series are independent, as the collections are: a material and a
 // printing order may legitimately carry the same number.
+// Row order for both tables: oldest first, so the list reads as the
+// purchasing history in the order it actually happened.
+//
+// Sorted for display only — the fetched arrays keep whatever order the
+// backend sent, and S.No is a row counter rather than an identifier, so it
+// renumbers with the sort instead of following a row around.
+//
+// The id tiebreaker matters because the date field is entered by hand and
+// two orders keyed in the same minute compare equal. JS sort is stable, so
+// without it those two would fall back to the backend's iteration order,
+// which is not something to depend on.
+function byDateThenId(
+  a: { date: string; id: number },
+  b: { date: string; id: number },
+): number {
+  return new Date(a.date).getTime() - new Date(b.date).getTime() || a.id - b.id;
+}
+
 function nextOrderNo(numbers: string[]): string {
   return String(
     numbers.reduce((max, value) => {
@@ -99,6 +117,8 @@ export function PurchaseOrdersTab() {
   const [modalState, setModalState] = useState<ModalState>(null);
 
   const vendorsById = new Map(vendors.map((v) => [v.id, v]));
+  const sortedOrders = [...orders].sort(byDateThenId);
+  const sortedPrintingOrders = [...printingOrders].sort(byDateThenId);
 
   useEffect(() => {
     let cancelled = false;
@@ -204,7 +224,7 @@ export function PurchaseOrdersTab() {
               </tr>
             </thead>
             <tbody>
-              {orders.map((order, index) => (
+              {sortedOrders.map((order, index) => (
                 <tr
                   key={order.id || `${order.purchaseOrderNo}-${index}`}
                   onDoubleClick={() => setModalState({ mode: "edit", order })}
@@ -246,7 +266,7 @@ export function PurchaseOrdersTab() {
               </tr>
             </thead>
             <tbody>
-              {printingOrders.map((order, index) => (
+              {sortedPrintingOrders.map((order, index) => (
                 <tr
                   key={order.id || `${order.purchaseOrderNo}-${index}`}
                   onDoubleClick={() => setModalState({ mode: "printingEdit", order })}

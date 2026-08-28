@@ -389,10 +389,27 @@ def _read_line_item(line: str, hsn_percentages: dict[str, float]) -> ExtractedLi
     if any(stripped.startswith(prefix) for prefix in _SUMMARY_ROW_PREFIXES):
         return None
 
-    hsn = _HSN_RE.search(line)
-    if hsn is None:
-        return None
+    # Every 4/6/8-digit number on the row is tried as its HSN code, not just
+    # the first, because a product's own name can carry one: Mutha bills
+    # "Trophy 7013 70139900 1 pcs 1,000.00", where the model number in the
+    # description reads as an HSN code and swallows the real one into the
+    # numbers after it. Reading stops at the first candidate that yields a
+    # complete line item, so a row the first candidate already decoded is
+    # unaffected — the wrong candidate is rejected by the checks below
+    # (its "rate" and "quantity" no longer multiply out to the row's amount,
+    # or its code resolves no GST %), and the real code is picked up on the
+    # next pass.
+    for hsn in _HSN_RE.finditer(line):
+        item = _read_line_item_at(line, hsn, hsn_percentages)
+        if item is not None:
+            return item
+    return None
 
+
+def _read_line_item_at(
+    line: str, hsn: re.Match[str], hsn_percentages: dict[str, float]
+) -> ExtractedLineItem | None:
+    """Reads one row on the assumption that `hsn` is its HSN/SAC cell."""
     after_hsn = line[hsn.end() :]
     numbers = [_to_number(match.group(0)) for match in _NUMBER_RE.finditer(after_hsn)]
     quantity_rate = _find_quantity_rate(numbers)

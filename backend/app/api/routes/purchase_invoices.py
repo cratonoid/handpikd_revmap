@@ -31,6 +31,10 @@
 # "replace": if the invoice already has an uploaded PDF, the old file is
 # hard-deleted from disk once the new one is saved and the record updated, so
 # no history/versions are kept.
+import io
+import zipfile
+from datetime import date, datetime, time
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 
 from app.api.routes.admin import require_admin
@@ -143,4 +147,54 @@ async def get_purchase_invoice_uploaded_pdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{display_no}.pdf"'},
+    )
+
+
+@router.get("/get_purchase_invoices_pdf_zip")
+async def get_purchase_invoices_pdf_zip(
+    start_date: date,
+    end_date: date,
+    _: User | None = Depends(require_admin),
+) -> Response:
+    # Bulk counterpart of get_purchase_invoice_uploaded_pdf, mirroring
+    # get_invoices_pdf_zip in routes/invoices.py: same inclusive-both-ends
+    # date window, same one-file-per-invoice zip. What differs is what goes
+    # in it — there is no branded render on this side, so the archive can
+    # only carry the vendor PDFs that were actually attached. Invoices with
+    # nothing attached (or whose file has gone missing from disk) are simply
+    # left out rather than failing the whole download, matching the list,
+    # which shows a dash for them instead of a Download button.
+    start_dt = datetime.combine(start_date, time.min)
+    end_dt = datetime.combine(end_date, time.max)
+
+    purchase_invoices = await PurchaseInvoiceDetails.find(
+        PurchaseInvoiceDetails.is_deleted == False,  # noqa: E712 — Beanie needs the comparison
+        PurchaseInvoiceDetails.date >= start_dt,
+        PurchaseInvoiceDetails.date <= end_dt,
+    ).to_list()
+
+    buffer = io.BytesIO()
+    written = 0
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for purchase_invoice in purchase_invoices:
+            if purchase_invoice.uploaded_pdf_path is None:
+                continue
+            pdf_bytes = read_uploaded_pdf(purchase_invoice.uploaded_pdf_path)
+            if pdf_bytes is None:
+                continue
+            display_no = format_purchase_invoice_no(purchase_invoice.purchase_invoice_no)
+            archive.writestr(f"{display_no}.pdf", pdf_bytes)
+            written += 1
+
+    if written == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="no purchase invoice PDFs found in that date range",
+        )
+
+    zip_filename = f"purchase-invoices-{start_date.isoformat()}-to-{end_date.isoformat()}.zip"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
     )

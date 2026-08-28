@@ -22,15 +22,26 @@
 // authoritative one and the only one served — a row with nothing attached
 // shows a dash rather than a button that could only 404. Sales invoices
 // still render; those are documents we genuinely issue.
+//
+// Both views carry the same From/To + "Download all" control the Sales
+// invoices tab has, zipping a date range's PDFs in one go (filing a quarter
+// with the accountant, mostly). It downloads whichever list is on screen,
+// since Material and Printing are separate series in separate collections —
+// and because the only PDF here is the vendor's own, the zip holds just the
+// invoices that actually have one attached; the rest are skipped rather than
+// failing the download.
 import { useEffect, useState } from "react";
+import { Button } from "@/components/button";
 import { PurchaseInvoiceFormModal } from "@/components/admin/purchase-invoice-form-modal";
 import { PrintingPurchaseInvoiceFormModal } from "@/components/admin/printing-purchase-invoice-form-modal";
 import {
+  downloadPurchaseInvoicesZip,
   downloadUploadedPurchaseInvoicePdf,
   fetchPurchaseInvoices,
   type PurchaseInvoice,
 } from "@/lib/purchase-invoices";
 import {
+  downloadPrintingPurchaseInvoicesZip,
   downloadUploadedPrintingPurchaseInvoicePdf,
   fetchPrintingPurchaseInvoices,
   type PrintingPurchaseInvoice,
@@ -60,6 +71,10 @@ export function PurchaseInvoicesTab() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [bulkFromDate, setBulkFromDate] = useState("");
+  const [bulkToDate, setBulkToDate] = useState("");
+  const [bulkDownloading, setBulkDownloading] = useState(false);
+  const [bulkDownloadError, setBulkDownloadError] = useState<string | null>(null);
 
   const purchaseOrdersById = new Map(purchaseOrders.map((po) => [po.id, po]));
   const printingPurchaseOrdersById = new Map(printingPurchaseOrders.map((po) => [po.id, po]));
@@ -154,32 +169,103 @@ export function PurchaseInvoicesTab() {
 
   const isPrinting = view === "printing";
 
+  // Zips whichever list is on screen: Material and Printing are separate
+  // numbering series in separate collections, so there is no combined
+  // download to offer.
+  async function handleBulkDownload() {
+    setBulkDownloadError(null);
+    setBulkDownloading(true);
+    try {
+      if (isPrinting) {
+        await downloadPrintingPurchaseInvoicesZip(bulkFromDate, bulkToDate);
+      } else {
+        await downloadPurchaseInvoicesZip(bulkFromDate, bulkToDate);
+      }
+    } catch (err) {
+      setBulkDownloadError(err instanceof Error ? err.message : "Couldn't generate the invoices zip.");
+    } finally {
+      setBulkDownloading(false);
+    }
+  }
+
+  // Clearing the error on a view switch keeps a "nothing in that range"
+  // message from the other series off the screen — the button now means a
+  // different list.
+  function handleViewChange(next: View) {
+    setView(next);
+    setBulkDownloadError(null);
+  }
+
   return (
     <>
-      <div className={styles.viewToggle} role="tablist" aria-label="Purchase invoice type">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={!isPrinting}
-          onClick={() => setView("material")}
-          className={`${styles.viewToggleButton} ${!isPrinting ? styles.viewToggleButtonActive : ""}`}
-        >
-          Material
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={isPrinting}
-          onClick={() => setView("printing")}
-          className={`${styles.viewToggleButton} ${isPrinting ? styles.viewToggleButtonActive : ""}`}
-        >
-          Printing
-        </button>
+      <div className={styles.invoicesToolbar}>
+        <div className={styles.viewToggle} role="tablist" aria-label="Purchase invoice type">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={!isPrinting}
+            onClick={() => handleViewChange("material")}
+            className={`${styles.viewToggleButton} ${!isPrinting ? styles.viewToggleButtonActive : ""}`}
+          >
+            Material
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isPrinting}
+            onClick={() => handleViewChange("printing")}
+            className={`${styles.viewToggleButton} ${isPrinting ? styles.viewToggleButtonActive : ""}`}
+          >
+            Printing
+          </button>
+        </div>
+        <div className={styles.invoicesToolbarActions}>
+          <div className={`${styles.invoicesFilterRow} ${styles.invoicesToolbarFilters}`}>
+            <div className={styles.invoicesFilterField}>
+              <label htmlFor="purchaseBulkFromDate" className={styles.formLabel}>
+                From
+              </label>
+              <input
+                id="purchaseBulkFromDate"
+                type="date"
+                value={bulkFromDate}
+                onChange={(e) => setBulkFromDate(e.target.value)}
+                className={styles.formInput}
+              />
+            </div>
+            <div className={styles.invoicesFilterField}>
+              <label htmlFor="purchaseBulkToDate" className={styles.formLabel}>
+                To
+              </label>
+              <input
+                id="purchaseBulkToDate"
+                type="date"
+                value={bulkToDate}
+                onChange={(e) => setBulkToDate(e.target.value)}
+                className={styles.formInput}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void handleBulkDownload()}
+              disabled={!bulkFromDate || !bulkToDate || bulkDownloading}
+            >
+              {bulkDownloading ? "Preparing…" : "Download all"}
+            </Button>
+          </div>
+        </div>
       </div>
 
       {downloadError && (
         <p role="alert" aria-live="polite" className={styles.formError}>
           {downloadError}
+        </p>
+      )}
+
+      {bulkDownloadError && (
+        <p role="alert" aria-live="polite" className={styles.formError}>
+          {bulkDownloadError}
         </p>
       )}
 

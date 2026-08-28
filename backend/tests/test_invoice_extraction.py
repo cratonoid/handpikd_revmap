@@ -1,11 +1,12 @@
 # Unit tests for the deterministic half of reading an uploaded vendor
 # invoice (app/services/invoice_extraction.py). The fixtures below rebuild
-# the table layouts of four real vendor invoices — one where every column
+# the table layouts of five real vendor invoices — one where every column
 # including CGST/SGST/IGST % sits in the item row, one that stacks the
 # invoice number under its label and ships a duplicate copy as a second page,
-# one that states GST only in the HSN-wise summary at the foot, and one whose
-# every row is set at several baselines at once — since those differences are
-# exactly what the parser has to survive.
+# one that states GST only in the HSN-wise summary at the foot, one whose
+# every row is set at several baselines at once, and one whose product names
+# carry a model number that reads as an HSN code — since those differences
+# are exactly what the parser has to survive.
 #
 # Text is placed by coordinate rather than written as lines: page_lines
 # regroups words by position (invoices are tables), so a fixture that
@@ -153,6 +154,27 @@ TALLY_LAYOUT = [
 ]
 
 
+# A Tally invoice whose products are named after their model number, so the
+# item row carries a 4-digit number that reads as an HSN code well before the
+# real 8-digit one. GST % is stated nowhere in the row itself — only on the
+# IGST line below it and in the HSN-wise summary — so reading the wrong code
+# leaves the row with no rate at all.
+MUTHA_LAYOUT = [
+    [
+        (14, [(225, "Tax Invoice")]),
+        (31, [(34, "MUTHA COLLECTIONS"), (260, "Invoice No."), (370, "Dated")]),
+        (40, [(260, "MC/26-27/672"), (370, "18-Jun-26")]),
+        (97, [(34, "GSTIN/UIN: 29AASPK1333N1Z6")]),
+        (253, [(34, "GSTIN/UIN : " + OUR_GSTIN)]),
+        (284, [(34, "Sl"), (79, "Description of Goods"), (208, "HSN/SAC"), (261, "Quantity"), (330, "Rate"), (440, "Amount")]),
+        (313, [(34, "1"), (44, "Trophy 7013"), (205, "70139900"), (261, "1 pcs"), (330, "1,000.00"), (359, "pcs"), (440, "1,000.00")]),
+        (347, [(172, "IGST Tax 18%"), (300, "18"), (320, "%"), (449, "180.00")]),
+        (636, [(177, "Total"), (270, "1 pcs"), (433, "1,180.00")]),
+        (702, [(34, "70139900"), (300, "1,000.00"), (350, "18%"), (396, "180.00")]),
+    ]
+]
+
+
 def test_reads_an_invoice_with_every_column_in_the_item_row():
     extracted = extract_invoice_from_text(_pdf(KRAFT_LAYOUT), OUR_GSTIN)
 
@@ -254,6 +276,21 @@ def test_the_invoice_number_is_read_from_the_label_s_own_column():
     assert extracted.invoice_date.date().isoformat() == "2026-04-09"
 
 
+def test_a_model_number_in_the_description_is_not_read_as_the_hsn_code():
+    # "Trophy 7013" puts a well-formed 4-digit HSN code in the product's own
+    # name, ahead of the row's real 70139900. Taking the first one leaves the
+    # row's GST % unresolvable (7013 is in no tax summary) and hands a
+    # perfectly readable invoice to the Claude fallback.
+    extracted = extract_invoice_from_text(_pdf(MUTHA_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    assert extracted.invoice_no == "MC/26-27/672"
+    (item,) = extracted.line_items
+    assert item.description == "Trophy 7013"
+    assert item.hsn_code == "70139900"
+    assert (item.quantity, item.rate, item.gst_perc) == (1, 1000.0, 18.0)
+
+
 def test_an_unreadable_layout_returns_none_for_the_claude_fallback():
     # A PDF with no item table at all: the deterministic pass has to say so
     # rather than return a header-only invoice, since that's what hands the
@@ -263,7 +300,9 @@ def test_an_unreadable_layout_returns_none_for_the_claude_fallback():
     assert extract_invoice_from_text(pdf, OUR_GSTIN) is None
 
 
-@pytest.mark.parametrize("layout", [KRAFT_LAYOUT, SHAH_LAYOUT, HELLO_PEN_LAYOUT, TALLY_LAYOUT])
+@pytest.mark.parametrize(
+    "layout", [KRAFT_LAYOUT, SHAH_LAYOUT, HELLO_PEN_LAYOUT, TALLY_LAYOUT, MUTHA_LAYOUT]
+)
 def test_every_line_item_carries_a_usable_quantity_and_rate(layout):
     extracted = extract_invoice_from_text(_pdf(layout), OUR_GSTIN)
 

@@ -145,3 +145,31 @@ export async function downloadUploadedPurchaseInvoicePdf(
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+// Bulk-downloads every attached vendor PDF dated within [startDate, endDate]
+// (both "YYYY-MM-DD") as a single .zip — the purchase-side counterpart of
+// downloadInvoicesZip in lib/invoices.ts, and the same blob-and-throwaway-link
+// approach, since the endpoint needs the Authorization header too. Invoices
+// with no PDF attached are skipped by the backend rather than erroring, so a
+// range containing only those comes back as the 404 below.
+export async function downloadPurchaseInvoicesZip(startDate: string, endDate: string): Promise<void> {
+  const response = await apiFetch(
+    `/admin/get_purchase_invoices_pdf_zip?start_date=${encodeURIComponent(startDate)}&end_date=${encodeURIComponent(endDate)}`,
+  );
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error("No purchase invoice PDFs found in that date range.");
+    }
+    throw new Error("Failed to generate purchase invoices zip");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `purchase-invoices-${startDate}-to-${endDate}.zip`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
