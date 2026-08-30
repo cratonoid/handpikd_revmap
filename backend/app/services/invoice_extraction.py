@@ -254,7 +254,19 @@ def _find_invoice_no(rows: list[Row]) -> str | None:
         if match is None:
             continue
         value = (match.group(1) or "").strip(" .:-")
-        if value and not value.lower().startswith(("date", "dated", "no")):
+        # A digit is required for the same reason the column lookahead below
+        # requires one: every invoice number carries one, and the word
+        # sitting after the label is not always the number. Vendors who print
+        # an e-way bill column head their table "Invoice No. e-Way Bill No.
+        # Dated", so the text after "Invoice No." is the NEXT column's label
+        # — "e-Way" reads as a perfectly well-formed invoice number to
+        # anything that only checks its shape, and the real number is in the
+        # cell below. Rejecting it here is what lets that cell be found.
+        if (
+            value
+            and any(character.isdigit() for character in value)
+            and not value.lower().startswith(("date", "dated", "no"))
+        ):
             return value
 
         # Label-only cell: vendors whose invoice number sits in the cell
@@ -364,6 +376,52 @@ def _hsn_gst_percentages(lines: list[str]) -> dict[str, float]:
     return percentages
 
 
+def _row_gst_perc(line: str) -> float | None:
+    """This row's GST rate, if the row proves itself to be a tax summary.
+
+    An invoice that prints no rate against its line items, and whose HSN-wise
+    summary omits the HSN code, states its rate nowhere _hsn_gst_percentages
+    can reach it: Hello Pen Mart's summary is a bare "5,040.00 18% 907.20
+    907.20". The rate is only recognisable there by arithmetic — one number
+    on the row taken at the printed percentage lands on another — which is
+    also what tells a real tax row from a discount column that happens to
+    print a percentage.
+
+    The row's percentages are SUMMED once any one of them checks out, the
+    same convention _read_line_item_at uses: an intra-state summary splits
+    the rate into a 9% CGST column and a 9% SGST column, and the line's rate
+    is the 18% they add up to.
+    """
+    percentages = [float(match.group(1)) for match in _PERCENT_RE.finditer(line)]
+    if not percentages:
+        return None
+
+    numbers = [_to_number(match.group(0)) for match in _NUMBER_RE.finditer(line)]
+    for percentage in percentages:
+        if percentage <= 0:
+            continue
+        for taxable in numbers:
+            if taxable <= 0:
+                continue
+            tax = taxable * percentage / 100
+            if any(abs(tax - other) <= _AMOUNT_TOLERANCE for other in numbers if other != taxable):
+                return sum(percentages)
+    return None
+
+
+def _invoice_gst_perc(lines: list[str]) -> float | None:
+    """The one GST rate this invoice is raised at, or None if it isn't one.
+
+    Last resort behind _hsn_gst_percentages, and deliberately all-or-nothing:
+    a mixed-rate invoice has no single rate to apply to a line whose own rate
+    couldn't be read, so it returns None and the line stays unreadable —
+    which is what sends the document to the Claude fallback rather than
+    taxing a 5% line at 18%.
+    """
+    rates = {rate for line in lines if (rate := _row_gst_perc(line)) is not None}
+    return rates.pop() if len(rates) == 1 else None
+
+
 def _find_quantity_rate(numbers: list[float]) -> tuple[int, float] | None:
     # Identifies which of a row's numbers are the quantity and the rate by
     # the one relationship every invoice line obeys — quantity x rate is the
@@ -384,30 +442,44 @@ def _find_quantity_rate(numbers: list[float]) -> tuple[int, float] | None:
     return None
 
 
-def _read_line_item(line: str, hsn_percentages: dict[str, float]) -> ExtractedLineItem | None:
+def _read_line_item(
+    line: str, hsn_percentages: dict[str, float], invoice_gst_perc: float | None = None
+) -> ExtractedLineItem | None:
     stripped = line.strip().lower()
     if any(stripped.startswith(prefix) for prefix in _SUMMARY_ROW_PREFIXES):
         return None
 
     # Every 4/6/8-digit number on the row is tried as its HSN code, not just
     # the first, because a product's own name can carry one: Mutha bills
-    # "Trophy 7013 70139900 1 pcs 1,000.00", where the model number in the
-    # description reads as an HSN code and swallows the real one into the
-    # numbers after it. Reading stops at the first candidate that yields a
-    # complete line item, so a row the first candidate already decoded is
-    # unaffected — the wrong candidate is rejected by the checks below
-    # (its "rate" and "quantity" no longer multiply out to the row's amount,
-    # or its code resolves no GST %), and the real code is picked up on the
-    # next pass.
-    for hsn in _HSN_RE.finditer(line):
-        item = _read_line_item_at(line, hsn, hsn_percentages)
-        if item is not None:
-            return item
+    # "Trophy 7013 70139900 1 pcs 1,000.00 pcs 1,000.00", where the model
+    # number in the description reads as an HSN code and swallows the real
+    # one into the numbers after it. Reading stops at the first candidate
+    # that yields a complete line item, so a row the first candidate already
+    # decoded is unaffected — the wrong candidate is rejected by the checks
+    # in _read_line_item_at, and the real code is picked up on the next pass.
+    #
+    # The candidates are tried twice over, though, with the invoice-wide rate
+    # withheld from the first pass: a code that resolves a GST % of its own
+    # is evidence that it really is this row's HSN cell, whereas one that
+    # only resolves a rate because the whole invoice is raised at a single
+    # rate is no evidence at all. Mutha's "7013" is exactly that — the
+    # numbers after it do multiply out ("1 pcs 1,000.00 ... 1,000.00"), so
+    # the GST % it cannot resolve is the only thing keeping it from being
+    # read as this row's HSN code.
+    passes = (None, invoice_gst_perc) if invoice_gst_perc is not None else (None,)
+    for fallback_gst_perc in passes:
+        for hsn in _HSN_RE.finditer(line):
+            item = _read_line_item_at(line, hsn, hsn_percentages, fallback_gst_perc)
+            if item is not None:
+                return item
     return None
 
 
 def _read_line_item_at(
-    line: str, hsn: re.Match[str], hsn_percentages: dict[str, float]
+    line: str,
+    hsn: re.Match[str],
+    hsn_percentages: dict[str, float],
+    invoice_gst_perc: float | None = None,
 ) -> ExtractedLineItem | None:
     """Reads one row on the assumption that `hsn` is its HSN/SAC cell."""
     after_hsn = line[hsn.end() :]
@@ -421,7 +493,13 @@ def _read_line_item_at(
     # two are always 0), so the line's rate is their sum — the same
     # blended-rate convention _compute_totals in routes/orders.py uses.
     percentages = [float(match.group(1)) for match in _PERCENT_RE.finditer(after_hsn)]
-    gst_perc = sum(percentages) if percentages else hsn_percentages.get(hsn.group(1))
+    # The row's own percentages, then the code's entry in the HSN-wise
+    # summary, then the rate the invoice as a whole is raised at — each a
+    # weaker statement about THIS line than the one before, so each is only
+    # reached when the one before it says nothing.
+    gst_perc = (
+        sum(percentages) if percentages else hsn_percentages.get(hsn.group(1), invoice_gst_perc)
+    )
     if gst_perc is None:
         return None
 
@@ -451,11 +529,15 @@ def _read_line_items(pages: list[list[str]], invoice_no: str | None) -> list[Ext
         if len(pages_with_invoice_no) > 1:
             pages = pages_with_invoice_no[:1]
 
+    # Read across every page being kept rather than per page: a multi-page
+    # invoice prints its tax summary once, at the foot of the last one.
+    invoice_gst_perc = _invoice_gst_perc([line for page in pages for line in page])
+
     line_items: list[ExtractedLineItem] = []
     for page in pages:
         hsn_percentages = _hsn_gst_percentages(page)
         for line in page:
-            item = _read_line_item(line, hsn_percentages)
+            item = _read_line_item(line, hsn_percentages, invoice_gst_perc)
             if item is not None:
                 line_items.append(item)
     return line_items

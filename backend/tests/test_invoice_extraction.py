@@ -4,9 +4,11 @@
 # including CGST/SGST/IGST % sits in the item row, one that stacks the
 # invoice number under its label and ships a duplicate copy as a second page,
 # one that states GST only in the HSN-wise summary at the foot, one whose
-# every row is set at several baselines at once, and one whose product names
-# carry a model number that reads as an HSN code — since those differences
-# are exactly what the parser has to survive.
+# every row is set at several baselines at once, one whose product names
+# carry a model number that reads as an HSN code, and one that heads its
+# table "Invoice No. e-Way Bill No." and states its GST rate only in a
+# summary that omits the HSN code — since those differences are exactly what
+# the parser has to survive.
 #
 # Text is placed by coordinate rather than written as lines: page_lines
 # regroups words by position (invoices are tables), so a fixture that
@@ -381,3 +383,87 @@ def test_an_explicit_grand_total_label_still_wins():
     ]
 
     assert _find_printed_total(lines) == 4130.00
+
+
+# The two failures a Hello Pen Mart / Winsome e-invoice brings, both of which
+# leave the invoice unreadable on its own:
+#   - The item table is headed "Invoice No. e-Way Bill No. Dated", so the
+#     text after the "Invoice No." label is the NEXT column's label, and the
+#     number itself is stacked in the cell below.
+#   - No row states a GST %, and the HSN-wise summary at the foot omits the
+#     HSN code — so nothing ties the "18%" to the line it taxes except the
+#     arithmetic of the summary row itself.
+E_WAY_LAYOUT = [
+    [
+        (14, [(225, "Tax Invoice")]),
+        (31, [(34, "WINSOME INDIA INCORPORATION"), (260, "Invoice No."), (330, "e-Way Bill No."), (430, "Dated")]),
+        (40, [(34, "1ST FLOOR, 84/2"), (260, "26-27/0861"), (430, "20-Aug-26")]),
+        (97, [(34, "GSTIN/UIN: 29AAEFW2352D1Z9")]),
+        (253, [(34, "GSTIN/UIN : " + OUR_GSTIN)]),
+        (284, [(34, "Sl"), (79, "Description of Goods"), (208, "HSN/SAC"), (261, "Quantity"), (330, "Rate"), (440, "Amount")]),
+        (313, [(34, "1"), (44, "Combo Set"), (205, "73269099"), (261, "4 pcs"), (330, "635.00"), (359, "pcs"), (440, "2,540.00")]),
+        (347, [(300, "IGST"), (449, "457.20")]),
+        (636, [(177, "Total"), (270, "4 pcs"), (400, "ī"), (433, "2,997.00")]),
+        # The tax summary, with no HSN code on it at all — only the taxable
+        # value, the rate and the tax it works out to.
+        (690, [(180, "Taxable"), (300, "IGST"), (420, "Total")]),
+        (702, [(180, "2,540.00"), (300, "18%"), (360, "457.20"), (420, "457.20")]),
+    ]
+]
+
+
+def test_the_e_way_bill_column_label_is_not_read_as_the_invoice_number():
+    # "Invoice No." is followed on its row by the heading of the column beside
+    # it, so the text after the label is "e-Way" — which is a well-formed
+    # invoice number to anything checking only its shape. Two of these
+    # invoices read that way collide with each other on (vendor, invoice no)
+    # and the second is refused as a duplicate of the first.
+    extracted = extract_invoice_from_text(_pdf(E_WAY_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    assert extracted.invoice_no == "26-27/0861"
+    assert extracted.invoice_date.date().isoformat() == "2026-08-20"
+
+
+def test_falls_back_to_the_rate_the_whole_invoice_is_raised_at():
+    # Neither the item row nor the summary ties a GST % to this line: the row
+    # prints none, and the summary states 18% against a taxable value rather
+    # than against the HSN code. Without the invoice-wide rate the line is
+    # unreadable, and an invoice whose every line reads that way comes back
+    # as None — which is what sent these to the Claude fallback, or, when
+    # only SOME lines read that way, silently dropped the rest and understated
+    # the order's total.
+    extracted = extract_invoice_from_text(_pdf(E_WAY_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    (item,) = extracted.line_items
+    assert item.description == "Combo Set"
+    assert item.hsn_code == "73269099"
+    assert (item.quantity, item.rate, item.gst_perc) == (4, 635.0, 18.0)
+
+
+def test_a_mixed_rate_invoice_gets_no_invoice_wide_fallback():
+    # The fallback is all-or-nothing on purpose: this invoice taxes one line
+    # at 18% and another at 5%, so there is no single rate that could be
+    # applied to a line whose own rate couldn't be read. Guessing one would
+    # put the wrong tax on a line; returning nothing hands the document to
+    # Claude, which is the right outcome.
+    #
+    # The 5% line here states its rate only against a taxable value, exactly
+    # as in E_WAY_LAYOUT — so it is unreadable, and with it the whole invoice.
+    mixed = [
+        [
+            (14, [(225, "Tax Invoice")]),
+            (31, [(34, "MUTHA COLLECTIONS"), (260, "Invoice No."), (370, "Dated")]),
+            (40, [(260, "MC/26-27/999"), (370, "18-Jun-26")]),
+            (97, [(34, "GSTIN/UIN: 29AASPK1333N1Z6")]),
+            (253, [(34, "GSTIN/UIN : " + OUR_GSTIN)]),
+            (284, [(34, "Sl"), (79, "Description"), (208, "HSN/SAC"), (261, "Quantity"), (330, "Rate"), (440, "Amount")]),
+            (313, [(34, "1"), (44, "Notebook"), (205, "48201090"), (261, "2 pcs"), (330, "100.00"), (440, "200.00")]),
+            (690, [(180, "Taxable"), (300, "Rate"), (420, "Amount")]),
+            (702, [(180, "200.00"), (300, "18%"), (420, "36.00")]),
+            (714, [(180, "500.00"), (300, "5%"), (420, "25.00")]),
+        ]
+    ]
+
+    assert extract_invoice_from_text(_pdf(mixed), OUR_GSTIN) is None
