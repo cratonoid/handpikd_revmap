@@ -78,6 +78,10 @@ export async function fetchCustomers(): Promise<Customer[]> {
 export type CustomerOption = {
   id: number;
   name: string;
+  // The client's department/company line. One registered name can cover
+  // several departments, so pickers show this next to the name to tell them
+  // apart — see sales-order-form-modal.tsx. "" when the client has none.
+  companyOrDepartment: string;
   isDeleted: boolean;
 };
 
@@ -85,6 +89,7 @@ export type CustomerOption = {
 type CustomerListItem = {
   customer_id: number;
   customer_name: string;
+  company_or_department: string;
   is_deleted: boolean;
 };
 
@@ -101,7 +106,12 @@ export async function fetchCustomerList(): Promise<CustomerOption[]> {
   }
 
   const items: CustomerListItem[] = await response.json();
-  return items.map((item) => ({ id: item.customer_id, name: item.customer_name, isDeleted: item.is_deleted }));
+  return items.map((item) => ({
+    id: item.customer_id,
+    name: item.customer_name,
+    companyOrDepartment: item.company_or_department ?? "",
+    isDeleted: item.is_deleted,
+  }));
 }
 
 // Single-customer lookup by email — GET /admin/get_customer_details?mail=...

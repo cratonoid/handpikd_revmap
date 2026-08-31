@@ -111,9 +111,16 @@ export function SalesOrderFormModal({
   const isEdit = mode === "edit";
   const title = isEdit ? "Edit sales order" : "New sales order";
 
+  // Name plus department, because the registered name on its own doesn't
+  // identify a client here: the same company appears once per department,
+  // and picking the wrong one puts the order on the wrong account. Folded
+  // into the label rather than rendered as a second line so it's also
+  // searchable — SingleSelectDropdown filters on `label` — and so the closed
+  // picker still shows which department was chosen. Clients with no
+  // department fall back to the bare name.
   const customerOptions: SingleSelectOption[] = customers.map((customer) => ({
     value: String(customer.id),
-    label: customer.name,
+    label: customer.companyOrDepartment ? `${customer.name} · ${customer.companyOrDepartment}` : customer.name,
     isDeleted: customer.isDeleted,
   }));
 

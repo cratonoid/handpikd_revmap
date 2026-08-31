@@ -96,7 +96,12 @@ async def get_customer_list(
     # to a name (including for orders placed against a since-deleted customer).
     customers = await CustomerDetails.find_all().to_list()
     return [
-        CustomerListItem(customer_id=customer.id, customer_name=customer.registered_name, is_deleted=customer.is_deleted)
+        CustomerListItem(
+            customer_id=customer.id,
+            customer_name=customer.registered_name,
+            company_or_department=customer.company_or_department,
+            is_deleted=customer.is_deleted,
+        )
         for customer in customers
     ]
 

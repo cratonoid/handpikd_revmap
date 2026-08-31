@@ -102,4 +102,9 @@ class CustomerListItem(BaseModel):
     # resolve a sales order's cust_id back to a name.
     customer_id: int
     customer_name: str
+    # Carried alongside the name because one registered name can cover
+    # several departments, which the name alone doesn't distinguish in the
+    # sales order form's customer picker. Defaulted since it's free text and
+    # may be blank on older clients.
+    company_or_department: str = ""
     is_deleted: bool
