@@ -6,7 +6,8 @@ class AddCatalogueDetailsRequest(BaseModel):
     catalogue_name: str
     catalogue_vendor_id: int
     catalogue_type: str
-    category_id: int
+    category_ids: list[int]
+    is_visible: bool = True
     # Already-persisted pages to keep, in order — always empty for a
     # brand-new catalogue. New pages never travel through this endpoint:
     # each is uploaded separately, one request per page, via
@@ -28,7 +29,8 @@ class CatalogueDetailItem(BaseModel):
     catalogue_name: str
     catalogue_vendor_id: int
     catalogue_type: str
-    category_id: int
+    category_ids: list[int]
+    is_visible: bool
     image_paths: list[str]
 
 
@@ -37,7 +39,8 @@ class UpdateCatalogueDetailsRequest(BaseModel):
     catalogue_name: str
     catalogue_vendor_id: int
     catalogue_type: str
-    category_id: int
+    category_ids: list[int]
+    is_visible: bool = True
     # Already-persisted pages to keep, in order — any page dropped from here
     # relative to the catalogue's current set is removed. New pages: see
     # AddCatalogueDetailsRequest.image_paths.
@@ -98,8 +101,10 @@ class DiscardCataloguePdfResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Public (unauthenticated) storefront read models — see get_public_catalogues
 # below. Catalogues are grouped first by catalogue_type ("brand" | "regular"),
-# then by their root category, matching how the /brand-catalogues page renders
+# then by root category, matching how the /brand-catalogues page renders
 # them: one tab per catalogue_type, one subheading per category within it.
+# A catalogue carrying several category_ids appears under each of them, so
+# the same catalogue id can legitimately show up in more than one group.
 # ---------------------------------------------------------------------------
 class PublicCatalogueItem(BaseModel):
     id: int

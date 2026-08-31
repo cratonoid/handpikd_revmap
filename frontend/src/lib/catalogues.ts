@@ -6,8 +6,11 @@
 // an admin-uploaded PDF page-by-page (uploadCataloguePdf, backed by POST
 // /admin/upload_catalogue_pdf) rather than individual image uploads/pasted
 // URLs — see components/admin/catalogue-form-modal.tsx. Unlike products,
-// catalogues have no is_visible/is_deleted flag: deleteCatalogue is a real,
-// permanent delete (backend also removes the underlying page image files).
+// catalogues have no is_deleted flag: deleteCatalogue is a real, permanent
+// delete (backend also removes the underlying page image files). They do
+// have `isVisible`, though — a storefront switch, not a delete: an unticked
+// catalogue drops off /brand-catalogues while staying in the admin table
+// with every page intact.
 import { apiFetch } from "@/lib/api";
 
 export type Catalogue = {
@@ -15,7 +18,11 @@ export type Catalogue = {
   catalogueName: string;
   catalogueVendorId: number;
   catalogueType: string;
-  categoryId: string;
+  // Root/main categories the catalogue is listed under — several are
+  // allowed, and the storefront shows it under each one.
+  categoryIds: string[];
+  // Storefront visibility only — see the module comment above.
+  isVisible: boolean;
   imagePaths: string[];
 };
 
@@ -24,7 +31,8 @@ type CatalogueDetailItem = {
   catalogue_name: string;
   catalogue_vendor_id: number;
   catalogue_type: string;
-  category_id: number;
+  category_ids: number[];
+  is_visible: boolean;
   image_paths: string[];
 };
 
@@ -40,7 +48,8 @@ export async function fetchCatalogues(): Promise<Catalogue[]> {
     catalogueName: item.catalogue_name,
     catalogueVendorId: item.catalogue_vendor_id,
     catalogueType: item.catalogue_type,
-    categoryId: String(item.category_id),
+    categoryIds: item.category_ids.map(String),
+    isVisible: item.is_visible,
     imagePaths: item.image_paths,
   }));
 }

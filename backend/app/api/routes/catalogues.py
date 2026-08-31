@@ -8,7 +8,9 @@
 # rendered page-by-page into images the admin can drop pages from before
 # saving. Unlike Products/Vendors, catalogues have no soft-delete flag:
 # delete_catalogue_details removes the catalogue, its image rows, and the
-# underlying files for good.
+# underlying files for good. What they do have is is_visible — a storefront
+# switch that keeps the catalogue and its pages in the admin table while
+# taking it off get_public_catalogues, so hiding one is not a delete.
 #
 # Both directions of that PDF flow are paged, for the same reason. Intake:
 # upload_catalogue_pdf only stages the PDF and counts its pages, then the
@@ -24,7 +26,7 @@
 # single request (the previous design) meant a multi-page catalogue could
 # produce a 100+MB request and blow past nginx's client_max_body_size — one
 # request per page keeps each bounded to a single rendered page's size.
-from beanie.operators import In
+from beanie.operators import NE, In
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 
 from app.api.routes.admin import require_admin
@@ -82,13 +84,26 @@ async def _replace_image_paths(catalogue_id: int, image_paths: list[str]) -> Non
         await CatalogueImageDetails(id=image_id, catalogue_id=catalogue_id, image_path=image_path).insert()
 
 
-async def _require_vendor_and_category(vendor_id: int, category_id: int) -> None:
+async def _require_vendor_and_categories(vendor_id: int, category_ids: list[int]) -> None:
     vendor = await VendorDetails.get(vendor_id)
     if vendor is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="vendor not found")
 
-    category = await Category.get(category_id)
-    if category is None:
+    # A catalogue with no categories would exist in the admin table but have
+    # nowhere to appear on the storefront, which groups purely by category —
+    # so it's rejected here rather than saved into a state the public page
+    # can't render. Mirrors the frontend's own check in
+    # catalogue-form-modal.tsx, so a direct API call can't bypass it.
+    if not category_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="at least one category is required"
+        )
+
+    # One query for the whole list rather than a Category.get per id: a
+    # catalogue can now carry several categories, and the count comparison
+    # catches a missing one just as well.
+    found = await Category.find(In(Category.id, category_ids)).to_list()
+    if len(found) != len(set(category_ids)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="category not found")
 
 
@@ -177,7 +192,7 @@ async def add_catalogue_details(
     payload: AddCatalogueDetailsRequest,
     _: User | None = Depends(require_admin),
 ) -> AddCatalogueDetailsResponse:
-    await _require_vendor_and_category(payload.catalogue_vendor_id, payload.category_id)
+    await _require_vendor_and_categories(payload.catalogue_vendor_id, payload.category_ids)
 
     catalogue_id = await get_next_id(CatalogueIdCounter, "next_catalogue_id", CatalogueDetails)
     catalogue = CatalogueDetails(
@@ -185,7 +200,8 @@ async def add_catalogue_details(
         catalogue_name=payload.catalogue_name,
         catalogue_vendor_id=payload.catalogue_vendor_id,
         catalogue_type=payload.catalogue_type,
-        category_id=payload.category_id,
+        category_ids=payload.category_ids,
+        is_visible=payload.is_visible,
     )
     await catalogue.insert()
 
@@ -214,7 +230,8 @@ async def get_catalogue_details(
             catalogue_name=catalogue.catalogue_name,
             catalogue_vendor_id=catalogue.catalogue_vendor_id,
             catalogue_type=catalogue.catalogue_type,
-            category_id=catalogue.category_id,
+            category_ids=catalogue.category_ids,
+            is_visible=catalogue.is_visible,
             image_paths=images_by_catalogue_id.get(catalogue.id, []),
         )
         for catalogue in catalogues
@@ -230,12 +247,13 @@ async def update_catalogue_details(
     if catalogue is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="catalogue not found")
 
-    await _require_vendor_and_category(payload.catalogue_vendor_id, payload.category_id)
+    await _require_vendor_and_categories(payload.catalogue_vendor_id, payload.category_ids)
 
     catalogue.catalogue_name = payload.catalogue_name
     catalogue.catalogue_vendor_id = payload.catalogue_vendor_id
     catalogue.catalogue_type = payload.catalogue_type
-    catalogue.category_id = payload.category_id
+    catalogue.category_ids = payload.category_ids
+    catalogue.is_visible = payload.is_visible
     await catalogue.save()
 
     await _replace_image_paths(catalogue.id, payload.image_paths)
@@ -324,13 +342,18 @@ def _section_order(section: PublicCatalogueSection) -> tuple[int, str]:
 
 @public_router.get("/get_public_catalogues", response_model=list[PublicCatalogueSection])
 async def get_public_catalogues() -> list[PublicCatalogueSection]:
-    catalogues = await CatalogueDetails.find_all().to_list()
+    # NE(..., False) rather than == True on purpose: catalogues written
+    # before is_visible existed have no such field, and an equality match
+    # would drop every one of them from the storefront the moment this
+    # shipped. "Not explicitly hidden" is the intended reading — see the
+    # field's comment on models/catalogue_details.py.
+    catalogues = await CatalogueDetails.find(NE(CatalogueDetails.is_visible, False)).to_list()
     if not catalogues:
         return []
 
     catalogue_ids = [catalogue.id for catalogue in catalogues]
     vendor_ids = list({catalogue.catalogue_vendor_id for catalogue in catalogues})
-    category_ids = list({catalogue.category_id for catalogue in catalogues})
+    category_ids = list({category_id for catalogue in catalogues for category_id in catalogue.category_ids})
 
     images = await CatalogueImageDetails.find(In(CatalogueImageDetails.catalogue_id, catalogue_ids)).to_list()
     images_by_catalogue_id: dict[int, list[str]] = {}
@@ -353,7 +376,12 @@ async def get_public_catalogues() -> list[PublicCatalogueSection]:
             vendor_name=vendor_name_by_id.get(catalogue.catalogue_vendor_id, ""),
             image_paths=images_by_catalogue_id.get(catalogue.id, []),
         )
-        grouped.setdefault(catalogue.catalogue_type, {}).setdefault(catalogue.category_id, []).append(item)
+        # One entry per category the catalogue belongs to: a catalogue tagged
+        # with several main categories is listed under each of them, which is
+        # the whole point of category_ids being a list. The same item object
+        # is shared across those groups — nothing mutates it after this.
+        for category_id in catalogue.category_ids:
+            grouped.setdefault(catalogue.catalogue_type, {}).setdefault(category_id, []).append(item)
 
     sections: list[PublicCatalogueSection] = []
     for catalogue_type, categories_map in grouped.items():

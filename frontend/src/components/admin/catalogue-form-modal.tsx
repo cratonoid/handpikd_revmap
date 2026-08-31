@@ -8,11 +8,15 @@
 //   - mode "add"  -> POST /admin/add_catalogue_details    (new catalogue)
 //   - mode "edit" -> POST /admin/update_catalogue_details (existing catalogue)
 //
-// Vendor and category are both single-selects (a catalogue has exactly one
-// catalogue_vendor_id and one category_id) — see single-select-dropdown.tsx.
-// `categoryOptions` is pre-filtered by the page client to top-level/root
-// categories only (parent_id === null): a catalogue belongs to one main
-// category, not a specific subcategory.
+// Vendor is a single-select (a catalogue has exactly one
+// catalogue_vendor_id) — see single-select-dropdown.tsx. Category is a
+// multiselect (multi-select-dropdown.tsx): a catalogue can belong to several
+// main categories at once and gets listed under each of them on the
+// storefront. `categoryOptions` is pre-filtered by the page client to
+// top-level/root categories only (parent_id === null) — a catalogue is filed
+// under main categories, not specific subcategories, so unlike the product
+// form's category picker these options are flat with no subtree/ancestor
+// behaviour.
 //
 // Images: a catalogue's pages always come from converting an uploaded PDF
 // rather than individual image uploads or pasted URLs. Picking a PDF stages
@@ -32,7 +36,10 @@
 //
 // Unlike products/vendors, catalogues have no soft-delete flag — the delete
 // action here (edit mode only) is a real, permanent delete of the catalogue
-// and all its page images, gated behind an inline confirm.
+// and all its page images, gated behind an inline confirm. The "Visible"
+// checkbox is the non-destructive alternative: it only decides whether the
+// catalogue appears on the public /brand-catalogues page, leaving the
+// catalogue and every page it has untouched in the admin table.
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch, resolveMediaUrl } from "@/lib/api";
@@ -47,6 +54,7 @@ import {
   type CataloguePdfSession,
 } from "@/lib/catalogues";
 import type { VendorOption } from "@/lib/vendors";
+import { MultiSelectDropdown, type MultiSelectOption } from "@/components/admin/multi-select-dropdown";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
 import { XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
@@ -72,7 +80,7 @@ export function CatalogueFormModal({
   // Only present in "edit" mode — pre-fills every field.
   initialCatalogue?: Catalogue;
   vendors: VendorOption[];
-  categoryOptions: SingleSelectOption[];
+  categoryOptions: MultiSelectOption[];
   onClose: () => void;
   // Removing a page deletes it immediately (see removePage) rather than
   // waiting for Save, so closing the modal WITHOUT saving can still leave
@@ -87,8 +95,10 @@ export function CatalogueFormModal({
   const [vendorId, setVendorId] = useState<string | null>(
     initialCatalogue ? String(initialCatalogue.catalogueVendorId) : null,
   );
-  const [categoryId, setCategoryId] = useState<string | null>(initialCatalogue?.categoryId ?? null);
+  const [categoryIds, setCategoryIds] = useState<string[]>(initialCatalogue?.categoryIds ?? []);
   const [catalogueType, setCatalogueType] = useState(initialCatalogue?.catalogueType ?? "");
+  // New catalogues go up visible — the admin uploads one to publish it.
+  const [isVisible, setIsVisible] = useState(initialCatalogue?.isVisible ?? true);
   const [imagePaths, setImagePaths] = useState<string[]>(initialCatalogue?.imagePaths ?? []);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -227,8 +237,8 @@ export function CatalogueFormModal({
       setError("Please select a vendor.");
       return;
     }
-    if (!categoryId) {
-      setError("Please select a category.");
+    if (categoryIds.length === 0) {
+      setError("Please select at least one category.");
       return;
     }
     if (!form.checkValidity()) {
@@ -252,7 +262,8 @@ export function CatalogueFormModal({
       catalogue_name: catalogueName,
       catalogue_vendor_id: Number(vendorId),
       catalogue_type: catalogueType,
-      category_id: Number(categoryId),
+      category_ids: categoryIds.map(Number),
+      is_visible: isVisible,
       image_paths: persistedPaths,
     };
 
@@ -311,7 +322,8 @@ export function CatalogueFormModal({
         catalogueName,
         catalogueVendorId: Number(vendorId),
         catalogueType,
-        categoryId,
+        categoryIds,
+        isVisible,
         imagePaths: [...savedPersistedPaths, ...uploadedPaths],
       });
     } catch {
@@ -382,15 +394,15 @@ export function CatalogueFormModal({
               onChange={setVendorId}
             />
 
-            <SingleSelectDropdown
-              label="Category"
-              placeholder="Select a category"
-              entityLabel="categories"
-              required
-              showStatusFilter={false}
+            {/* Required, but enforced in handleSubmit rather than by the
+                control: MultiSelectDropdown renders checkboxes, not a form
+                field the browser can validate. */}
+            <MultiSelectDropdown
+              label="Categories"
+              placeholder="Select categories"
               options={categoryOptions}
-              selectedValue={categoryId}
-              onChange={setCategoryId}
+              selectedValues={categoryIds}
+              onChange={setCategoryIds}
             />
 
             <div>
@@ -413,6 +425,29 @@ export function CatalogueFormModal({
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Storefront visibility only — mirrors the product form's
+                "Visible" checkbox. Unticking is how a catalogue comes off
+                the site without being deleted, which for catalogues is the
+                only other option and is permanent. */}
+            <div className={styles.formGridFullSpan}>
+              <label htmlFor="catalogueIsVisible" className={styles.formCheckboxField}>
+                <input
+                  id="catalogueIsVisible"
+                  type="checkbox"
+                  checked={isVisible}
+                  onChange={(e) => setIsVisible(e.target.checked)}
+                  className={styles.selectCheckbox}
+                />
+                <span className={styles.formCheckboxText}>
+                  <span className={styles.formCheckboxLabel}>Visible</span>
+                  <span className={styles.formCheckboxHint}>
+                    Shown on the public catalogues page. Unticking hides it from customers; the catalogue and all its
+                    pages stay here, and it can be made visible again anytime.
+                  </span>
+                </span>
+              </label>
             </div>
           </div>
 

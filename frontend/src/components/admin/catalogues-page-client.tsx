@@ -15,14 +15,22 @@
 // display labels. `categoryOptions` passed to the modal is the raw
 // fetchCategories() result used AS-IS: its top-level array is already just
 // the root/main categories (parent_id === null), which is what a
-// catalogue's category_id should be picked from.
+// catalogue's category_ids should be picked from. It's a flat list, not the
+// nested tree the product form's picker uses — no depth/descendantIds — so
+// picking a main category never drags its subcategories in with it.
+//
+// Hidden catalogues (is_visible off — set from the form modal's "Visible"
+// checkbox) stay in this table like any other; they're marked with a badge
+// next to the name rather than split into their own tab the way hidden
+// products are. Hiding is the only non-destructive way to take a catalogue
+// off the storefront, since a catalogue delete is permanent.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { CatalogueFormModal } from "@/components/admin/catalogue-form-modal";
 import { fetchCatalogues, type Catalogue } from "@/lib/catalogues";
 import { fetchCategories, type CategoryNode } from "@/lib/categories";
 import { fetchVendorsList, type VendorOption } from "@/lib/vendors";
-import type { SingleSelectOption } from "@/components/admin/single-select-dropdown";
+import type { MultiSelectOption } from "@/components/admin/multi-select-dropdown";
 import { DiaryIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
@@ -63,10 +71,9 @@ export function CataloguesPageClient() {
   const vendorsById = new Map(vendors.map((v) => [String(v.id), v.name]));
   const categoriesById = new Map(rootCategories.map((c) => [c.id, c.name]));
 
-  const categoryOptions: SingleSelectOption[] = rootCategories.map((category) => ({
+  const categoryOptions: MultiSelectOption[] = rootCategories.map((category) => ({
     value: category.id,
     label: category.name,
-    isDeleted: false,
   }));
 
   function handleSaved() {
@@ -98,7 +105,7 @@ export function CataloguesPageClient() {
               <th className={styles.tableHeadCell}>Catalogue</th>
               <th className={styles.tableHeadCell}>Vendor</th>
               <th className={styles.tableHeadCell}>Type</th>
-              <th className={styles.tableHeadCell}>Category</th>
+              <th className={styles.tableHeadCell}>Categories</th>
               <th className={styles.tableHeadCell}>Pages</th>
             </tr>
           </thead>
@@ -114,6 +121,7 @@ export function CataloguesPageClient() {
                   <span className={styles.tableCategoryName}>
                     <DiaryIcon className="h-3.5 w-3.5" />
                     {catalogue.catalogueName}
+                    {!catalogue.isVisible && <span className={styles.inactiveBadge}>Hidden</span>}
                   </span>
                 </td>
                 <td className={styles.tableCell}>
@@ -122,7 +130,12 @@ export function CataloguesPageClient() {
                 <td className={styles.tableCell}>
                   {CATALOGUE_TYPE_LABELS[catalogue.catalogueType] ?? catalogue.catalogueType}
                 </td>
-                <td className={styles.tableCell}>{categoriesById.get(catalogue.categoryId) ?? "—"}</td>
+                <td className={styles.tableCell}>
+                  {catalogue.categoryIds
+                    .map((id) => categoriesById.get(id))
+                    .filter((name): name is string => Boolean(name))
+                    .join(", ") || "—"}
+                </td>
                 <td className={styles.tableCell}>{catalogue.imagePaths.length}</td>
               </tr>
             ))}
