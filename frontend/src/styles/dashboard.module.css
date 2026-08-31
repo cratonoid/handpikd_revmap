@@ -2280,6 +2280,57 @@ select.formInput:disabled {
 }
 
 /* -----------------------------------------------------------------------
+   Unbilled purchase line items
+   (components/admin/unbilled-purchase-order-form-modal.tsx)
+   The shortest of the three line-item grids: product, quantity, rate, line
+   total. No HSN, no GST % — an unbilled purchase has neither. Product takes
+   the widest share because it is a free-typed name that may not exist yet,
+   and because it carries a hint line under it when it doesn't.
+   ----------------------------------------------------------------------- */
+.unbilledLineItemsHeaderRow {
+  display: none;
+  grid-template-columns: 2.4fr 0.8fr 1fr 1.1fr 2.75rem;
+  gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .unbilledLineItemsHeaderRow {
+    display: grid;
+  }
+}
+
+.unbilledLineItemRow {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr;
+  /* start, not center: the product cell grows by a hint line when a new
+     name is typed, and centring would then float the other cells. */
+  align-items: start;
+}
+
+@media (min-width: 640px) {
+  .unbilledLineItemRow {
+    grid-template-columns: 2.4fr 0.8fr 1fr 1.1fr 2.75rem;
+  }
+}
+
+.unbilledLineItemRow input {
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
+}
+
+/* Same reclaimed spinner width as .lineItemRow — see the comment there. */
+.unbilledLineItemRow input[type="number"] {
+  appearance: textfield;
+}
+
+.unbilledLineItemRow input[type="number"]::-webkit-outer-spin-button,
+.unbilledLineItemRow input[type="number"]::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+/* -----------------------------------------------------------------------
    Sales order line items
    (components/admin/sales-order-form-modal.tsx)
    One extra pair of columns vs. purchase orders' .lineItemRow (tax % + tax

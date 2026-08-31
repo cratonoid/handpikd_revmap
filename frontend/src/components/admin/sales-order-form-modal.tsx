@@ -16,14 +16,23 @@
 //     amounts — order totals are just the sums of the line items.
 //   - The product picker is a searchable SingleSelectDropdown (not a plain
 //     <select>) and isn't scoped to a vendor — a sales order can mix
-//     products from any vendor's catalogue.
+//     products from any vendor's catalogue, INCLUDING unbilled ones (stock
+//     bought with no bill behind it, see
+//     backend/app/models/product_details.py). Those are labelled in the
+//     picker and default the line to 0% tax rather than being hidden: they
+//     are ordinary sellable stock, and the only thing that distinguishes
+//     their invoice line is a blank HSN column.
 //   - order_no is backend-assigned (via OrderNoCounterMaster) and never
 //     submitted; shown read-only in edit mode.
 //   - order_status_id is only ever shown/submitted in edit mode — new orders
 //     are silently defaulted to "New" on the backend. Sourced from
 //     GET /admin/get_order_status_list.
 //   - related_purchase_order_ids is an optional MultiSelectDropdown sourced
-//     from GET /admin/get_purchase_order_list.
+//     from GET /admin/get_purchase_order_list, and
+//     related_unbilled_purchase_order_ids is a second one sourced from
+//     GET /admin/get_unbilled_purchase_order_list. Two fields rather than one
+//     because the two kinds of order live in different collections whose ids
+//     overlap; editing an order on either raises the same po_updated_flag.
 import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
@@ -33,6 +42,7 @@ import type { SalesOrder } from "@/lib/sales-orders";
 import type { CustomerOption } from "@/lib/customers";
 import type { Product } from "@/lib/products";
 import type { PurchaseOrderOption } from "@/lib/purchase-orders";
+import type { UnbilledPurchaseOrderOption } from "@/lib/unbilled-purchase-orders";
 import type { OrderStatus } from "@/lib/order-status";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
 import { MultiSelectDropdown, type MultiSelectOption } from "@/components/admin/multi-select-dropdown";
@@ -74,6 +84,7 @@ export function SalesOrderFormModal({
   customers,
   products,
   purchaseOrders,
+  unbilledPurchaseOrders,
   orderStatuses,
   onClose,
   onSaved,
@@ -84,6 +95,7 @@ export function SalesOrderFormModal({
   customers: CustomerOption[];
   products: Product[];
   purchaseOrders: PurchaseOrderOption[];
+  unbilledPurchaseOrders: UnbilledPurchaseOrderOption[];
   orderStatuses: OrderStatus[];
   onClose: () => void;
   // No order payload — the backend only returns {message} (see
@@ -103,6 +115,9 @@ export function SalesOrderFormModal({
   );
   const [relatedPurchaseOrderIds, setRelatedPurchaseOrderIds] = useState<string[]>(
     initialOrder?.relatedPurchaseOrderIds.map(String) ?? [],
+  );
+  const [relatedUnbilledPurchaseOrderIds, setRelatedUnbilledPurchaseOrderIds] = useState<string[]>(
+    initialOrder?.relatedUnbilledPurchaseOrderIds.map(String) ?? [],
   );
   const [description, setDescription] = useState(initialOrder?.description ?? "");
   const [status, setStatus] = useState<Status>("idle");
@@ -130,17 +145,28 @@ export function SalesOrderFormModal({
     isDeleted: false,
   }));
 
-  // Soft-deleted products are the ones kept out — is_visible only governs the
-  // storefront, so a product hidden from customers is still perfectly
-  // orderable/quotable/invoiceable here. `products` itself is deliberately
-  // unfiltered (get_product_details returns deleted ones too) so an existing
-  // line item pointing at a since-deleted product still resolves a name;
-  // it's only the picker that hides them.
+  // Soft-deleted products are the ONLY ones kept out — is_visible only
+  // governs the storefront, so a product hidden from customers is still
+  // perfectly orderable/quotable/invoiceable here, and an unbilled product is
+  // stock we actually hold and can actually sell. `products` itself is
+  // deliberately unfiltered (get_product_details returns deleted ones too) so
+  // an existing line item pointing at a since-deleted product still resolves
+  // a name; it's only the picker that hides them.
+  //
+  // Unbilled products are suffixed rather than segregated into a second
+  // picker: they sell exactly like anything else, and the label is there so
+  // the admin knows why the line came in at 0% tax and will invoice with a
+  // blank HSN. Folded into `label` rather than rendered separately so the
+  // dropdown's search still matches on it.
   const productOptions: SingleSelectOption[] = useMemo(
     () =>
       products
         .filter((product) => !product.isDeleted)
-        .map((product) => ({ value: String(product.id), label: product.productName, isDeleted: false })),
+        .map((product) => ({
+          value: String(product.id),
+          label: product.isUnbilled ? `${product.productName} · unbilled` : product.productName,
+          isDeleted: false,
+        })),
     [products],
   );
   const productsById = useMemo(() => new Map(products.map((p) => [String(p.id), p])), [products]);
@@ -148,6 +174,12 @@ export function SalesOrderFormModal({
   const purchaseOrderOptions: MultiSelectOption[] = purchaseOrders.map((purchaseOrder) => ({
     value: String(purchaseOrder.id),
     label: `PO-${purchaseOrder.purchaseOrderNo} · ${purchaseOrder.vendorName}`,
+  }));
+
+  // purchaseOrderNo is already "UPO-<id>" here, so it isn't prefixed again.
+  const unbilledPurchaseOrderOptions: MultiSelectOption[] = unbilledPurchaseOrders.map((purchaseOrder) => ({
+    value: String(purchaseOrder.id),
+    label: `${purchaseOrder.purchaseOrderNo} · ${purchaseOrder.vendorName}`,
   }));
 
   function lineItemTotals(item: LineItem) {
@@ -166,9 +198,16 @@ export function SalesOrderFormModal({
 
   function handleProductChange(index: number, productId: string) {
     const product = productsById.get(productId);
+    // An unbilled product carries no selling price — it is created from a
+    // purchase, where only what was PAID is known — so its discountedPrice
+    // is 0. Left blank rather than pre-filled with that 0, so the required
+    // field makes the admin name a price instead of quietly invoicing the
+    // line at nothing. Its gstPerc is 0 for the same reason (no HSN code, so
+    // nothing classified it), and that one IS pre-filled: 0% is the right
+    // default for these, and the column stays editable when a sale is taxed.
     updateLineItem(index, {
       productId,
-      rate: product ? String(product.discountedPrice) : "",
+      rate: product && !product.isUnbilled ? String(product.discountedPrice) : "",
       taxPerc: product ? String(product.gstPerc) : "",
     });
   }
@@ -205,6 +244,7 @@ export function SalesOrderFormModal({
       tax_percs: taxPercs,
       description,
       related_purchase_order_ids: relatedPurchaseOrderIds.map(Number),
+      related_unbilled_purchase_order_ids: relatedUnbilledPurchaseOrderIds.map(Number),
     };
 
     try {
@@ -449,6 +489,16 @@ export function SalesOrderFormModal({
             options={purchaseOrderOptions}
             selectedValues={relatedPurchaseOrderIds}
             onChange={setRelatedPurchaseOrderIds}
+          />
+
+          <MultiSelectDropdown
+            label="Related unbilled purchases (optional)"
+            placeholder="Link unbilled purchases this order fulfills from"
+            searchPlaceholder="Search unbilled purchases…"
+            emptyMessage="No unbilled purchases match."
+            options={unbilledPurchaseOrderOptions}
+            selectedValues={relatedUnbilledPurchaseOrderIds}
+            onChange={setRelatedUnbilledPurchaseOrderIds}
           />
 
           <div>

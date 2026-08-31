@@ -10,8 +10,9 @@
 // endpoints in this app which return raw FK ids for the frontend to resolve.
 //
 // fetchInventoryHistory hits GET /admin/get_inventory_history, the ledger
-// written by app/services/inventory.py whenever a purchase order is created
-// or edited, and whenever a sales order enters or leaves "Delivered". Editing
+// written by app/services/inventory.py whenever a purchase order of either
+// kind (billed or unbilled) is created or edited, and whenever a sales order
+// enters or leaves "Delivered". Editing
 // an order rewrites its rows rather than appending to them, so the ledger
 // always reflects the stock those orders currently hold. It only returns raw
 // product_id/purchase_order_id
@@ -25,6 +26,12 @@ export type InventoryItem = {
   productName: string;
   hsnCode: string;
   quantity: number;
+  // Splits the Inventory tab's Billed/Unbilled views. Both kinds of stock
+  // live in the same #inventory collection and move through the same
+  // helpers — this flag on the product is the only thing separating them,
+  // which is also why an unbilled row's hsnCode is always empty. See
+  // backend/app/models/product_details.py's is_unbilled.
+  isUnbilled: boolean;
 };
 
 // Shape returned by the backend's InventoryItem schema.
@@ -33,6 +40,7 @@ type InventoryItemResponse = {
   product_name: string;
   hsn_code: string;
   quantity: number;
+  is_unbilled: boolean;
 };
 
 export async function fetchInventory(): Promise<InventoryItem[]> {
@@ -47,10 +55,11 @@ export async function fetchInventory(): Promise<InventoryItem[]> {
     productName: item.product_name,
     hsnCode: item.hsn_code,
     quantity: item.quantity,
+    isUnbilled: item.is_unbilled,
   }));
 }
 
-export type InventoryTransactionType = "purchase" | "sales";
+export type InventoryTransactionType = "purchase" | "unbilled_purchase" | "sales";
 
 export type InventoryHistoryEntry = {
   id: number;
@@ -58,6 +67,10 @@ export type InventoryHistoryEntry = {
   transactionType: InventoryTransactionType;
   quantity: number;
   purchaseOrderId: number | null;
+  // Set instead of purchaseOrderId on an "unbilled_purchase" row. The two
+  // name orders in different collections whose ids overlap, so the history
+  // tab resolves each against its own list rather than sharing one lookup.
+  unbilledPurchaseOrderId: number | null;
   salesOrderId: number | null;
   createdAt: string;
 };
@@ -69,6 +82,7 @@ type InventoryHistoryItemResponse = {
   transaction_type: string;
   quantity: number;
   purchase_order_id: number | null;
+  unbilled_purchase_order_id: number | null;
   sales_order_id: number | null;
   created_at: string;
 };
@@ -86,6 +100,7 @@ export async function fetchInventoryHistory(): Promise<InventoryHistoryEntry[]> 
     transactionType: item.transaction_type as InventoryTransactionType,
     quantity: item.quantity,
     purchaseOrderId: item.purchase_order_id,
+    unbilledPurchaseOrderId: item.unbilled_purchase_order_id,
     salesOrderId: item.sales_order_id,
     createdAt: item.created_at,
   }));

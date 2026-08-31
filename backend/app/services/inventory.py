@@ -17,6 +17,11 @@ from app.models import Inventory, InventoryHistory, InventoryHistoryIdCounter, I
 from app.services.counters import get_next_id
 
 _PURCHASE_TRANSACTION = "purchase"
+# Stock bought without a bill — its own transaction type rather than a
+# "purchase" row with a different parent id, so the ledger says which kind of
+# purchase brought the stock in without anyone having to join back to find
+# out. See models/unbilled_purchase_orders.py.
+_UNBILLED_PURCHASE_TRANSACTION = "unbilled_purchase"
 _SALES_TRANSACTION = "sales"
 
 # Sign a line item's quantity carries when it is applied to stock: a purchase
@@ -54,6 +59,17 @@ def _sum_rows_by_product(rows: list[InventoryHistory]) -> dict[int, int]:
 async def get_applied_purchase_quantities(purchase_order_id: int) -> dict[int, int]:
     # How much stock this purchase order has already added, per product.
     rows = await InventoryHistory.find(InventoryHistory.purchase_order_id == purchase_order_id).to_list()
+    return _sum_rows_by_product(rows)
+
+
+async def get_applied_unbilled_purchase_quantities(unbilled_purchase_order_id: int) -> dict[int, int]:
+    # How much stock this unbilled purchase order has already added, per
+    # product. The billed twin above reads the same ledger through a
+    # different parent column — see InventoryHistory.unbilled_purchase_order_id
+    # for why the two can't share one.
+    rows = await InventoryHistory.find(
+        InventoryHistory.unbilled_purchase_order_id == unbilled_purchase_order_id
+    ).to_list()
     return _sum_rows_by_product(rows)
 
 
@@ -96,7 +112,20 @@ async def find_stock_shortfalls(stock_deltas: dict[int, int]) -> list[tuple[int,
 
 async def _set_product_visibility(product_id: int, is_visible: bool) -> None:
     product = await ProductDetails.get(product_id)
-    if product is not None and product.is_visible != is_visible:
+    if product is None:
+        return
+
+    # An unbilled product must never be shown on the storefront, and
+    # restocking one is the only way it could have been: the caller below
+    # turns visibility ON whenever stock arrives, which for these would put
+    # goods bought off a local market — no HSN, no catalogue entry, no
+    # selling price yet — in front of customers. Hiding one on sell-out is
+    # still allowed through (it is already hidden, so it is a no-op), because
+    # the rule is about surfacing them, not about the flag's value.
+    if is_visible and product.is_unbilled:
+        return
+
+    if product.is_visible != is_visible:
         product.is_visible = is_visible
         await product.save()
 
@@ -135,6 +164,7 @@ async def _record_inventory_transaction(
     quantity: int,
     *,
     purchase_order_id: int | None = None,
+    unbilled_purchase_order_id: int | None = None,
     sales_order_id: int | None = None,
 ) -> None:
     history_id = await get_next_id(InventoryHistoryIdCounter, "next_inventory_history_id", InventoryHistory)
@@ -144,6 +174,7 @@ async def _record_inventory_transaction(
         transaction_type=transaction_type,
         quantity=quantity,
         purchase_order_id=purchase_order_id,
+        unbilled_purchase_order_id=unbilled_purchase_order_id,
         sales_order_id=sales_order_id,
         created_at=datetime.now(timezone.utc).replace(tzinfo=None),
     ).insert()
@@ -164,6 +195,30 @@ async def apply_purchase_order_stock(
     for product_id, quantity in zip(product_ids, quantities):
         await _record_inventory_transaction(
             product_id, _PURCHASE_TRANSACTION, quantity, purchase_order_id=purchase_order_id
+        )
+
+
+async def apply_unbilled_purchase_order_stock(
+    unbilled_purchase_order_id: int,
+    product_ids: list[int],
+    quantities: list[int],
+    stock_deltas: dict[int, int],
+) -> None:
+    # Exactly apply_purchase_order_stock's behaviour, filed under this
+    # order's own parent column and transaction type. Unbilled stock is real
+    # stock: it lands in the same #inventory quantities, is checked against
+    # the same shortfall rules, and is sold off the same sales orders — the
+    # only thing missing from the purchase is the paperwork.
+    await _apply_stock_deltas(stock_deltas)
+    await InventoryHistory.find(
+        InventoryHistory.unbilled_purchase_order_id == unbilled_purchase_order_id
+    ).delete()
+    for product_id, quantity in zip(product_ids, quantities):
+        await _record_inventory_transaction(
+            product_id,
+            _UNBILLED_PURCHASE_TRANSACTION,
+            quantity,
+            unbilled_purchase_order_id=unbilled_purchase_order_id,
         )
 
 

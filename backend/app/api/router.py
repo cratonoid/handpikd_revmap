@@ -22,6 +22,7 @@ from app.api.routes import (
     quotations,
     sales_orders,
     test,
+    unbilled_orders,
     vendors,
 )
 
@@ -50,4 +51,5 @@ api_router.include_router(invoices.router)
 api_router.include_router(purchase_invoices.router)
 api_router.include_router(printing_orders.router)
 api_router.include_router(printing_purchase_invoices.router)
+api_router.include_router(unbilled_orders.router)
 api_router.include_router(quotations.router)

@@ -18,6 +18,7 @@ from app.models import (
     SalesOrders,
     SalesSummary,
     SalesSummaryIdCounter,
+    UnbilledPurchaseOrders,
     User,
 )
 from app.schemas.sales_order_costing import (
@@ -90,6 +91,24 @@ async def _validate_purchase_orders_exist(purchase_order_ids: list[int]) -> None
         if purchase_order_id not in found_ids:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail=f"purchase order {purchase_order_id} not found"
+            )
+
+
+async def _validate_unbilled_purchase_orders_exist(unbilled_purchase_order_ids: list[int]) -> None:
+    # The twin of _validate_purchase_orders_exist for the other collection.
+    # UnbilledPurchaseOrders has no is_deleted either, so this likewise
+    # covers every order.
+    if not unbilled_purchase_order_ids:
+        return
+    orders = await UnbilledPurchaseOrders.find(
+        In(UnbilledPurchaseOrders.id, unbilled_purchase_order_ids)
+    ).to_list()
+    found_ids = {order.id for order in orders}
+    for unbilled_purchase_order_id in unbilled_purchase_order_ids:
+        if unbilled_purchase_order_id not in found_ids:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"unbilled purchase order {unbilled_purchase_order_id} not found",
             )
 
 
@@ -242,6 +261,7 @@ async def create_new_sales_order(
     await _validate_customer_exists(payload.cust_id)
     await _validate_products_exist(payload.product_ids, reject_deleted=True)
     await _validate_purchase_orders_exist(payload.related_purchase_order_ids)
+    await _validate_unbilled_purchase_orders_exist(payload.related_unbilled_purchase_order_ids)
 
     # No discounts term: a sales order can only be costed once it exists,
     # so a brand-new one never has #sales_order_costing rows.
@@ -264,6 +284,7 @@ async def create_new_sales_order(
         total_amount_after_tax=total_after_tax,
         description=payload.description,
         related_purchase_order_ids=payload.related_purchase_order_ids,
+        related_unbilled_purchase_order_ids=payload.related_unbilled_purchase_order_ids,
     )
     await sales_order.insert()
 
@@ -319,6 +340,7 @@ async def get_sales_order_details(
                 total_amount_after_tax=order.total_amount_after_tax,
                 description=order.description,
                 related_purchase_order_ids=order.related_purchase_order_ids,
+                related_unbilled_purchase_order_ids=order.related_unbilled_purchase_order_ids,
                 po_updated_flag=order.po_updated_flag,
                 is_deleted=order.is_deleted,
             )
@@ -339,6 +361,7 @@ async def update_sales_order_details(
     await _validate_customer_exists(payload.cust_id)
     await _validate_products_exist(payload.product_ids)
     await _validate_purchase_orders_exist(payload.related_purchase_order_ids)
+    await _validate_unbilled_purchase_orders_exist(payload.related_unbilled_purchase_order_ids)
     await _validate_order_status_exists(payload.order_status_id)
 
     # Carries any discount already entered on this order's "Add details"
@@ -375,6 +398,7 @@ async def update_sales_order_details(
     sales_order.total_amount_after_tax = total_after_tax
     sales_order.description = payload.description
     sales_order.related_purchase_order_ids = payload.related_purchase_order_ids
+    sales_order.related_unbilled_purchase_order_ids = payload.related_unbilled_purchase_order_ids
     sales_order.is_deleted = payload.is_deleted
     # Saving the sales order counts as the admin having reviewed whatever
     # related-PO change set the flag (see SalesOrders.po_updated_flag).

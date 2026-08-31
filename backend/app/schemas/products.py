@@ -52,6 +52,10 @@ class ProductDetailItem(BaseModel):
     description: str
     is_visible: bool
     is_deleted: bool
+    # See ProductDetails.is_unbilled. The admin products page needs it to
+    # keep these out of its Active/Hidden tabs and behind their own filter,
+    # and the sales order form needs it to label an unbilled line item.
+    is_unbilled: bool = False
     image_paths: list[str]
 
 

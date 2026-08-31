@@ -125,6 +125,17 @@ async def _validate_products_belong_to_vendor(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail=f"product {product_id} has been deleted"
             )
+        if product.is_unbilled:
+            # An unbilled product has no HSN code and no GST rate (see
+            # ProductDetails.is_unbilled), so it cannot go on an order that
+            # raises a GST purchase invoice — the line would be billed under
+            # no classification at all. Checked on updates too, not just
+            # creates: unlike a soft-deleted product, one of these can never
+            # have been legitimately on a billed order to begin with.
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"product {product_id} was bought unbilled — record it on an unbilled purchase order",
+            )
         if product.vendor_id != vendor_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

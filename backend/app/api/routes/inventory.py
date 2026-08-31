@@ -1,8 +1,13 @@
 # Inventory module: read-only visibility into current stock (#inventory)
-# and the InventoryHistory ledger, both written by routes/orders.py and
-# routes/sales_orders.py (see app/services/inventory.py). Purchase orders
-# move stock as soon as they are created or edited; sales orders only do so
-# once they reach "Delivered". Restricted to admins, matching the rest of
+# and the InventoryHistory ledger, written by routes/orders.py,
+# routes/unbilled_orders.py and routes/sales_orders.py (see
+# app/services/inventory.py). Purchase orders of either kind move stock as
+# soon as they are created or edited; sales orders only do so once they reach
+# "Delivered".
+#
+# Both views cover billed and unbilled stock together — it is all one
+# #inventory collection — and carry the flag that tells them apart, so the
+# admin page can split them without a second endpoint. Restricted to admins, matching the rest of
 # the admin API.
 from fastapi import APIRouter, Depends
 
@@ -34,6 +39,7 @@ async def get_inventory(
             product_name=products_by_id[row.product_id].product_name,
             hsn_code=products_by_id[row.product_id].hsn_code,
             quantity=row.quantity,
+            is_unbilled=products_by_id[row.product_id].is_unbilled,
         )
         for row in inventory_rows
         if row.product_id in products_by_id and row.quantity != 0
@@ -52,6 +58,7 @@ async def get_inventory_history(
             transaction_type=entry.transaction_type,
             quantity=entry.quantity,
             purchase_order_id=entry.purchase_order_id,
+            unbilled_purchase_order_id=entry.unbilled_purchase_order_id,
             sales_order_id=entry.sales_order_id,
             created_at=entry.created_at,
         )

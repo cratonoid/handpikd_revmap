@@ -177,6 +177,7 @@ async def get_product_details(
             description=product.description,
             is_visible=product.is_visible,
             is_deleted=product.is_deleted,
+            is_unbilled=product.is_unbilled,
             image_paths=images_by_product_id.get(product.id, []),
         )
         for product in products
@@ -392,8 +393,18 @@ async def get_public_categories() -> list[PublicCategoryNode]:
 
 @public_router.get("/get_public_products", response_model=list[PublicProductItem])
 async def get_public_products() -> list[PublicProductItem]:
+    # is_unbilled is excluded on top of the two flags, rather than trusted to
+    # ride along inside is_visible: unbilled products are created with
+    # is_visible False and services/inventory.py refuses to flip it on, but
+    # nothing stops an admin toggling it by hand from the product form, and
+    # goods bought off a local market — no HSN code, no photos, no selling
+    # price — have no business on the storefront either way. See
+    # ProductDetails.is_unbilled. Existing products match this filter thanks
+    # to _backfill_product_unbilled_flag in core/db.py.
     products = await ProductDetails.find(
-        ProductDetails.is_visible == True, ProductDetails.is_deleted == False
+        ProductDetails.is_visible == True,
+        ProductDetails.is_deleted == False,
+        ProductDetails.is_unbilled == False,
     ).to_list()
     if not products:
         return []

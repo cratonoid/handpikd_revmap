@@ -43,6 +43,12 @@ export type Product = {
   description: string;
   isVisible: boolean;
   isDeleted: boolean;
+  // Stock bought without a bill — created inline by the unbilled purchase
+  // form rather than through this page's own product form, and carrying no
+  // hsnCode and a gstPerc of 0 because no vendor document classified it.
+  // Kept out of the Active/Hidden tabs and behind its own Unbilled tab, and
+  // never storefront-visible. See backend/app/models/product_details.py.
+  isUnbilled: boolean;
   imagePaths: string[];
 };
 
@@ -61,6 +67,7 @@ type ProductDetailItem = {
   description: string;
   is_visible: boolean;
   is_deleted: boolean;
+  is_unbilled: boolean;
   image_paths: string[];
 };
 
@@ -263,6 +270,10 @@ export async function createProduct(input: NewProductInput): Promise<Product> {
     description: input.description,
     isVisible: false,
     isDeleted: false,
+    // Products born here always came from the billed product form — the
+    // unbilled ones are created server-side by the unbilled purchase
+    // endpoint and never travel through this function.
+    isUnbilled: false,
     imagePaths: [],
   };
 }
@@ -289,6 +300,7 @@ export async function fetchProducts(): Promise<Product[]> {
     description: item.description,
     isVisible: item.is_visible,
     isDeleted: item.is_deleted,
+    isUnbilled: item.is_unbilled,
     imagePaths: item.image_paths,
   }));
 }

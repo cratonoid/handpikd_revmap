@@ -5,8 +5,8 @@
 // a row on <InventoryHistoryTab>
 // ---------------------------------------------------------------------------
 // The history table itself only shows enough to identify a ledger entry
-// (reference no., type, date) — this modal surfaces the rest (date, product
-// name, HSN, transaction type, quantity) on demand. There's nothing to
+// (product, type, date) — this modal surfaces the rest (reference no., date,
+// HSN, transaction type, quantity) on demand. There's nothing to
 // edit here: InventoryHistory rows are written by app/services/inventory.py
 // as the record of what stock each order currently holds, and are rewritten
 // wholesale when that order is edited — never patched from this screen.
@@ -28,7 +28,15 @@ export function InventoryHistoryDetailModal({
   reference: string;
   onClose: () => void;
 }) {
-  const transactionLabel = entry.transactionType === "purchase" ? "Purchase" : "Sales";
+  // Three types, not two: stock bought without a bill is its own kind of
+  // purchase (see lib/inventory.ts's InventoryTransactionType), and saying
+  // just "Purchase" would hide the one thing that matters about it.
+  const transactionLabel =
+    entry.transactionType === "purchase"
+      ? "Purchase"
+      : entry.transactionType === "unbilled_purchase"
+        ? "Purchase (unbilled)"
+        : "Sales";
 
   return (
     <div className={styles.modalBackdrop} onClick={onClose}>

@@ -326,6 +326,10 @@ export function ProductFormModal({
         // Saving never moves is_deleted — only the delete/restore endpoints
         // do, and neither goes through here.
         isDeleted,
+        // Nor is_unbilled: this form only ever handles billed products (the
+        // Unbilled tab on /admin/products is read-only for exactly that
+        // reason), so anything saved here is one.
+        isUnbilled: false,
         imagePaths: [...savedPersistedPaths, ...uploadedPaths],
       });
     } catch {

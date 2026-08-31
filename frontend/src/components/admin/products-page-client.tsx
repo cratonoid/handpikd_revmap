@@ -16,17 +16,28 @@
 // (`vendorOptions`) feeds the popup's picker, which should only offer active
 // vendors.
 //
-// Three tabs over two independent flags on ProductDetails (see
-// lib/products.ts), so every product lands in exactly one of them:
-//   Active  — live and on the storefront   (is_visible, not is_deleted)
-//   Hidden  — live but off the storefront  (!is_visible, not is_deleted)
-//   Deleted — soft-deleted, restorable     (is_deleted, whatever is_visible)
+// Four tabs over three flags on ProductDetails (see lib/products.ts), so
+// every product lands in exactly one of them:
+//   Active   — live and on the storefront   (is_visible, not is_deleted)
+//   Hidden   — live but off the storefront  (!is_visible, not is_deleted)
+//   Deleted  — soft-deleted, restorable     (is_deleted, whatever is_visible)
+//   Unbilled — stock bought with no bill    (is_unbilled, not is_deleted)
 // is_deleted wins over is_visible: a deleted product belongs under Deleted
 // whether it was visible or not, which is why the Deleted filter is checked
-// first. The list itself is deliberately the unfiltered
+// first. is_unbilled is checked next, ahead of the visible/hidden split:
+// those products are always hidden and would otherwise fill the Hidden tab
+// with local-market goods that have no HSN code, no images and no price.
+//
+// The Unbilled tab is READ-ONLY — its rows don't open the edit popup. That
+// popup is the billed product form: it requires an HSN code and a
+// discounted price below a positive list price, none of which an unbilled
+// product has or should be forced to invent. These are created and edited
+// from the unbilled purchase they came in on (see
+// components/admin/unbilled-purchase-order-form-modal.tsx). The list itself is deliberately the unfiltered
 // get_product_details, so the tabs are pure client-side splits of one fetch.
-// The tabs share one table; the only per-tab difference is that Hidden drops
-// the MOQ column.
+// The tabs share one table; the only per-tab differences are that Hidden and
+// Unbilled drop the MOQ column (an unbilled product has no meaningful
+// minimum order quantity) and that Unbilled's rows don't open the popup.
 //
 // Clicking a row opens the popup in "edit" mode, pre-filled with that row's
 // data; "+ Add new product" opens it in "add" mode.
@@ -43,7 +54,7 @@ import styles from "@/styles/dashboard.module.css";
 
 type ModalState = { mode: "add" } | { mode: "edit"; product: Product } | null;
 type LoadState = "loading" | "loaded" | "error";
-type View = "active" | "hidden" | "deleted";
+type View = "active" | "hidden" | "deleted" | "unbilled";
 
 export function ProductsPageClient() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -74,8 +85,17 @@ export function ProductsPageClient() {
     return expanded;
   }, [categoryFilterIds, descendantsById]);
 
+  const isUnbilledView = view === "unbilled";
   const visibleProducts = products
-    .filter((p) => (view === "deleted" ? p.isDeleted : !p.isDeleted && p.isVisible === (view === "active")))
+    .filter((p) => {
+      if (view === "deleted") return p.isDeleted;
+      if (p.isDeleted) return false;
+      // Ahead of the visible/hidden split, not inside it: an unbilled
+      // product is always hidden, so without this every one of them would
+      // also show up under Hidden.
+      if (p.isUnbilled) return isUnbilledView;
+      return !isUnbilledView && p.isVisible === (view === "active");
+    })
     .filter((p) => categoryFilterIds.length === 0 || p.categoryIds.some((id) => expandedFilterIds.has(id)));
   const vendorsById = new Map(vendors.map((v) => [v.id, v]));
 
@@ -183,6 +203,15 @@ export function ProductsPageClient() {
           >
             Deleted
           </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isUnbilledView}
+            onClick={() => setView("unbilled")}
+            className={`${styles.viewToggleButton} ${isUnbilledView ? styles.viewToggleButtonActive : ""}`}
+          >
+            Unbilled
+          </button>
         </div>
 
         <div className={styles.filterToggleRowSelect}>
@@ -214,7 +243,7 @@ export function ProductsPageClient() {
               <th className={styles.tableHeadCell}>Vendor</th>
               <th className={styles.tableHeadCell}>Vendor Rate</th>
               <th className={styles.tableHeadCell}>Price</th>
-              {view !== "hidden" && <th className={styles.tableHeadCell}>MOQ</th>}
+              {view !== "hidden" && !isUnbilledView && <th className={styles.tableHeadCell}>MOQ</th>}
             </tr>
           </thead>
           <tbody>
@@ -225,7 +254,10 @@ export function ProductsPageClient() {
               return (
                 <tr
                   key={product.id}
-                  onClick={() => setModalState({ mode: "edit", product })}
+                  // No edit popup on the Unbilled tab — see the note at the
+                  // top of this file on why that form can't take one of
+                  // these.
+                  onClick={isUnbilledView ? undefined : () => setModalState({ mode: "edit", product })}
                   className={styles.tableRow}
                 >
                   <td className={styles.tableCell}>{index + 1}</td>
@@ -240,7 +272,9 @@ export function ProductsPageClient() {
                     )}
                   </td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{product.productName}</td>
-                  <td className={styles.tableCell}>{product.hsnCode}</td>
+                  {/* An unbilled product has no HSN code at all, so this
+                      shows an em dash rather than an empty cell. */}
+                  <td className={styles.tableCell}>{product.hsnCode || "—"}</td>
                   <td className={styles.tableCell}>{vendor?.registeredName ?? "—"}</td>
                   <td className={styles.tableCell}>₹{product.vendorRate.toFixed(2)}</td>
                   <td className={styles.tableCell}>
@@ -249,7 +283,9 @@ export function ProductsPageClient() {
                       <span className={styles.tableStrikePrice}>₹{product.actualPrice.toFixed(2)}</span>
                     )}
                   </td>
-                  {view !== "hidden" && <td className={styles.tableCell}>{product.moq}</td>}
+                  {view !== "hidden" && !isUnbilledView && (
+                    <td className={styles.tableCell}>{product.moq}</td>
+                  )}
                 </tr>
               );
             })}

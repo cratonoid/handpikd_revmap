@@ -36,7 +36,11 @@ export type SalesOrder = {
   totalAmountAfterTax: number;
   description: string;
   relatedPurchaseOrderIds: number[];
-  // True once a related purchase order (relatedPurchaseOrderIds) has been
+  // Unbilled purchase orders this sales order is fulfilled from — a separate
+  // list because the two live in different collections with overlapping ids.
+  // See backend/app/models/sales_orders.py.
+  relatedUnbilledPurchaseOrderIds: number[];
+  // True once a related purchase order (on EITHER list above) has been
   // edited since this sales order was last saved — a review notice, not an
   // automatic data sync; see backend/app/models/sales_orders.py's
   // po_updated_flag docstring. Cleared server-side the next time this sales
@@ -61,6 +65,7 @@ type SalesOrderDetailItem = {
   total_amount_after_tax: number;
   description: string;
   related_purchase_order_ids: number[];
+  related_unbilled_purchase_order_ids: number[];
   po_updated_flag: boolean;
   is_deleted: boolean;
 };
@@ -81,6 +86,7 @@ function toSalesOrder(item: SalesOrderDetailItem): SalesOrder {
     totalAmountAfterTax: item.total_amount_after_tax,
     description: item.description,
     relatedPurchaseOrderIds: item.related_purchase_order_ids,
+    relatedUnbilledPurchaseOrderIds: item.related_unbilled_purchase_order_ids ?? [],
     poUpdatedFlag: item.po_updated_flag,
     isDeleted: item.is_deleted,
   };

@@ -38,6 +38,10 @@ import { fetchSalesOrders, type SalesOrder } from "@/lib/sales-orders";
 import { fetchCustomerList, type CustomerOption } from "@/lib/customers";
 import { fetchProducts, type Product } from "@/lib/products";
 import { fetchPurchaseOrderList, type PurchaseOrderOption } from "@/lib/purchase-orders";
+import {
+  fetchUnbilledPurchaseOrderList,
+  type UnbilledPurchaseOrderOption,
+} from "@/lib/unbilled-purchase-orders";
 import { fetchOrderStatusList, type OrderStatus } from "@/lib/order-status";
 import styles from "@/styles/dashboard.module.css";
 
@@ -68,6 +72,10 @@ export function SalesOrdersTab() {
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrderOption[]>([]);
+  // Its own list, not folded into the one above: billed and unbilled purchase
+  // orders live in different collections with overlapping ids, so the form
+  // submits them as two separate arrays.
+  const [unbilledPurchaseOrders, setUnbilledPurchaseOrders] = useState<UnbilledPurchaseOrderOption[]>([]);
   const [orderStatuses, setOrderStatuses] = useState<OrderStatus[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
@@ -87,17 +95,28 @@ export function SalesOrdersTab() {
       fetchCustomerList(),
       fetchProducts(),
       fetchPurchaseOrderList(),
+      fetchUnbilledPurchaseOrderList(),
       fetchOrderStatusList(),
     ])
-      .then(([orderData, customerData, productData, purchaseOrderData, orderStatusData]) => {
-        if (cancelled) return;
-        setOrders(orderData);
-        setCustomers(customerData);
-        setProducts(productData);
-        setPurchaseOrders(purchaseOrderData);
-        setOrderStatuses(orderStatusData);
-        setLoadState("loaded");
-      })
+      .then(
+        ([
+          orderData,
+          customerData,
+          productData,
+          purchaseOrderData,
+          unbilledPurchaseOrderData,
+          orderStatusData,
+        ]) => {
+          if (cancelled) return;
+          setOrders(orderData);
+          setCustomers(customerData);
+          setProducts(productData);
+          setPurchaseOrders(purchaseOrderData);
+          setUnbilledPurchaseOrders(unbilledPurchaseOrderData);
+          setOrderStatuses(orderStatusData);
+          setLoadState("loaded");
+        },
+      )
       .catch(() => {
         // A failed fetch (e.g. the backend being unreachable) falls back to
         // an empty list rather than showing a scary error.
@@ -229,6 +248,7 @@ export function SalesOrdersTab() {
           customers={customers}
           products={products}
           purchaseOrders={purchaseOrders}
+          unbilledPurchaseOrders={unbilledPurchaseOrders}
           orderStatuses={orderStatuses}
           onClose={() => setModalState(null)}
           onSaved={handleSaved}

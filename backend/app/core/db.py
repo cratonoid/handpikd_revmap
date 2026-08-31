@@ -68,6 +68,10 @@ from app.models import (
     SalesSummary,
     SalesSummaryIdCounter,
     StandardInvoiceNoCounterMaster,
+    UnbilledPurchaseOrderIdCounter,
+    UnbilledPurchaseOrders,
+    UnbilledPurchaseSummary,
+    UnbilledPurchaseSummaryIdCounter,
     User,
     UserIdCounter,
     VendorDetails,
@@ -221,6 +225,16 @@ async def _backfill_product_delete_flag() -> None:
     await db["product_details"].update_many({"is_deleted": {"$exists": False}}, {"$set": {"is_deleted": False}})
 
 
+async def _backfill_product_unbilled_flag() -> None:
+    # Same problem as _backfill_product_delete_flag above, and the same fix.
+    # `is_unbilled` was added to ProductDetails long after products existed,
+    # and Mongo does not match {"is_unbilled": false} against a document
+    # missing the key — so get_public_products, which filters on exactly
+    # that, would empty the storefront of every product predating the field.
+    db = get_db()
+    await db["product_details"].update_many({"is_unbilled": {"$exists": False}}, {"$set": {"is_unbilled": False}})
+
+
 async def _backfill_purchase_order_tax_kind() -> None:
     # `tax_kind` was added to PurchaseOrders when the GST rate moved onto the
     # line items (see PurchaseSummary.gst_perc): the rate is per line now, so
@@ -328,6 +342,10 @@ async def connect_to_mongo() -> None:
             PrintingPurchaseInvoiceDetails,
             PrintingPurchaseInvoiceIdCounter,
             PrintingPurchaseInvoiceNoCounterMaster,
+            UnbilledPurchaseOrders,
+            UnbilledPurchaseOrderIdCounter,
+            UnbilledPurchaseSummary,
+            UnbilledPurchaseSummaryIdCounter,
             Category,
             CategoryIdCounter,
             PersonalDetails,
@@ -350,6 +368,7 @@ async def connect_to_mongo() -> None:
     await _seed_personal_details()
     await _backfill_order_dates()
     await _backfill_product_delete_flag()
+    await _backfill_product_unbilled_flag()
     await _backfill_purchase_order_tax_kind()
     await _backfill_purchase_summary_gst()
 

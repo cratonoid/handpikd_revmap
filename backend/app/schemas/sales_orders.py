@@ -18,6 +18,10 @@ class CreateNewSalesOrderRequest(BaseModel):
     description: str
     # Optional: purchase order(s) this sales order is fulfilled from.
     related_purchase_order_ids: list[int] = []
+    # Optional: unbilled purchase order(s) it is fulfilled from — a separate
+    # list because the two are different collections with overlapping ids.
+    # See SalesOrders.related_unbilled_purchase_order_ids.
+    related_unbilled_purchase_order_ids: list[int] = []
 
     @model_validator(mode="after")
     def _check_line_items_match(self) -> "CreateNewSalesOrderRequest":
@@ -48,6 +52,7 @@ class SalesOrderDetailItem(BaseModel):
     total_amount_after_tax: float
     description: str
     related_purchase_order_ids: list[int]
+    related_unbilled_purchase_order_ids: list[int] = []
     # See SalesOrders.po_updated_flag — true when a related purchase order
     # was edited since this sales order was last saved.
     po_updated_flag: bool
@@ -68,6 +73,7 @@ class UpdateSalesOrderDetailsRequest(BaseModel):
     tax_percs: list[float]
     description: str
     related_purchase_order_ids: list[int] = []
+    related_unbilled_purchase_order_ids: list[int] = []
 
     @model_validator(mode="after")
     def _check_line_items_match(self) -> "UpdateSalesOrderDetailsRequest":
