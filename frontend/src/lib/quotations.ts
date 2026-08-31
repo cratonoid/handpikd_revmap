@@ -13,6 +13,15 @@
 // id/quotationNo — quotation-form-modal.tsx's "Generate" button needs the id
 // immediately to chain straight into downloadQuotationPdf without a second
 // round trip to re-fetch the list.
+//
+// A quotation is also the one document that can be raised against things
+// that don't exist yet: `custId` is null when the buyer was typed straight
+// into the form (`customerName`/`customerAddress` hold it instead), and a
+// line item's `productId` is null when it was typed in rather than picked
+// (`productName`/`imagePath` hold it instead). Neither is written back to
+// the client/product tables — they live only on the quotation. Exactly one
+// side of each pair is ever set; the backend enforces that in
+// schemas/quotations.py.
 import { apiFetch } from "@/lib/api";
 
 export type QuotationStatus = "draft" | "sent" | "accepted" | "rejected" | "expired";
@@ -22,9 +31,17 @@ export type Quotation = {
   quotationNo: number;
   date: string;
   validTill: string;
-  custId: number;
+  // null for a one-off buyer, in which case customerName/customerAddress
+  // carry it. Both are "" for a quotation pointing at a real client.
+  custId: number | null;
+  customerName: string;
+  customerAddress: string;
   status: QuotationStatus;
-  productIds: number[];
+  // Parallel arrays, one entry per line item. productIds[i] is null on a
+  // one-off line, where productNames[i]/imagePaths[i] carry it instead.
+  productIds: (number | null)[];
+  productNames: string[];
+  imagePaths: (string | null)[];
   quantities: number[];
   rates: number[];
   taxPercs: number[];
@@ -41,9 +58,13 @@ type QuotationDetailItem = {
   quotation_no: number;
   date: string;
   valid_till: string;
-  cust_id: number;
+  cust_id: number | null;
+  customer_name: string;
+  customer_address: string;
   status: QuotationStatus;
-  product_ids: number[];
+  product_ids: (number | null)[];
+  product_names: string[];
+  image_paths: (string | null)[];
   quantities: number[];
   rates: number[];
   tax_percs: number[];
@@ -61,8 +82,12 @@ function toQuotation(item: QuotationDetailItem): Quotation {
     date: item.date,
     validTill: item.valid_till,
     custId: item.cust_id,
+    customerName: item.customer_name,
+    customerAddress: item.customer_address,
     status: item.status,
     productIds: item.product_ids,
+    productNames: item.product_names,
+    imagePaths: item.image_paths,
     quantities: item.quantities,
     rates: item.rates,
     taxPercs: item.tax_percs,
@@ -85,14 +110,22 @@ export async function fetchQuotations(): Promise<Quotation[]> {
 }
 
 export type QuotationLineItemPayload = {
-  productId: number;
+  // Exactly one of productId / productName is set — see the module comment.
+  productId: number | null;
+  productName: string;
+  // Only ever set on a one-off line: a data URI from uploadProductImage, or
+  // a pasted image URL.
+  imagePath: string | null;
   quantity: number;
   rate: number;
   taxPerc: number;
 };
 
 export type CreateQuotationPayload = {
-  custId: number;
+  // Exactly one of custId / customerName is set — see the module comment.
+  custId: number | null;
+  customerName: string;
+  customerAddress: string;
   date: string;
   validTill: string;
   lineItems: QuotationLineItemPayload[];
@@ -108,6 +141,8 @@ export type UpdateQuotationPayload = CreateQuotationPayload & {
 function lineItemsToParallelArrays(lineItems: QuotationLineItemPayload[]) {
   return {
     product_ids: lineItems.map((item) => item.productId),
+    product_names: lineItems.map((item) => item.productName),
+    image_paths: lineItems.map((item) => item.imagePath),
     quantities: lineItems.map((item) => item.quantity),
     rates: lineItems.map((item) => item.rate),
     tax_percs: lineItems.map((item) => item.taxPerc),
@@ -126,6 +161,8 @@ export async function createQuotation(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       cust_id: payload.custId,
+      customer_name: payload.customerName,
+      customer_address: payload.customerAddress,
       date: payload.date,
       valid_till: payload.validTill,
       description: payload.description,
@@ -151,6 +188,8 @@ export async function updateQuotation(payload: UpdateQuotationPayload): Promise<
       status: payload.status,
       is_deleted: payload.isDeleted ?? false,
       cust_id: payload.custId,
+      customer_name: payload.customerName,
+      customer_address: payload.customerAddress,
       date: payload.date,
       valid_till: payload.validTill,
       description: payload.description,

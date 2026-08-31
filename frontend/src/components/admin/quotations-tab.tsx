@@ -149,7 +149,12 @@ export function QuotationsTab() {
           </thead>
           <tbody>
             {quotations.map((quotation, index) => {
-              const customerName = customersById.get(quotation.custId)?.name;
+              // A one-off buyer has no client row to look up — its name is
+              // stored on the quotation itself (see lib/quotations.ts).
+              const customerName =
+                quotation.custId === null
+                  ? quotation.customerName
+                  : customersById.get(quotation.custId)?.name;
               return (
                 <tr
                   key={quotation.id || `${quotation.quotationNo}-${index}`}
@@ -160,7 +165,7 @@ export function QuotationsTab() {
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{quotation.quotationNo}</td>
                   <td className={styles.tableCell}>{new Date(quotation.date).toLocaleDateString()}</td>
                   <td className={styles.tableCell}>{new Date(quotation.validTill).toLocaleDateString()}</td>
-                  <td className={styles.tableCell}>{customerName ?? "—"}</td>
+                  <td className={styles.tableCell}>{customerName || "—"}</td>
                   <td className={styles.tableCell}>{STATUS_LABEL[quotation.status]}</td>
                   <td className={styles.tableCell}>₹{quotation.totalAmountAfterTax.toFixed(2)}</td>
                   <td className={styles.tableCell}>

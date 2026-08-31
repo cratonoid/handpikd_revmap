@@ -2330,6 +2330,123 @@ select.formInput:disabled {
   margin: 0;
 }
 
+/* -----------------------------------------------------------------------
+   Quotation line items
+   (components/admin/quotation-form-modal.tsx)
+   One extra column ahead of sales orders' .salesLineItemRow: a quotation
+   line is either a catalogue product or a one-off typed straight into the
+   quotation, so each row leads with a narrow Type picker that swaps the
+   product dropdown for a free-text name. A one-off line also gets an image,
+   which rides on its own strip below the row (.quotationCustomImageRow)
+   rather than as a ninth column — a thumbnail plus a URL field needs more
+   width than the row has left to give.
+   ----------------------------------------------------------------------- */
+.quotationLineItemsHeaderRow {
+  display: none;
+  /* Same reasoning as .lineItemsHeaderRow: Product gives up relative space
+     to the numeric columns so a 5-digit value still renders unclipped. */
+  grid-template-columns: 0.9fr 1.5fr 0.8fr 1.1fr 0.7fr 1.1fr 1.1fr 2.75rem;
+  gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .quotationLineItemsHeaderRow {
+    display: grid;
+  }
+}
+
+/* Wraps one line item's row together with its image strip, so the two stay
+   visually paired once several one-off lines stack up. */
+.quotationLineItemGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.quotationLineItemRow {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: 1fr;
+  align-items: center;
+}
+
+@media (min-width: 640px) {
+  .quotationLineItemRow {
+    grid-template-columns: 0.9fr 1.5fr 0.8fr 1.1fr 0.7fr 1.1fr 1.1fr 2.75rem;
+  }
+}
+
+.quotationLineItemRow input,
+.quotationLineItemRow select {
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
+}
+
+/* Same reclaimed spinner width as .lineItemRow — see the comment there. */
+.quotationLineItemRow input[type="number"] {
+  appearance: textfield;
+}
+
+.quotationLineItemRow input[type="number"]::-webkit-outer-spin-button,
+.quotationLineItemRow input[type="number"]::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+/* Image strip under a one-off line. Indented and rule-marked on the left so
+   it reads as belonging to the row above rather than as a line of its own. */
+.quotationCustomImageRow {
+  display: grid;
+  grid-template-columns: 3.25rem 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 0.75rem;
+  border-left: 2px solid var(--color-border);
+  padding-left: 0.75rem;
+}
+
+/* "Uploading…" status text — spans the full strip, below the inputs. */
+.quotationCustomImageRow > .pageSubtext {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+/* A row-sized version of .imageThumb (6rem there) — small enough that a
+   line item plus its image still reads as one entry. */
+.quotationImageThumb {
+  height: 3.25rem;
+  width: 3.25rem;
+  aspect-ratio: 1 / 1;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  object-fit: cover;
+  background-color: color-mix(in srgb, var(--color-border) 15%, transparent);
+}
+
+.quotationImageThumbEmpty {
+  display: flex;
+  height: 3.25rem;
+  width: 3.25rem;
+  aspect-ratio: 1 / 1;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  border: 1px dashed var(--color-border);
+  color: var(--color-ink);
+}
+
+/* .viewToggle sized for use inside a form rather than under a page heading,
+   where the 1rem top margin is spacing from the title. */
+.inlineViewToggle {
+  margin-top: 0;
+}
+
+.inlineViewToggle .viewToggleButton {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.75rem;
+}
+
 .totalsGrid {
   display: grid;
   gap: 1.25rem;

@@ -49,9 +49,18 @@ _LOGO_DATA_URI = _file_to_data_uri(_LOGO_PATH)
 def _product_image_data_uri(image_path: str | None) -> str | None:
     if not image_path:
         return None
-    # image_path is stored as "/media/<file>" (see app/services/storage.py);
-    # resolve it back to the on-disk file under media_root rather than
-    # making an HTTP round trip to fetch it from the same process.
+    image_path = image_path.strip()
+    # Three shapes reach here, since a one-off quotation line stores whatever
+    # the admin gave it (see QuotationSummary.image_path) and a catalogue
+    # product's image row is no stricter:
+    #   - a data: URI, which upload_product_image hands straight back and the
+    #     template can embed as-is;
+    #   - an absolute http(s) URL, which Chromium fetches while rendering;
+    #   - "/media/<file>" (see app/services/storage.py), resolved back to the
+    #     on-disk file under media_root rather than making an HTTP round trip
+    #     to fetch it from the process currently serving the request.
+    if image_path.startswith(("data:", "http://", "https://")):
+        return image_path
     filename = image_path.rsplit("/", 1)[-1]
     return _file_to_data_uri(Path(settings.media_root) / filename)
 
