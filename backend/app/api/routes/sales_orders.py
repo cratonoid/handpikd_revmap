@@ -188,6 +188,50 @@ def _allocate_line_discounts(
     return discounts
 
 
+def _allocate_overall_discount(overall_discount: float, net_line_values: list[float]) -> list[float]:
+    # The order-level discount (SalesOrders.overall_discount) is ONE figure
+    # against the whole order, but tax is charged per line, so it has to be
+    # split before it can be charged. Split in proportion to each line's
+    # value AFTER that line's share of its product's costing discount, so a
+    # line already discounted on the sheet isn't discounted twice as hard
+    # here; an order whose lines are all worth zero splits it evenly rather
+    # than dividing by zero.
+    if not overall_discount or not net_line_values:
+        return [0.0] * len(net_line_values)
+
+    total_value = sum(net_line_values)
+    if not total_value:
+        return [overall_discount / len(net_line_values)] * len(net_line_values)
+    return [overall_discount * (line_value / total_value) for line_value in net_line_values]
+
+
+def _reject_overall_discount_above_subtotal(
+    overall_discount: float,
+    quantities: list[int],
+    rates: list[float],
+    discounts: list[float] | None,
+) -> None:
+    # A discount bigger than what's left of the order after the costing
+    # sheet's own discounts would push the totals — and the tax — negative.
+    # Checked against the same net subtotal the discount is applied to, so
+    # discounting an order down to exactly zero is still allowed.
+    if not overall_discount:
+        return
+
+    line_discounts = discounts if discounts is not None else [0.0] * len(quantities)
+    net_subtotal = sum(
+        quantity * rate - discount for quantity, rate, discount in zip(quantities, rates, line_discounts)
+    )
+    if overall_discount > net_subtotal:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"discount ({overall_discount:.2f}) is larger than the order's net amount "
+                f"({net_subtotal:.2f})"
+            ),
+        )
+
+
 async def _stored_line_discounts(
     sales_order_id: int, product_ids: list[int], quantities: list[int], rates: list[float]
 ) -> list[float]:
@@ -204,6 +248,7 @@ def _compute_line_items_and_totals(
     rates: list[float],
     tax_percs: list[float],
     discounts: list[float] | None = None,
+    overall_discount: float = 0.0,
 ) -> tuple[list[float], list[float], float, float, float]:
     # `discounts` is each line's share of its product's costing discount (see
     # _allocate_line_discounts). None on create — a brand-new order has no
@@ -216,10 +261,22 @@ def _compute_line_items_and_totals(
     # Net Subtotal -> Sales tax amount -> Gross Sales Price chain exactly
     # (see frontend/src/lib/sales-order-costing.ts). The order row and the
     # sheet can never disagree.
+    #
+    # `overall_discount` is the order's own discount off its whole net amount
+    # (SalesOrders.overall_discount), applied ON TOP of those per-product
+    # discounts and split across the lines the same pro-rata way, so it lands
+    # in the subtotals before tax is charged rather than being subtracted
+    # from a finished total.
     if discounts is None:
         discounts = [0.0] * len(quantities)
     line_subtotals = [
         quantity * rate - discount for quantity, rate, discount in zip(quantities, rates, discounts)
+    ]
+    line_subtotals = [
+        subtotal - share
+        for subtotal, share in zip(
+            line_subtotals, _allocate_overall_discount(overall_discount, line_subtotals)
+        )
     ]
     tax_amounts = [subtotal * (tax_perc / 100) for subtotal, tax_perc in zip(line_subtotals, tax_percs)]
     total_before_tax = sum(line_subtotals)
@@ -264,9 +321,18 @@ async def create_new_sales_order(
     await _validate_unbilled_purchase_orders_exist(payload.related_unbilled_purchase_order_ids)
 
     # No discounts term: a sales order can only be costed once it exists,
-    # so a brand-new one never has #sales_order_costing rows.
+    # so a brand-new one never has #sales_order_costing rows. The order's own
+    # overall discount does come off the form, though.
+    _reject_overall_discount_above_subtotal(
+        payload.overall_discount, payload.quantities, payload.rates, None
+    )
     line_subtotals, tax_amounts, total_before_tax, total_tax, total_after_tax = (
-        _compute_line_items_and_totals(payload.quantities, payload.rates, payload.tax_percs)
+        _compute_line_items_and_totals(
+            payload.quantities,
+            payload.rates,
+            payload.tax_percs,
+            overall_discount=payload.overall_discount,
+        )
     )
 
     order_status_id = await _get_new_status_id()
@@ -279,6 +345,7 @@ async def create_new_sales_order(
         order_status_id=order_status_id,
         cust_id=payload.cust_id,
         date=payload.date,
+        overall_discount=payload.overall_discount,
         total_amount_before_tax=total_before_tax,
         total_tax_amount=total_tax,
         total_amount_after_tax=total_after_tax,
@@ -335,6 +402,7 @@ async def get_sales_order_details(
                 quantities=[item.quantity for item in line_items],
                 rates=[item.rate for item in line_items],
                 tax_percs=[item.tax_perc for item in line_items],
+                overall_discount=order.overall_discount,
                 total_amount_before_tax=order.total_amount_before_tax,
                 total_tax_amount=order.total_tax_amount,
                 total_amount_after_tax=order.total_amount_after_tax,
@@ -370,8 +438,17 @@ async def update_sales_order_details(
     discounts = await _stored_line_discounts(
         sales_order.id, payload.product_ids, payload.quantities, payload.rates
     )
+    _reject_overall_discount_above_subtotal(
+        payload.overall_discount, payload.quantities, payload.rates, discounts
+    )
     line_subtotals, tax_amounts, total_before_tax, total_tax, total_after_tax = (
-        _compute_line_items_and_totals(payload.quantities, payload.rates, payload.tax_percs, discounts)
+        _compute_line_items_and_totals(
+            payload.quantities,
+            payload.rates,
+            payload.tax_percs,
+            discounts,
+            payload.overall_discount,
+        )
     )
 
     # A soft-deleted order holds no stock even if it was delivered, so
@@ -393,6 +470,7 @@ async def update_sales_order_details(
     sales_order.order_status_id = payload.order_status_id
     sales_order.cust_id = payload.cust_id
     sales_order.date = payload.date
+    sales_order.overall_discount = payload.overall_discount
     sales_order.total_amount_before_tax = total_before_tax
     sales_order.total_tax_amount = total_tax
     sales_order.total_amount_after_tax = total_after_tax
@@ -547,6 +625,9 @@ async def get_sales_order_costing(
         customer_name=customer.registered_name if customer else "—",
         date=sales_order.date,
         order_status_name=order_status.status_name if order_status else "—",
+        # Entered on the order form, shown read-only in this sheet's footer
+        # so its totals reconcile with the order's.
+        overall_discount=sales_order.overall_discount,
         lines=lines,
     )
 
@@ -642,8 +723,12 @@ async def update_sales_order_costing(
         quantities,
         rates,
     )
+    # The order's overall discount isn't editable here, but it still has to
+    # be carried into the recompute — leaving it out would silently drop it
+    # from the order's totals the first time this sheet is saved.
+    _reject_overall_discount_above_subtotal(sales_order.overall_discount, quantities, rates, discounts)
     line_subtotals, tax_amounts, total_before_tax, total_tax, total_after_tax = _compute_line_items_and_totals(
-        quantities, rates, tax_percs, discounts
+        quantities, rates, tax_percs, discounts, sales_order.overall_discount
     )
 
     for item, line_subtotal, tax_amount in zip(sorted_items, line_subtotals, tax_amounts):

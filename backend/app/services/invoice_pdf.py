@@ -70,6 +70,11 @@ class InvoiceLineItem:
     hsn_code: str
     quantity: int
     rate: float
+    # `discount` is what came off this line's gross quantity x rate; the
+    # invoice prints both, and `taxable_value` is already NET of it — the
+    # figure GST is charged on. They get their own "Disc." column so the row
+    # adds up on the face of the document (see templates/invoice.html).
+    discount: float
     taxable_value: float
     tax_perc: float
     tax_amount: float
@@ -81,12 +86,11 @@ def _amount(value: float) -> str:
 
 
 def _money(value: float) -> str:
-    # Only the grand-total line carries a currency mark in the sample
-    # ("Rs." rather than "₹" — kept from the previous ReportLab rendering,
-    # where the base-14 PDF fonts didn't include the Rupee glyph; harmless to
-    # keep for visual consistency with quotation_pdf.py's _money now that
-    # rendering goes through a real browser).
-    return f"Rs.{value:,.2f}"
+    # Only the grand-total line carries a currency mark. A real Rupee sign
+    # rather than the "Rs." this used to print — that spelling was a holdover
+    # from the ReportLab rendering, whose base-14 PDF fonts had no U+20B9
+    # glyph. Chromium has one (see the template's font stack).
+    return f"₹{value:,.2f}"
 
 
 # Narrower than pdf_renderer's default so the invoice's ruled grid runs close
@@ -152,6 +156,7 @@ async def generate_invoice_pdf(
                 "hsn_code": item.hsn_code,
                 "quantity": _amount(item.quantity),
                 "rate": _amount(item.rate),
+                "discount": _amount(item.discount),
                 "taxable_value": _amount(item.taxable_value),
                 "tax_perc_1": f"{(tax.cgst_perc if intra_state else tax.igst_perc):.2f}",
                 "tax_amount_1": _amount(tax.cgst_amount if intra_state else tax.igst_amount),
@@ -162,6 +167,7 @@ async def generate_invoice_pdf(
         )
 
     total_qty = sum(item.quantity for item in line_items)
+    total_discount = sum(item.discount for item in line_items)
 
     place_of_supply = _place_of_supply_text(place_of_supply_code)
 
@@ -199,6 +205,7 @@ async def generate_invoice_pdf(
         intra_state=intra_state,
         line_items=rendered_items,
         total_qty=_amount(total_qty),
+        total_discount=_amount(total_discount),
         total_amount_before_tax=_amount(total_amount_before_tax),
         tax_total_1=_amount(total_tax_amount / 2 if intra_state else total_tax_amount),
         tax_total_2=_amount(total_tax_amount / 2) if intra_state else None,

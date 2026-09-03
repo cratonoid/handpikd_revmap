@@ -22,6 +22,12 @@
 //     picker and default the line to 0% tax rather than being hidden: they
 //     are ordinary sellable stock, and the only thing that distinguishes
 //     their invoice line is a blank HSN column.
+//   - An optional order-level discount (overall_discount) comes off the
+//     whole order's net amount. The backend splits it across the line items
+//     in proportion to their value and charges tax on what's left, so the
+//     totals shown here mirror that allocation rather than subtracting it
+//     from a finished total — see _allocate_overall_discount in
+//     backend/app/api/routes/sales_orders.py.
 //   - order_no is backend-assigned (via OrderNoCounterMaster) and never
 //     submitted; shown read-only in edit mode.
 //   - order_status_id is only ever shown/submitted in edit mode — new orders
@@ -119,6 +125,11 @@ export function SalesOrderFormModal({
   const [relatedUnbilledPurchaseOrderIds, setRelatedUnbilledPurchaseOrderIds] = useState<string[]>(
     initialOrder?.relatedUnbilledPurchaseOrderIds.map(String) ?? [],
   );
+  // Held as text like the line rates above — an empty field reads as no
+  // discount, which a controlled type="number" can't express cleanly.
+  const [overallDiscount, setOverallDiscount] = useState(
+    initialOrder?.overallDiscount ? String(initialOrder.overallDiscount) : "",
+  );
   const [description, setDescription] = useState(initialOrder?.description ?? "");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -188,8 +199,28 @@ export function SalesOrderFormModal({
     return { lineBeforeTax, taxAmount, lineTotal: lineBeforeTax + taxAmount };
   }
 
-  const totalAmountBeforeTax = lineItems.reduce((sum, item) => sum + lineItemTotals(item).lineBeforeTax, 0);
-  const totalTaxAmount = lineItems.reduce((sum, item) => sum + lineItemTotals(item).taxAmount, 0);
+  // Subtotal of the line items themselves, before the order-level discount.
+  const lineValues = lineItems.map((item) => lineItemTotals(item).lineBeforeTax);
+  const subtotalBeforeDiscount = lineValues.reduce((sum, lineValue) => sum + lineValue, 0);
+  const overallDiscountAmount = Number(overallDiscount) || 0;
+
+  // Mirrors _allocate_overall_discount in backend/app/api/routes/
+  // sales_orders.py: one order-level figure split across the lines in
+  // proportion to their value (evenly when they're all worth nothing), so
+  // each line's tax lands on its own discounted share and the totals shown
+  // here are the ones the backend will store.
+  const discountShares = lineValues.map((lineValue) => {
+    if (!overallDiscountAmount || lineValues.length === 0) return 0;
+    if (!subtotalBeforeDiscount) return overallDiscountAmount / lineValues.length;
+    return overallDiscountAmount * (lineValue / subtotalBeforeDiscount);
+  });
+
+  const totalAmountBeforeTax = subtotalBeforeDiscount - discountShares.reduce((sum, share) => sum + share, 0);
+  const totalTaxAmount = lineItems.reduce(
+    (sum, item, index) =>
+      sum + (lineValues[index] - discountShares[index]) * ((Number(item.taxPerc) || 0) / 100),
+    0,
+  );
   const totalAmountAfterTax = totalAmountBeforeTax + totalTaxAmount;
 
   function updateLineItem(index: number, changes: Partial<LineItem>) {
@@ -242,6 +273,7 @@ export function SalesOrderFormModal({
       quantities,
       rates,
       tax_percs: taxPercs,
+      overall_discount: overallDiscountAmount,
       description,
       related_purchase_order_ids: relatedPurchaseOrderIds.map(Number),
       related_unbilled_purchase_order_ids: relatedUnbilledPurchaseOrderIds.map(Number),
@@ -281,6 +313,13 @@ export function SalesOrderFormModal({
 
     if (isEdit && !orderStatusId) {
       setError("Please select an order status.");
+      return;
+    }
+
+    // The backend rejects this too (it would push the totals, and the tax,
+    // negative) — caught here so the admin sees it without a round trip.
+    if (overallDiscountAmount > subtotalBeforeDiscount) {
+      setError("The discount can't be more than the order's subtotal.");
       return;
     }
 
@@ -515,7 +554,36 @@ export function SalesOrderFormModal({
             />
           </div>
 
+          <div className={styles.orderDiscountRow}>
+            <div className={styles.orderDiscountField}>
+              <label htmlFor="overall-discount" className={styles.formLabel}>
+                Discount on net amount (₹)
+              </label>
+              <input
+                id="overall-discount"
+                type="text"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={overallDiscount}
+                onChange={(e) => setOverallDiscount(sanitizeDecimalInput(e.target.value))}
+                className={styles.formInput}
+              />
+            </div>
+          </div>
+
           <div className={styles.totalsRow}>
+            {overallDiscountAmount > 0 && (
+              <>
+                <div className={styles.totalsRowItem}>
+                  <p className={styles.totalsRowLabel}>Subtotal</p>
+                  <p className={styles.totalsRowValue}>₹{subtotalBeforeDiscount.toFixed(2)}</p>
+                </div>
+                <div className={styles.totalsRowItem}>
+                  <p className={styles.totalsRowLabel}>Discount</p>
+                  <p className={styles.totalsRowValue}>−₹{overallDiscountAmount.toFixed(2)}</p>
+                </div>
+              </>
+            )}
             <div className={styles.totalsRowItem}>
               <p className={styles.totalsRowLabel}>Total before tax</p>
               <p className={styles.totalsRowValue}>₹{totalAmountBeforeTax.toFixed(2)}</p>

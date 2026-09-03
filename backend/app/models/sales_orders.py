@@ -10,6 +10,16 @@ class SalesOrders(Document):
     order_status_id: int  # FK -> OrderStatusMaster.id
     cust_id: int  # FK -> CustomerDetails.id
     date: datetime  # Order date, set/edited by the admin via the form.
+    # A single discount off the whole order's net (pre-tax) amount, on top of
+    # any per-product discount on the costing sheet (see
+    # models/sales_order_costing.py). Stored as a flat rupee figure, never a
+    # percentage. It is split across the order's line items in proportion to
+    # their value before the totals below are computed
+    # (_allocate_overall_discount in routes/sales_orders.py), so tax is
+    # charged on the discounted subtotal and total_amount_before_tax is
+    # already NET of it — nothing downstream (invoices, #sales_summary, the
+    # costing sheet) has to subtract it again.
+    overall_discount: float = 0.0
     total_amount_before_tax: float
     total_tax_amount: float
     total_amount_after_tax: float

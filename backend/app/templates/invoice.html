@@ -4,20 +4,31 @@
 <meta charset="utf-8" />
 <title>{{ title_text }} {{ invoice_no }}</title>
 <style>
-  /* Deliberately plain: a black-on-white ruled grid, the way a GST tax
-     invoice is normally printed, rather than the brand-coloured layout this
-     template used to carry. Everything is a bordered table so the rules line
-     up edge to edge across the full printable width.
+  /* A blue-ruled GST tax invoice, matching the reference document the
+     business issues by hand: every rule is drawn in --rule, the line-item
+     grid's header and total rows are filled with --tint, and the two money
+     columns (Taxable Value, Total) carry that fill down the whole grid so
+     they read as a block.
 
-     Page size/margins and the "Page X of Y" footer are supplied by
-     Chromium's print-to-PDF options instead of CSS @page here — see
-     app/services/pdf_renderer.py's render_html_to_pdf (margin) and
-     invoice_pdf.py's _PAGE_MARGIN / _FOOTER_TEMPLATE. */
+     Everything is a bordered table so the rules line up edge to edge across
+     the full printable width. Page size/margins and the "Page X of Y" footer
+     are supplied by Chromium's print-to-PDF options instead of CSS @page
+     here — see app/services/pdf_renderer.py's render_html_to_pdf (margin)
+     and invoice_pdf.py's _PAGE_MARGIN / _FOOTER_TEMPLATE. */
+
+  :root {
+    --rule: #0070c0;
+    --tint: #e8f3fd;
+  }
 
   * { box-sizing: border-box; }
   body {
-    font-family: "Helvetica", "Arial", sans-serif;
-    font-size: 8.5pt;
+    /* Liberation Sans is what the Docker image's Chromium resolves
+       Helvetica/Arial to (fonts-liberation, pulled in by `playwright install
+       --with-deps`); DejaVu Sans trails it as a fallback for the Rupee sign
+       on hosts whose sans-serif predates U+20B9. */
+    font-family: "Helvetica", "Arial", "Liberation Sans", "DejaVu Sans", sans-serif;
+    font-size: 8.25pt;
     color: #000;
     margin: 0;
   }
@@ -26,134 +37,161 @@
   td, th { vertical-align: top; }
 
   /* Stacked blocks share one rule instead of drawing two adjacent ones. */
-  .frame { border: 0.8pt solid #000; }
+  .frame { border: 0.8pt solid var(--rule); }
   .frame + .frame { margin-top: -0.8pt; }
-  .frame > tbody > tr > td { border: 0.8pt solid #000; padding: 1.5mm 2mm; }
+  .frame > tbody > tr > td { border: 0.8pt solid var(--rule); padding: 1.2mm 1.8mm; }
 
   .inner { border-collapse: collapse; }
-  .cell-flush > tbody > tr > td,
-  .cell-flush > tbody > tr > th { padding: 1.2mm 2mm; }
 
   .num { text-align: right; }
   .center { text-align: center; }
   .b { font-weight: bold; }
+  /* Section captions ("Total in words", "Bank Details", ...). White in the
+     reference — only the grid carries fill — so these are a centred bold
+     caption between two rules, not a shaded band. */
   .sec {
     text-align: center;
     font-weight: bold;
-    font-size: 8pt;
-    background: #f0f0f0;
-    border-top: 0.8pt solid #000;
-    border-bottom: 0.8pt solid #000;
-    padding: 1.2mm 2mm;
+    border-top: 0.8pt solid var(--rule);
+    border-bottom: 0.8pt solid var(--rule);
+    padding: 1.2mm 1.8mm;
   }
 
   /* Letterhead — sits above the ruled frame, like the reference invoice. */
-  .letterhead { margin-bottom: 2mm; }
+  .letterhead { margin-bottom: 2.5mm; }
   .letterhead td { vertical-align: top; padding: 0; }
-  .lh-logo { width: 24mm; }
-  .lh-logo img { width: 22mm; height: auto; }
+  .lh-logo { width: 27mm; }
+  .lh-logo img { width: 25mm; height: auto; }
   .lh-company { padding-left: 3mm !important; }
-  .lh-company .cname { font-size: 15pt; font-weight: bold; letter-spacing: 0.2px; }
-  .lh-company .caddr { font-size: 8pt; margin-top: 1mm; line-height: 1.35; }
-  .lh-contact { width: 58mm; text-align: right; font-size: 8pt; line-height: 1.45; }
+  .lh-company .cname { font-size: 16.5pt; font-weight: bold; letter-spacing: 0.2px; }
+  .lh-company .caddr { font-size: 9pt; margin-top: 1.5mm; line-height: 1.4; }
+  .lh-contact { width: 62mm; text-align: right; font-size: 9pt; line-height: 1.5; }
 
   /* Title bar: GSTIN | TAX INVOICE | copy tag, no internal rules. */
-  .title-bar td { border: none !important; padding: 1.2mm 2mm; vertical-align: middle; }
-  .title-bar .gstin { font-size: 9.5pt; font-weight: bold; }
+  .title-bar td { border: none !important; padding: 1.2mm 1.8mm; vertical-align: middle; }
+  .title-bar .gstin { font-size: 12pt; }
+  .title-bar .gstin b { font-weight: bold; }
   .title-bar .doc-title {
     text-align: center;
-    font-size: 13pt;
+    font-size: 15pt;
     font-weight: bold;
-    letter-spacing: 0.5px;
+    color: var(--rule);
+    letter-spacing: 0.2px;
     white-space: nowrap;
   }
-  .title-bar .copy-tag { text-align: right; font-size: 8pt; font-weight: bold; white-space: nowrap; }
+  .title-bar .copy-tag { text-align: right; font-weight: bold; white-space: nowrap; }
 
-  /* Party details (left) / invoice meta (right). */
+  /* Party details (left) / invoice meta (right). The 40/60 split is the
+     reference's — the meta side needs the room because it puts Invoice No.
+     and Invoice Date on one line. */
   .party { table-layout: fixed; }
   .party > tbody > tr > td { padding: 0; }
-  .party .half { width: 50%; }
-  .party .inner td { padding: 1.1mm 2mm; font-size: 8.3pt; }
-  .party .inner td.k { width: 24mm; font-weight: bold; }
-  .party .inner td.mk { width: 25mm; }
+  .party .left { width: 40%; }
+  .party .right { width: 60%; }
+  .party .inner td { padding: 1.2mm 1.8mm; }
+  .party .inner td.k { width: 22%; font-weight: bold; }
   .party .hdr {
     text-align: center;
     font-weight: bold;
-    background: #f0f0f0;
-    border-bottom: 0.8pt solid #000;
+    font-size: 7.5pt;
+    padding: 1mm 1.8mm;
+    border-bottom: 0.8pt solid var(--rule);
   }
+  /* Meta side: labels are plain, only the document number is emphasised. */
+  .meta { table-layout: fixed; }
+  .meta td.k1 { width: 27%; }
+  .meta td.v1 { width: 29%; }
+  .meta td.k2 { width: 21%; }
+  .meta td.v2 { width: 23%; text-align: right; }
 
   /* Line items. The column widths in the <colgroup> below are only honoured
      exactly under fixed layout — auto layout treats them as hints and lets
-     content nudge the rules, which knocks the column break off the 50% mark
-     the party/totals blocks above and below divide on. */
-  .items { margin-top: -0.8pt; border: 0.8pt solid #000; table-layout: fixed; }
-  /* Fixed columns can't grow for an over-long value, so let one wrap inside
-     its cell rather than spill across the rule. */
-  .items th, .items td { overflow-wrap: anywhere; }
+     content nudge the rules. The grid is a free-standing box in the
+     reference, with a band of white above and below it. */
+  .items {
+    margin-top: 4mm;
+    border: 0.8pt solid var(--rule);
+    table-layout: fixed;
+  }
+  /* Fixed columns can't grow for an over-long value, so let the free-text
+     ones wrap inside their cell rather than spill across the rule. Money
+     columns are deliberately left out: breaking "18.00" across two lines to
+     stay inside its rules reads far worse than the sliver of overflow it
+     avoids. */
+  .items th, .items td.name, .items td.code { overflow-wrap: anywhere; }
+  /* Column fill for the two money columns. A <col> background paints beneath
+     the cells', so the header and total rows' own fill still wins there —
+     which is what carries the tint across those rows edge to edge. */
+  .items col.tinted { background: var(--tint); }
   .items th {
-    border: 0.8pt solid #000;
-    background: #f0f0f0;
-    font-size: 7.5pt;
+    border: 0.8pt solid var(--rule);
+    background: var(--tint);
+    font-size: 6.75pt;
     font-weight: bold;
     text-align: center;
     vertical-align: middle;
     padding: 1.5mm 1mm;
   }
   .items td {
-    border-left: 0.8pt solid #000;
-    border-right: 0.8pt solid #000;
-    padding: 1.2mm 1.5mm;
-    font-size: 8.2pt;
+    border-left: 0.8pt solid var(--rule);
+    border-right: 0.8pt solid var(--rule);
+    padding: 1.2mm 1mm;
     text-align: center;
     vertical-align: top;
   }
+  /* .num alone loses to `.items td` on source order, so the grid restates
+     it. Qty stays centred, as it is on the reference document. */
+  .items td.num { text-align: right; }
   .items td.name { text-align: left; font-weight: bold; }
-  .items td.filler { height: auto; border-bottom: 0.8pt solid #000; }
+  .items td.filler { height: auto; border-bottom: 0.8pt solid var(--rule); }
   /* Chromium repeats a tfoot on every printed page, which on a multi-page
      invoice prints the grand total partway through the item list as if the
      list had ended. Demote it to an ordinary row group so it prints once, at
      the end, while staying a <tfoot> in the markup. */
   .items tfoot { display: table-row-group; }
   .items tfoot td {
-    border-top: 0.8pt solid #000;
+    border-top: 0.8pt solid var(--rule);
+    background: var(--tint);
     font-weight: bold;
     padding: 1.5mm;
   }
 
-  /* Totals / bank / signature block. */
-  .bottom { page-break-inside: avoid; table-layout: fixed; }
-  .bottom .half { width: 50%; }
-  /* Let each column's inner table fill its cell so the two sides of a row end
-     level and "Authorised Signatory" stays pinned to the bottom rule. A cell
-     height is a minimum in table layout, so the 1px here doesn't shrink
-     anything — it just gives the nested table's 100% something to resolve
-     against, which an `auto` height wouldn't. */
+  /* Totals / bank / signature block. Two independent columns divided at 60%,
+     each running its own stack of rows — the reference doesn't line the two
+     sides up against each other. */
+  .bottom { margin-top: 4mm; page-break-inside: avoid; table-layout: fixed; }
+  .bottom .left { width: 60%; }
+  .bottom .right { width: 40%; }
+  /* Let each column's inner table fill its cell so the two sides end level
+     and "Authorised Signatory" stays pinned to the bottom rule. A cell height
+     is a minimum in table layout, so the 1px here doesn't shrink anything —
+     it just gives the nested table's 100% something to resolve against,
+     which an `auto` height wouldn't. */
   .bottom td.stretch { height: 1px; }
   .bottom td.stretch > .inner { height: 100%; }
-  .words { text-align: center; font-weight: bold; padding: 4mm 2mm !important; }
-  .tax-kv td { padding: 1.1mm 2mm; font-size: 8.3pt; }
-  .tax-kv td.k { font-weight: bold; }
-  .tax-kv tr.line td { border-bottom: 0.8pt solid #000; }
-  .tax-kv tr.grand td { font-weight: bold; border-bottom: 0.8pt solid #000; }
+  .words { text-align: center; padding: 3.5mm 2mm !important; }
 
-  .bank td { font-size: 8.2pt; padding: 1.1mm 2mm; }
-  .bank td.k { width: 26mm; }
-  .qr { text-align: center; padding: 1.5mm 2mm; }
+  .tax-kv td { background: var(--tint); font-size: 7.5pt; font-weight: bold; padding: 1.1mm 1.8mm; }
+  .tax-kv tr td { border-bottom: 0.8pt solid var(--rule); }
+  .tax-kv tr.grand td.num { font-size: 9.75pt; }
+
+  .bank td { padding: 1.2mm 1.8mm; }
+  .bank td.k { width: 38%; }
+  .qr { text-align: center; padding: 1.5mm 1.8mm; }
   .qr img { width: 20mm; height: 20mm; }
-  .tnc { padding: 1.5mm 2mm; }
-  .tnc p { font-size: 7.6pt; line-height: 1.35; }
+  .tnc { padding: 1.2mm 1.8mm; }
+  .tnc p { line-height: 1.4; }
 
   .sign { text-align: center; }
-  .sign .eoe { text-align: right; font-size: 7.5pt; padding: 1mm 2mm; border-bottom: 0.8pt solid #000; }
-  .sign .certify { font-size: 7.5pt; padding: 1.5mm 2mm 0; }
-  .sign .for-company { font-weight: bold; font-size: 9pt; padding: 1mm 2mm 2mm; }
+  .sign .eoe { text-align: right; font-size: 7.5pt; font-weight: bold; padding: 1mm 1.8mm; border-bottom: 0.8pt solid var(--rule); }
+  .sign .certify { font-size: 6pt; font-weight: bold; padding: 1.5mm 1.8mm 0; }
+  .sign .for-company { font-weight: bold; font-size: 9pt; padding: 1.2mm 1.8mm 1.8mm; border-bottom: 0.8pt solid var(--rule); }
   /* Absorbs whatever height the bank/terms column adds, so the signatory
      rule sits on the bottom edge of the box rather than floating mid-cell. */
-  .sign .sign-space { height: 100%; }
+  .sign .sign-space { height: 100%; vertical-align: middle; }
   .sign .sign-image { height: 18mm; display: block; margin: 0 auto; }
-  .sign .system-note { font-size: 7pt; padding: 6mm 3mm; }
-  .sign .authorised { font-weight: bold; font-size: 8pt; padding: 1.2mm; border-top: 0.8pt solid #000; }
+  .sign .system-note { font-size: 10pt; line-height: 1.45; padding: 4mm 3mm; }
+  .sign .authorised { font-weight: bold; font-size: 6pt; padding: 1.2mm; border-top: 0.8pt solid var(--rule); }
 </style>
 </head>
 <body>
@@ -168,17 +206,17 @@
         <div class="caddr">{{ personal.address }}</div>
       </td>
       <td class="lh-contact">
-        <div><b>Name :</b> {{ personal.name }}</div>
-        <div><b>Phone :</b> {{ personal.phone }}</div>
-        <div><b>Email :</b> {{ personal.email }}</div>
-        <div><b>Website :</b> {{ personal.website }}</div>
+        <div><b>Name</b> : {{ personal.name }}</div>
+        <div><b>Phone</b> : {{ personal.phone }}</div>
+        <div><b>Email</b> : {{ personal.email }}</div>
+        <div><b>Website</b> : {{ personal.website }}</div>
       </td>
     </tr>
   </table>
 
   <table class="frame title-bar">
     <tr>
-      <td class="gstin">GSTIN : {{ personal.gstin }}</td>
+      <td class="gstin"><b>GSTIN :</b> {{ personal.gstin }}</td>
       <td class="doc-title">{{ title_text }}</td>
       <td class="copy-tag">ORIGINAL FOR RECIPIENT</td>
     </tr>
@@ -186,59 +224,61 @@
 
   <table class="frame party">
     <tr>
-      <td class="half">
+      <td class="left">
         <table class="inner">
           <tr><td class="hdr" colspan="2">{{ party_label }} Detail</td></tr>
-          <tr><td class="k">M/S</td><td class="b">{{ customer_name }}</td></tr>
+          <tr><td class="k">M/S</td><td>{{ customer_name }}</td></tr>
           <tr><td class="k">Address</td><td>{{ customer_address }}</td></tr>
           <tr><td class="k">Phone</td><td>{{ customer_phone }}</td></tr>
           <tr><td class="k">GSTIN</td><td>{{ customer_gstin }}</td></tr>
           <tr><td class="k">Place of Supply</td><td>{{ place_of_supply }}</td></tr>
         </table>
       </td>
-      <td class="half">
-        <table class="inner">
-          <tr><td class="mk">Invoice No.</td><td class="b">{{ invoice_no }}</td></tr>
-          <tr><td class="mk">Invoice Date</td><td class="b">{{ invoice_date }}</td></tr>
-          <tr><td class="mk">Due Date</td><td class="b">{{ due_date }}</td></tr>
-          <tr><td class="mk">Transport</td><td class="b">{{ transport }}</td></tr>
+      <td class="right">
+        <table class="inner meta">
+          <tr>
+            <td class="k1">Invoice No.</td><td class="v1 b">{{ invoice_no }}</td>
+            <td class="k2">Invoice Date</td><td class="v2">{{ invoice_date }}</td>
+          </tr>
+          <tr><td class="k1">Due Date</td><td colspan="3">{{ due_date }}</td></tr>
+          <tr><td class="k1">Transport</td><td colspan="3">{{ transport }}</td></tr>
         </table>
       </td>
     </tr>
   </table>
 
   {% set tax_cols = 4 if intra_state else 2 %}
-  {% set col_count = 7 + tax_cols %}
+  {% set col_count = 8 + tax_cols %}
   <table class="items" id="items">
     {# Widths live here rather than on the header cells because a colspan'd
        header ("CGST" over % + Amount) can't size the columns underneath it,
-       and because these are what fixed layout reads. Each set adds up to 100
-       with a column edge landing exactly on 50, so the grid's middle rule
-       continues the one splitting the blocks above and below it. #}
+       and because these are what fixed layout reads. Taken from the reference
+       document's own column rules. #}
     <colgroup>
       {% if intra_state %}
-      <col style="width: 4.5%;" /><col style="width: 20%;" /><col style="width: 11%;" />
-      <col style="width: 6%;" /><col style="width: 8.5%;" />
-      <col style="width: 11%;" />
-      <col style="width: 5%;" /><col style="width: 8%;" />
-      <col style="width: 5%;" /><col style="width: 8%;" />
-      <col style="width: 13%;" />
+      <col style="width: 4%;" /><col style="width: 20%;" /><col style="width: 8%;" />
+      <col style="width: 7%;" /><col style="width: 8%;" /><col style="width: 7.5%;" />
+      <col class="tinted" style="width: 9%;" />
+      <col style="width: 5.5%;" /><col style="width: 7.5%;" />
+      <col style="width: 5.5%;" /><col style="width: 7.5%;" />
+      <col class="tinted" style="width: 10.5%;" />
       {% else %}
-      <col style="width: 5%;" /><col style="width: 27%;" /><col style="width: 11%;" />
-      <col style="width: 7%;" />
-      <col style="width: 10%;" /><col style="width: 12%;" />
-      <col style="width: 6%;" /><col style="width: 11%;" />
-      <col style="width: 11%;" />
+      <col style="width: 4%;" /><col style="width: 23.6%;" /><col style="width: 9.9%;" />
+      <col style="width: 9.1%;" /><col style="width: 10%;" /><col style="width: 9%;" />
+      <col class="tinted" style="width: 10%;" />
+      <col style="width: 5.5%;" /><col style="width: 8.9%;" />
+      <col class="tinted" style="width: 10%;" />
       {% endif %}
     </colgroup>
     <thead>
       <tr>
         <th rowspan="2">Sr.<br/>No.</th>
         <th rowspan="2">Name of Product / Service</th>
-        <th rowspan="2">HSN /<br/>SAC</th>
+        <th rowspan="2">HSN / SAC</th>
         <th rowspan="2">Qty</th>
         <th rowspan="2">Rate</th>
-        <th rowspan="2">Taxable<br/>Value</th>
+        <th>Disc.</th>
+        <th rowspan="2">Taxable Value</th>
         {% if intra_state %}
         <th colspan="2">CGST</th>
         <th colspan="2">SGST</th>
@@ -248,6 +288,7 @@
         <th rowspan="2">Total</th>
       </tr>
       <tr>
+        <th>(&#8377;)</th>
         <th>%</th><th>Amount</th>
         {% if intra_state %}<th>%</th><th>Amount</th>{% endif %}
       </tr>
@@ -257,9 +298,10 @@
       <tr>
         <td>{{ item.sr_no }}</td>
         <td class="name">{{ item.product_name }}</td>
-        <td>{{ item.hsn_code }}</td>
-        <td class="num">{{ item.quantity }}</td>
+        <td class="code">{{ item.hsn_code }}</td>
+        <td>{{ item.quantity }}</td>
         <td class="num">{{ item.rate }}</td>
+        <td class="num">{{ item.discount }}</td>
         <td class="num">{{ item.taxable_value }}</td>
         <td>{{ item.tax_perc_1 }}</td>
         <td class="num">{{ item.tax_amount_1 }}</td>
@@ -284,8 +326,9 @@
       <tr>
         <td colspan="2" class="num">Total</td>
         <td></td>
-        <td class="num">{{ total_qty }}</td>
+        <td>{{ total_qty }}</td>
         <td></td>
+        <td class="num">{{ total_discount }}</td>
         <td class="num">{{ total_amount_before_tax }}</td>
         <td></td>
         <td class="num">{{ tax_total_1 }}</td>
@@ -300,46 +343,48 @@
 
   <table class="frame bottom" id="bottom">
     <tr>
-      <td class="half" style="padding: 0;">
+      <td class="left stretch" style="padding: 0;">
         <table class="inner">
           <tr><td class="sec" style="border-top: none;">Total in words</td></tr>
           <tr><td class="words">{{ amount_in_words }}</td></tr>
-        </table>
-      </td>
-      <td class="half" style="padding: 0;">
-        <table class="inner tax-kv">
-          <tr class="line"><td class="k">Taxable Amount</td><td class="num">{{ total_amount_before_tax }}</td></tr>
-          {% if intra_state %}
-          <tr class="line"><td class="k">Add : CGST</td><td class="num">{{ tax_total_1 }}</td></tr>
-          <tr class="line"><td class="k">Add : SGST</td><td class="num">{{ tax_total_2 }}</td></tr>
-          {% else %}
-          <tr class="line"><td class="k">Add : IGST</td><td class="num">{{ tax_total_1 }}</td></tr>
-          {% endif %}
-          <tr class="line"><td class="k">Total Tax</td><td class="num">{{ total_tax_amount }}</td></tr>
-          <tr class="grand"><td class="k">Total Amount After Tax</td><td class="num">{{ grand_total_money }}</td></tr>
-        </table>
-      </td>
-    </tr>
-    <tr>
-      <td class="stretch" style="padding: 0;">
-        <table class="inner bank">
-          <tr><td class="sec" colspan="2" style="border-top: none;">Bank Details</td></tr>
-          {% for label, value in bank_details %}
-          <tr><td class="k">{{ label }}</td><td>{{ value or "-" }}</td></tr>
-          {% endfor %}
-          {% if qr_data_uri %}
-          <tr><td class="qr" colspan="2">Scan to pay<br/><img src="{{ qr_data_uri }}" alt="QR" /></td></tr>
-          {% endif %}
-          <tr><td class="sec" colspan="2">Terms and Conditions</td></tr>
+          <tr><td class="sec">Bank Details</td></tr>
           <tr>
-            <td class="tnc" colspan="2">
+            <td style="padding: 0;">
+              <table class="inner bank">
+                {% for label, value in bank_details %}
+                <tr><td class="k">{{ label }}</td><td>{{ value or "-" }}</td></tr>
+                {% endfor %}
+                {% if qr_data_uri %}
+                <tr><td class="qr" colspan="2">Scan to pay<br/><img src="{{ qr_data_uri }}" alt="QR" /></td></tr>
+                {% endif %}
+              </table>
+            </td>
+          </tr>
+          <tr><td class="sec">Terms and Conditions</td></tr>
+          <tr>
+            <td class="tnc">
               {% for line in tnc_lines %}<p>{{ line }}</p>{% else %}<p>-</p>{% endfor %}
             </td>
           </tr>
         </table>
       </td>
-      <td class="stretch" style="padding: 0;">
+      <td class="right stretch" style="padding: 0;">
         <table class="inner sign">
+          <tr>
+            <td style="padding: 0;">
+              <table class="inner tax-kv">
+                <tr><td class="k">Taxable Amount</td><td class="num">{{ total_amount_before_tax }}</td></tr>
+                {% if intra_state %}
+                <tr><td class="k">Add : CGST</td><td class="num">{{ tax_total_1 }}</td></tr>
+                <tr><td class="k">Add : SGST</td><td class="num">{{ tax_total_2 }}</td></tr>
+                {% else %}
+                <tr><td class="k">Add : IGST</td><td class="num">{{ tax_total_1 }}</td></tr>
+                {% endif %}
+                <tr><td class="k">Total Tax</td><td class="num">{{ total_tax_amount }}</td></tr>
+                <tr class="grand"><td class="k">Total Amount After Tax</td><td class="num">{{ grand_total_money }}</td></tr>
+              </table>
+            </td>
+          </tr>
           <tr><td class="eoe">(E &amp; O.E.)</td></tr>
           <tr><td class="certify">Certified that the particulars given above are true and correct.</td></tr>
           <tr><td class="for-company">For {{ company_name }}</td></tr>
@@ -376,6 +421,9 @@
       // over-long filler costs a whole extra page, an under-long one costs a
       // few blank millimetres.
       var SLACK = 3 * PX_PER_MM;
+      // The white band between the grid and the totals block. It sits in
+      // .bottom's margin, so getBoundingClientRect() on either box misses it.
+      var GAP = 4 * PX_PER_MM;
 
       var filler = document.getElementById('grid-filler');
       var items = document.getElementById('items');
@@ -384,7 +432,7 @@
 
       var height = function (el) { return el.getBoundingClientRect().height; };
       var gridTop = items.getBoundingClientRect().top + window.scrollY;
-      var fixed = gridTop + height(items.tHead) + height(items.tFoot) + SLACK;
+      var fixed = gridTop + height(items.tHead) + height(items.tFoot) + GAP + SLACK;
       var rows = height(items.tBodies[0]);  // filler still collapsed at this point
 
       var room;

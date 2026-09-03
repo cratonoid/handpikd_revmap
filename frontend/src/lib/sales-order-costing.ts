@@ -64,6 +64,11 @@ export type SalesOrderCosting = {
   customerName: string;
   date: string;
   orderStatusName: string;
+  // The order's discount off its whole net amount, entered on the ORDER
+  // FORM, not here (see SalesOrders.overall_discount). Read-only on this
+  // sheet, but its footer totals have to account for it — see
+  // computeOrderTotals.
+  overallDiscount: number;
   lines: CostingLine[];
 };
 
@@ -96,6 +101,7 @@ type SalesOrderCostingResponse = {
   customer_name: string;
   date: string;
   order_status_name: string;
+  overall_discount: number;
   lines: SalesOrderCostingLineItem[];
 };
 
@@ -121,6 +127,8 @@ export async function fetchSalesOrderCosting(salesOrderId: number): Promise<Sale
     customerName: item.customer_name,
     date: item.date,
     orderStatusName: item.order_status_name,
+    // ?? 0 for orders raised before order-level discounts existed.
+    overallDiscount: item.overall_discount ?? 0,
     lines: item.lines.map((line) => ({
       productId: line.product_id,
       modelName: line.model_name,
@@ -253,6 +261,59 @@ export function computeCostingFigures(line: CostingLine): CostingFigures {
     netSalesPrice,
     netSubtotal,
     salesTaxRate,
+    salesTaxAmount,
+    grossSalesPrice: netSubtotal + salesTaxAmount,
+    profit: netSubtotal - netFinalCost,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Sheet footer totals
+// ---------------------------------------------------------------------------
+// The per-line figures above know nothing about the order's own discount off
+// its net amount (SalesOrders.overall_discount) — that one belongs to the
+// order, not to any product. It is applied here, over the summed lines,
+// exactly as _allocate_overall_discount in
+// backend/app/api/routes/sales_orders.py applies it: split across the lines
+// in proportion to their net subtotal (evenly when they're all worth
+// nothing) so each line's tax lands on its own discounted share. That's what
+// keeps this footer reconcilable with the Before tax / After tax columns on
+// the orders table.
+export type OrderTotals = {
+  netFinalCost: number;
+  // Summed line subtotals, BEFORE the order-level discount.
+  netSubtotalBeforeOrderDiscount: number;
+  orderDiscount: number;
+  // ...and after it — this is the order's total_amount_before_tax.
+  netSubtotal: number;
+  salesTaxAmount: number;
+  grossSalesPrice: number;
+  profit: number;
+};
+
+export function computeOrderTotals(lines: CostingLine[], overallDiscount: number): OrderTotals {
+  const figuresByLine = lines.map((line) => computeCostingFigures(line));
+  const netSubtotalBeforeOrderDiscount = figuresByLine.reduce((sum, figures) => sum + figures.netSubtotal, 0);
+
+  const discountShares = figuresByLine.map((figures) => {
+    if (!overallDiscount || figuresByLine.length === 0) return 0;
+    if (!netSubtotalBeforeOrderDiscount) return overallDiscount / figuresByLine.length;
+    return overallDiscount * (figures.netSubtotal / netSubtotalBeforeOrderDiscount);
+  });
+
+  const netFinalCost = figuresByLine.reduce((sum, figures) => sum + figures.netFinalCost, 0);
+  const netSubtotal = netSubtotalBeforeOrderDiscount - discountShares.reduce((sum, share) => sum + share, 0);
+  const salesTaxAmount = figuresByLine.reduce(
+    (sum, figures, index) =>
+      sum + (figures.netSubtotal - discountShares[index]) * (lines[index].salesTaxPerc / 100),
+    0,
+  );
+
+  return {
+    netFinalCost,
+    netSubtotalBeforeOrderDiscount,
+    orderDiscount: overallDiscount,
+    netSubtotal,
     salesTaxAmount,
     grossSalesPrice: netSubtotal + salesTaxAmount,
     profit: netSubtotal - netFinalCost,

@@ -428,6 +428,23 @@ async def update_proforma_invoice_details(
     return UpdateProformaInvoiceDetailsResponse(message="proforma invoice updated successfully")
 
 
+def _line_discount_and_taxable_value(summary: SalesSummary) -> dict[str, float]:
+    # #sales_summary stores the GROSS rate but a NET total: the costing
+    # sheet's per-product discount and the order's overall discount are both
+    # taken off the line subtotal before tax is charged, and only the result
+    # is kept (see _compute_line_items_and_totals in routes/sales_orders.py).
+    # So the discount has to be read back out of the gap between the two, or
+    # the invoice prints a quantity x rate that doesn't reconcile with its own
+    # Total row — which is exactly what it used to do.
+    taxable_value = round(summary.total - summary.tax_amount, 2)
+    # max() guards the float noise on an undiscounted line, which would
+    # otherwise print "-0.00".
+    return {
+        "discount": max(round(summary.quantity * summary.rate - taxable_value, 2), 0.0),
+        "taxable_value": taxable_value,
+    }
+
+
 async def _build_standard_invoice_pdf_inputs(summaries: list[SalesSummary], cust_id: int):
     customer = await CustomerDetails.get(cust_id)
     if customer is None:
@@ -448,7 +465,7 @@ async def _build_standard_invoice_pdf_inputs(summaries: list[SalesSummary], cust
             hsn_code=products_by_id[summary.product_id].hsn_code if summary.product_id in products_by_id else "",
             quantity=summary.quantity,
             rate=summary.rate,
-            taxable_value=summary.quantity * summary.rate,
+            **_line_discount_and_taxable_value(summary),
             tax_perc=summary.tax_perc,
             tax_amount=summary.tax_amount,
             total=summary.total,

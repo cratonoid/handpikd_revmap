@@ -28,6 +28,7 @@ import { Button } from "@/components/button";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import {
   computeCostingFigures,
+  computeOrderTotals,
   fetchSalesOrderCosting,
   saveSalesOrderCosting,
   type CostingLine,
@@ -174,19 +175,14 @@ export function SalesOrderCostingPageClient({ salesOrderId }: { salesOrderId: nu
   // keeps a single source of truth rather than mirroring results in state.
   const figuresByLine = useMemo(() => lines.map((line) => computeCostingFigures(toCostingLine(line))), [lines]);
 
+  // Not a plain sum of figuresByLine: the order's own discount off its net
+  // amount belongs to the order rather than to any one product, so it is
+  // applied across the summed lines here (see computeOrderTotals). Without
+  // it this footer would disagree with the order's Before tax / After tax
+  // columns on the orders table.
   const totals = useMemo(
-    () =>
-      figuresByLine.reduce(
-        (sum, figures) => ({
-          netFinalCost: sum.netFinalCost + figures.netFinalCost,
-          netSubtotal: sum.netSubtotal + figures.netSubtotal,
-          salesTaxAmount: sum.salesTaxAmount + figures.salesTaxAmount,
-          grossSalesPrice: sum.grossSalesPrice + figures.grossSalesPrice,
-          profit: sum.profit + figures.profit,
-        }),
-        { netFinalCost: 0, netSubtotal: 0, salesTaxAmount: 0, grossSalesPrice: 0, profit: 0 },
-      ),
-    [figuresByLine],
+    () => computeOrderTotals(lines.map(toCostingLine), order?.overallDiscount ?? 0),
+    [lines, order],
   );
 
   const updateLine = useCallback((index: number, changes: Partial<LineForm>) => {
@@ -294,6 +290,14 @@ export function SalesOrderCostingPageClient({ salesOrderId }: { salesOrderId: nu
         <p className={styles.costingDefaultsNotice}>
           Some products have no saved details yet — their purchase rate and tax % below are defaults taken from the
           product master. Save to record them against this order.
+        </p>
+      )}
+
+      {order.overallDiscount > 0 && (
+        <p className={styles.costingDefaultsNotice}>
+          This order has a {currency(order.overallDiscount)} discount on its net amount, entered on the order form
+          rather than here. It is split across the products below in proportion to their value, and the totals at the
+          foot of this page already account for it.
         </p>
       )}
 
@@ -546,6 +550,20 @@ export function SalesOrderCostingPageClient({ salesOrderId }: { salesOrderId: nu
             <p className={styles.totalsRowLabel}>Total net final cost</p>
             <p className={styles.totalsRowValue}>{currency(totals.netFinalCost)}</p>
           </div>
+          {totals.orderDiscount > 0 && (
+            <>
+              <div className={styles.totalsRowItem}>
+                <p className={styles.totalsRowLabel}>Subtotal before order discount</p>
+                <p className={styles.totalsRowValue}>
+                  {currency(totals.netSubtotalBeforeOrderDiscount)}
+                </p>
+              </div>
+              <div className={styles.totalsRowItem}>
+                <p className={styles.totalsRowLabel}>Order discount</p>
+                <p className={styles.totalsRowValue}>−{currency(totals.orderDiscount)}</p>
+              </div>
+            </>
+          )}
           <div className={styles.totalsRowItem}>
             <p className={styles.totalsRowLabel}>Total net subtotal</p>
             <p className={styles.totalsRowValue}>{currency(totals.netSubtotal)}</p>

@@ -193,6 +193,7 @@ export function SalesOrdersTab() {
               <th className={styles.tableHeadCell}>Date</th>
               <th className={styles.tableHeadCell}>Customer</th>
               <th className={styles.tableHeadCell}>Status</th>
+              <th className={styles.tableHeadCell}>Discount</th>
               <th className={styles.tableHeadCell}>Before tax</th>
               <th className={styles.tableHeadCell}>After tax</th>
               <th className={styles.tableHeadCell}>Description</th>
@@ -215,6 +216,11 @@ export function SalesOrdersTab() {
                 <td className={styles.tableCell}>{customersById.get(order.custId)?.name ?? "—"}</td>
                 <td className={statusCellClassName(statusesById.get(order.orderStatusId)?.statusName)}>
                   {statusesById.get(order.orderStatusId)?.statusName ?? "—"}
+                </td>
+                {/* Already deducted from the two totals beside it — shown
+                    so the figures can be read back against the order form. */}
+                <td className={styles.tableCell}>
+                  {order.overallDiscount ? `−₹${order.overallDiscount.toFixed(2)}` : "—"}
                 </td>
                 <td className={styles.tableCell}>₹{order.totalAmountBeforeTax.toFixed(2)}</td>
                 <td className={styles.tableCell}>₹{order.totalAmountAfterTax.toFixed(2)}</td>

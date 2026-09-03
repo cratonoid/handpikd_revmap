@@ -48,6 +48,11 @@ class SalesOrderCostingResponse(BaseModel):
     customer_name: str
     date: datetime
     order_status_name: str
+    # The order's own discount off its whole net amount
+    # (SalesOrders.overall_discount). Read-only here — it is entered on the
+    # order form, not on this sheet — but the sheet's footer totals have to
+    # subtract it or they would disagree with the order's headline figures.
+    overall_discount: float
     lines: list[SalesOrderCostingLine]
 
 

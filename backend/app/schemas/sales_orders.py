@@ -1,7 +1,7 @@
 # Request/response bodies for the sales orders module's endpoints.
 from datetime import datetime
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class CreateNewSalesOrderRequest(BaseModel):
@@ -15,6 +15,9 @@ class CreateNewSalesOrderRequest(BaseModel):
     quantities: list[int]
     rates: list[float]
     tax_percs: list[float]
+    # Flat discount off the order's whole net (pre-tax) amount — see
+    # SalesOrders.overall_discount. Optional: an order without one submits 0.
+    overall_discount: float = Field(default=0.0, ge=0)
     description: str
     # Optional: purchase order(s) this sales order is fulfilled from.
     related_purchase_order_ids: list[int] = []
@@ -47,6 +50,7 @@ class SalesOrderDetailItem(BaseModel):
     quantities: list[int]
     rates: list[float]
     tax_percs: list[float]
+    overall_discount: float
     total_amount_before_tax: float
     total_tax_amount: float
     total_amount_after_tax: float
@@ -71,6 +75,9 @@ class UpdateSalesOrderDetailsRequest(BaseModel):
     quantities: list[int]
     rates: list[float]
     tax_percs: list[float]
+    # Flat discount off the order's whole net (pre-tax) amount — see
+    # SalesOrders.overall_discount. Optional: an order without one submits 0.
+    overall_discount: float = Field(default=0.0, ge=0)
     description: str
     related_purchase_order_ids: list[int] = []
     related_unbilled_purchase_order_ids: list[int] = []

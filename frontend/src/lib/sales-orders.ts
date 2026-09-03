@@ -31,6 +31,12 @@ export type SalesOrder = {
   quantities: number[];
   rates: number[];
   taxPercs: number[];
+  // Flat discount off the whole order's net (pre-tax) amount, entered on the
+  // order form. It is already baked into the three totals below — the
+  // backend splits it across the line items before charging tax (see
+  // _allocate_overall_discount in backend/app/api/routes/sales_orders.py) —
+  // so nothing here should ever subtract it a second time.
+  overallDiscount: number;
   totalAmountBeforeTax: number;
   totalTaxAmount: number;
   totalAmountAfterTax: number;
@@ -60,6 +66,7 @@ type SalesOrderDetailItem = {
   quantities: number[];
   rates: number[];
   tax_percs: number[];
+  overall_discount: number;
   total_amount_before_tax: number;
   total_tax_amount: number;
   total_amount_after_tax: number;
@@ -81,6 +88,8 @@ function toSalesOrder(item: SalesOrderDetailItem): SalesOrder {
     quantities: item.quantities,
     rates: item.rates,
     taxPercs: item.tax_percs,
+    // ?? 0 for orders raised before order-level discounts existed.
+    overallDiscount: item.overall_discount ?? 0,
     totalAmountBeforeTax: item.total_amount_before_tax,
     totalTaxAmount: item.total_tax_amount,
     totalAmountAfterTax: item.total_amount_after_tax,
