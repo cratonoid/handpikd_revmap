@@ -20,7 +20,24 @@ jobs:
             cd ${{ secrets.VPS_DEPLOY_PATH }}
             git fetch origin main
             git reset --hard origin/main
-            docker compose up -d --build --remove-orphans
+
+            # Build first, migrate second, swap third — the ordering matters.
+            #
+            # `build` only produces images; the currently-running containers
+            # keep serving the OLD code untouched. So the migration below runs
+            # while the old code is still live, and only once it succeeds does
+            # `up -d` promote the new code.
+            #
+            # The alternative (swap first, migrate after) is what took
+            # /brand-catalogues down: new code against un-migrated data means
+            # Beanie fails validation on read and every affected endpoint 500s
+            # until someone notices. Worse, with `set -e`, a migration that
+            # fails after the swap leaves the new code live on data it cannot
+            # read. Migrating first means a failed migration aborts the deploy
+            # with the old, working code still serving.
+            docker compose build
+            docker compose run --rm backend python scripts/run_migrations.py --apply
+            docker compose up -d --remove-orphans
             # nginx.conf is bind-mounted as a single file; git updates it by
             # replacing the file (new inode), which an already-running
             # container's mount stays pinned to the old one for — `up`
