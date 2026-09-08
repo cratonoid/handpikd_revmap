@@ -315,6 +315,7 @@ async def create_new_unbilled_purchase_order(
         product_ids,
         payload.quantities,
         totals_by_product(product_ids, payload.quantities),
+        payload.date,
     )
 
     # No create_purchase_invoice_for_order call, and no endpoint that would
@@ -468,7 +469,7 @@ async def update_unbilled_purchase_order_details(
     ).delete()
     await _insert_summary_rows(unbilled_purchase_order.id, product_ids, payload.quantities, payload.rates)
     await apply_unbilled_purchase_order_stock(
-        unbilled_purchase_order.id, product_ids, payload.quantities, stock_deltas
+        unbilled_purchase_order.id, product_ids, payload.quantities, stock_deltas, payload.date
     )
     await _flag_related_sales_orders(unbilled_purchase_order.id)
 

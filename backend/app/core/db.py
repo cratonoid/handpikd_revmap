@@ -287,6 +287,54 @@ async def _backfill_purchase_summary_gst() -> None:
         )
 
 
+async def _backfill_inventory_history_transaction_date() -> None:
+    # `transaction_date` was added to InventoryHistory so the inventory
+    # history tab could show when the stock actually moved instead of when
+    # the order happened to be entered (created_at). Rows written before it
+    # existed have no such field, and Beanie would refuse to load them once
+    # it became required — so each one takes the date off its own parent
+    # order, which is exactly the value it would have been written with.
+    #
+    # A row whose parent order has since been deleted keeps its created_at as
+    # the closest thing to the truth that survives.
+    db = get_db()
+    stale = (
+        await db["inventory_history"]
+        .find(
+            {"transaction_date": {"$exists": False}},
+            {"_id": 1, "created_at": 1, "purchase_order_id": 1, "unbilled_purchase_order_id": 1, "sales_order_id": 1},
+        )
+        .to_list(length=None)
+    )
+    if not stale:
+        return
+
+    # One read per parent collection rather than one per row: the ledger has
+    # a row for every line item of every order ever placed.
+    dates_by_collection = {}
+    for collection in ("purchase_orders", "unbilled_purchase_orders", "sales_orders"):
+        orders = await db[collection].find({}, {"_id": 1, "date": 1}).to_list(length=None)
+        dates_by_collection[collection] = {order["_id"]: order.get("date") for order in orders}
+
+    for row in stale:
+        parents = (
+            ("purchase_orders", row.get("purchase_order_id")),
+            ("unbilled_purchase_orders", row.get("unbilled_purchase_order_id")),
+            ("sales_orders", row.get("sales_order_id")),
+        )
+        transaction_date = next(
+            (
+                dates_by_collection[collection][order_id]
+                for collection, order_id in parents
+                if order_id is not None and dates_by_collection[collection].get(order_id) is not None
+            ),
+            row.get("created_at"),
+        )
+        await db["inventory_history"].update_one(
+            {"_id": row["_id"]}, {"$set": {"transaction_date": transaction_date}}
+        )
+
+
 async def connect_to_mongo() -> None:
     global client
     client = AsyncMongoClient(settings.mongodb_uri)
@@ -371,6 +419,7 @@ async def connect_to_mongo() -> None:
     await _backfill_product_unbilled_flag()
     await _backfill_purchase_order_tax_kind()
     await _backfill_purchase_summary_gst()
+    await _backfill_inventory_history_transaction_date()
 
 
 async def close_mongo_connection() -> None:

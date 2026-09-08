@@ -74,8 +74,10 @@ export function InventoryHistoryTab() {
     };
   }, []);
 
+  // Newest transaction first, by the date the stock moved — the same date
+  // the Date column shows, so the order on screen matches what's in it.
   const sortedHistory = [...history].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    (a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime(),
   );
 
   function referenceFor(entry: InventoryHistoryEntry): string {
@@ -121,7 +123,7 @@ export function InventoryHistoryTab() {
                   {productsById.get(entry.productId)?.productName ?? "—"}
                 </td>
                 <td className={styles.tableCell}>{typeLabelFor(entry)}</td>
-                <td className={styles.tableCell}>{new Date(entry.createdAt).toLocaleDateString()}</td>
+                <td className={styles.tableCell}>{new Date(entry.transactionDate).toLocaleDateString()}</td>
               </tr>
             ))}
           </tbody>

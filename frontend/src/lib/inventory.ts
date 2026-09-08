@@ -72,7 +72,9 @@ export type InventoryHistoryEntry = {
   // tab resolves each against its own list rather than sharing one lookup.
   unbilledPurchaseOrderId: number | null;
   salesOrderId: number | null;
-  createdAt: string;
+  // The parent order's date — when the stock actually moved, not when the
+  // order was keyed in. See InventoryHistory.transaction_date on the backend.
+  transactionDate: string;
 };
 
 // Shape returned by the backend's InventoryHistoryItem schema.
@@ -84,7 +86,7 @@ type InventoryHistoryItemResponse = {
   purchase_order_id: number | null;
   unbilled_purchase_order_id: number | null;
   sales_order_id: number | null;
-  created_at: string;
+  transaction_date: string;
 };
 
 export async function fetchInventoryHistory(): Promise<InventoryHistoryEntry[]> {
@@ -102,6 +104,6 @@ export async function fetchInventoryHistory(): Promise<InventoryHistoryEntry[]> 
     purchaseOrderId: item.purchase_order_id,
     unbilledPurchaseOrderId: item.unbilled_purchase_order_id,
     salesOrderId: item.sales_order_id,
-    createdAt: item.created_at,
+    transactionDate: item.transaction_date,
   }));
 }

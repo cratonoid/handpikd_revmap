@@ -495,7 +495,9 @@ async def update_sales_order_details(
     )
 
     if holds_stock:
-        await apply_sales_order_stock(sales_order.id, payload.product_ids, payload.quantities, stock_deltas)
+        await apply_sales_order_stock(
+            sales_order.id, payload.product_ids, payload.quantities, stock_deltas, payload.date
+        )
     else:
         await clear_sales_order_stock(sales_order.id)
 

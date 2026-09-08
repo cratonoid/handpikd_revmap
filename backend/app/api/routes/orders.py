@@ -317,6 +317,7 @@ async def create_new_purchase_order(
         payload.product_ids,
         payload.quantities,
         totals_by_product(payload.product_ids, payload.quantities),
+        payload.date,
     )
 
     # Every purchase order raises its purchase invoice here, rather than the
@@ -521,7 +522,7 @@ async def update_purchase_order_details(
         purchase_order.id, payload.product_ids, payload.quantities, payload.rates, gst_percs
     )
     await apply_purchase_order_stock(
-        purchase_order.id, payload.product_ids, payload.quantities, stock_deltas
+        purchase_order.id, payload.product_ids, payload.quantities, stock_deltas, payload.date
     )
     await _flag_related_sales_orders(purchase_order.id)
 

@@ -60,7 +60,7 @@ async def get_inventory_history(
             purchase_order_id=entry.purchase_order_id,
             unbilled_purchase_order_id=entry.unbilled_purchase_order_id,
             sales_order_id=entry.sales_order_id,
-            created_at=entry.created_at,
+            transaction_date=entry.transaction_date,
         )
         for entry in history
     ]

@@ -162,6 +162,7 @@ async def _record_inventory_transaction(
     product_id: int,
     transaction_type: str,
     quantity: int,
+    transaction_date: datetime,
     *,
     purchase_order_id: int | None = None,
     unbilled_purchase_order_id: int | None = None,
@@ -176,6 +177,9 @@ async def _record_inventory_transaction(
         purchase_order_id=purchase_order_id,
         unbilled_purchase_order_id=unbilled_purchase_order_id,
         sales_order_id=sales_order_id,
+        # The order's date, passed down by the caller — see
+        # InventoryHistory.transaction_date for why the two differ.
+        transaction_date=transaction_date,
         created_at=datetime.now(timezone.utc).replace(tzinfo=None),
     ).insert()
 
@@ -185,16 +189,21 @@ async def apply_purchase_order_stock(
     product_ids: list[int],
     quantities: list[int],
     stock_deltas: dict[int, int],
+    order_date: datetime,
 ) -> None:
     # Moves stock by stock_deltas, then replaces this order's ledger rows
     # with one row per current line item. stock_deltas is passed in rather
     # than recomputed so that what gets applied is exactly what the caller
     # validated against going negative.
+    #
+    # order_date is the order's own `date`, stamped on every row written
+    # here. Because an edit rewrites all of this order's rows, re-dating the
+    # order re-dates its whole ledger entry along with it.
     await _apply_stock_deltas(stock_deltas)
     await InventoryHistory.find(InventoryHistory.purchase_order_id == purchase_order_id).delete()
     for product_id, quantity in zip(product_ids, quantities):
         await _record_inventory_transaction(
-            product_id, _PURCHASE_TRANSACTION, quantity, purchase_order_id=purchase_order_id
+            product_id, _PURCHASE_TRANSACTION, quantity, order_date, purchase_order_id=purchase_order_id
         )
 
 
@@ -203,6 +212,7 @@ async def apply_unbilled_purchase_order_stock(
     product_ids: list[int],
     quantities: list[int],
     stock_deltas: dict[int, int],
+    order_date: datetime,
 ) -> None:
     # Exactly apply_purchase_order_stock's behaviour, filed under this
     # order's own parent column and transaction type. Unbilled stock is real
@@ -218,6 +228,7 @@ async def apply_unbilled_purchase_order_stock(
             product_id,
             _UNBILLED_PURCHASE_TRANSACTION,
             quantity,
+            order_date,
             unbilled_purchase_order_id=unbilled_purchase_order_id,
         )
 
@@ -227,6 +238,7 @@ async def apply_sales_order_stock(
     product_ids: list[int],
     quantities: list[int],
     stock_deltas: dict[int, int],
+    order_date: datetime,
 ) -> None:
     # Mirror of apply_purchase_order_stock for the sales side. Only called
     # once a sales order is in a status that holds stock out of #inventory —
@@ -234,7 +246,9 @@ async def apply_sales_order_stock(
     await _apply_stock_deltas(stock_deltas)
     await InventoryHistory.find(InventoryHistory.sales_order_id == sales_order_id).delete()
     for product_id, quantity in zip(product_ids, quantities):
-        await _record_inventory_transaction(product_id, _SALES_TRANSACTION, quantity, sales_order_id=sales_order_id)
+        await _record_inventory_transaction(
+            product_id, _SALES_TRANSACTION, quantity, order_date, sales_order_id=sales_order_id
+        )
 
 
 async def clear_sales_order_stock(sales_order_id: int) -> None:

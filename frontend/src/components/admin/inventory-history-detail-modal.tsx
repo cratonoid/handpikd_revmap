@@ -60,7 +60,9 @@ export function InventoryHistoryDetailModal({
           <div className={styles.formGrid}>
             <div>
               <span className={styles.formLabel}>Date</span>
-              <p className={styles.formStaticValue}>{new Date(entry.createdAt).toLocaleString()}</p>
+              <p className={styles.formStaticValue}>
+                {new Date(entry.transactionDate).toLocaleDateString()}
+              </p>
             </div>
 
             <div>

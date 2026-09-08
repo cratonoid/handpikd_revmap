@@ -33,4 +33,8 @@ class InventoryHistoryItem(BaseModel):
     # each against its own list. See InventoryHistory.unbilled_purchase_order_id.
     unbilled_purchase_order_id: int | None = None
     sales_order_id: int | None = None
-    created_at: datetime
+    # The parent order's date, not the moment the ledger row was written —
+    # see InventoryHistory.transaction_date. InventoryHistory.created_at is
+    # deliberately not exposed: it changes every time the order is edited and
+    # says nothing about when the stock moved.
+    transaction_date: datetime
