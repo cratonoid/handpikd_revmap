@@ -177,6 +177,26 @@ MUTHA_LAYOUT = [
 ]
 
 
+# The same vendor's next invoice, where the model number in the name is the
+# first four digits OF the row's real HSN code ("Trophy 8306" against
+# 83062990) and the row prints its own 5% — so nothing about the wrong
+# candidate looks wrong: it multiplies out and it resolves a rate.
+MUTHA_PREFIX_LAYOUT = [
+    [
+        (14, [(225, "Tax Invoice")]),
+        (31, [(34, "MUTHA COLLECTIONS"), (260, "Invoice No."), (370, "Dated")]),
+        (40, [(260, "MC/26-27/787"), (370, "30-Jun-26")]),
+        (97, [(34, "GSTIN/UIN: 29AASPK1333N1Z6")]),
+        (253, [(34, "GSTIN/UIN : " + OUR_GSTIN)]),
+        (284, [(34, "Sl"), (79, "Description of Goods"), (208, "HSN/SAC"), (261, "Quantity"), (330, "Rate"), (440, "Amount")]),
+        (313, [(34, "1"), (44, "Trophy 8306 5%"), (205, "83062990"), (261, "1 pcs"), (330, "1,000.00"), (359, "pcs"), (440, "1,000.00")]),
+        (347, [(172, "Igst Tax 5%"), (300, "5"), (320, "%"), (449, "50.00")]),
+        (636, [(177, "Total"), (270, "1 pcs"), (433, "1,050.00")]),
+        (702, [(34, "83062990"), (300, "1,000.00"), (350, "5%"), (396, "50.00")]),
+    ]
+]
+
+
 def test_reads_an_invoice_with_every_column_in_the_item_row():
     extracted = extract_invoice_from_text(_pdf(KRAFT_LAYOUT), OUR_GSTIN)
 
@@ -293,6 +313,22 @@ def test_a_model_number_in_the_description_is_not_read_as_the_hsn_code():
     assert (item.quantity, item.rate, item.gst_perc) == (1, 1000.0, 18.0)
 
 
+def test_a_model_number_that_prefixes_the_real_hsn_code_is_not_read_as_it():
+    # "Trophy 8306" is the harder half of the case above: 8306 is not just a
+    # well-formed code, it is the start of this row's actual 83062990, and
+    # the row prints a 5% that the wrong candidate happily takes as its own.
+    # Read that way the line comes back as a bare "Trophy" — which then
+    # matches our unrelated "Trophy 7013" in the intake's product lookup and
+    # moves that product's stock.
+    extracted = extract_invoice_from_text(_pdf(MUTHA_PREFIX_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    (item,) = extracted.line_items
+    assert item.description == "Trophy 8306 5%"
+    assert item.hsn_code == "83062990"
+    assert (item.quantity, item.rate, item.gst_perc) == (1, 1000.0, 5.0)
+
+
 def test_an_unreadable_layout_returns_none_for_the_claude_fallback():
     # A PDF with no item table at all: the deterministic pass has to say so
     # rather than return a header-only invoice, since that's what hands the
@@ -303,7 +339,7 @@ def test_an_unreadable_layout_returns_none_for_the_claude_fallback():
 
 
 @pytest.mark.parametrize(
-    "layout", [KRAFT_LAYOUT, SHAH_LAYOUT, HELLO_PEN_LAYOUT, TALLY_LAYOUT, MUTHA_LAYOUT]
+    "layout", [KRAFT_LAYOUT, SHAH_LAYOUT, HELLO_PEN_LAYOUT, TALLY_LAYOUT, MUTHA_LAYOUT, MUTHA_PREFIX_LAYOUT]
 )
 def test_every_line_item_carries_a_usable_quantity_and_rate(layout):
     extracted = extract_invoice_from_text(_pdf(layout), OUR_GSTIN)

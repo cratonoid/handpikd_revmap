@@ -466,13 +466,42 @@ def _read_line_item(
     # numbers after it do multiply out ("1 pcs 1,000.00 ... 1,000.00"), so
     # the GST % it cannot resolve is the only thing keeping it from being
     # read as this row's HSN code.
+    #
+    # That evidence is not enough on its own, though, because a vendor who
+    # names a product after its HSN chapter names it after the START of the
+    # real code: Mutha also bills "Trophy 8306 5% 83062990 1 pcs 1,000.00 pcs
+    # 1,000.00", where "8306" is both the model number in the name and the
+    # first four digits of the row's actual 83062990. It carries a printed 5%
+    # of its own, so nothing above rejects it — and reading it as the HSN
+    # cell cuts the description down to a bare "Trophy", which then matches
+    # our unrelated "Trophy 7013" in services/purchase_invoice_intake.py.
+    # So a candidate that another candidate on the same row merely extends is
+    # dropped before any of this: between a code and a longer one that begins
+    # with it, the longer is the HSN cell and the shorter is part of the name.
+    candidates = _hsn_candidates(line)
     passes = (None, invoice_gst_perc) if invoice_gst_perc is not None else (None,)
     for fallback_gst_perc in passes:
-        for hsn in _HSN_RE.finditer(line):
+        for hsn in candidates:
             item = _read_line_item_at(line, hsn, hsn_percentages, fallback_gst_perc)
             if item is not None:
                 return item
     return None
+
+
+def _hsn_candidates(line: str) -> list[re.Match[str]]:
+    # The row's 4/6/8-digit numbers that could be its HSN cell, least
+    # specific ones dropped — see _read_line_item. Prefixes only, never
+    # equal-length duplicates: a code printed twice on one row is the same
+    # code, and dropping both would leave the row unreadable.
+    matches = list(_HSN_RE.finditer(line))
+    codes = [match.group(1) for match in matches]
+    return [
+        match
+        for match in matches
+        if not any(
+            other != match.group(1) and other.startswith(match.group(1)) for other in codes
+        )
+    ]
 
 
 def _read_line_item_at(
