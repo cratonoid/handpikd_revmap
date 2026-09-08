@@ -246,6 +246,33 @@ DMS_LAYOUT = [
     ]
 ]
 
+# A Tally invoice whose item table is followed by a bare subtotal — a row
+# holding one number and nothing else, printed in the Amount column with no
+# label at all — then an IGST line and a ROUNDOFF line. Each of those is a
+# lone fragment on a row of its own, the same shape as a wrapped product
+# name, and the subtotal sits directly under the last item. What keeps them
+# out of that item's name is where they sit: all three are printed well to
+# the right of the description column.
+CHAITHRA_LAYOUT = [
+    [
+        (14, [(225, "Tax Invoice")]),
+        (31, [(37, "CHAITHRA ENTERPRISES"), (260, "Invoice No."), (430, "Dated")]),
+        (43, [(37, "No 85"), (260, "2026-27/71"), (430, "12-Jun-26")]),
+        (97, [(37, "GSTIN/UIN: 29ELNPK3712H1ZU")]),
+        (253, [(37, "GSTIN/UIN : " + OUR_GSTIN)]),
+        (284, [(37, "Sl"), (104, "Description of Goods"), (260, "HSN/SAC"), (318, "Quantity"), (381, "Rate"), (424, "per"), (466, "Amount")]),
+        (296, [(37, "No.")]),
+        (313, [(40, "1"), (48, "CARRY BAG"), (256, "4819"), (311, "574.00"), (339, "NOS"), (396, "30.00"), (422, "NOS"), (475, "17,220.00")]),
+        (325, [(40, "2"), (48, "PLATE CHARGE"), (256, "4819"), (318, "1.00"), (338, "NOS"), (391, "500.00"), (422, "NOS"), (490, "500.00")]),
+        (337, [(475, "17,720.00")]),
+        (349, [(225, "IGST"), (407, "18"), (421, "%"), (481, "3,189.60")]),
+        (361, [(193, "ROUNDOFF"), (502, "0.40")]),
+        (636, [(230, "Total"), (311, "575.00"), (339, "NOS"), (467, "20,910.00")]),
+        (702, [(37, "4819"), (300, "17,720.00"), (350, "18%"), (396, "3,189.60"), (450, "3,189.60")]),
+        (714, [(230, "Total"), (300, "17,720.00"), (396, "3,189.60"), (450, "3,189.60")]),
+    ]
+]
+
 def test_reads_an_invoice_with_every_column_in_the_item_row():
     extracted = extract_invoice_from_text(_pdf(KRAFT_LAYOUT), OUR_GSTIN)
 
@@ -440,6 +467,46 @@ def test_the_hsn_summary_rows_are_not_read_as_line_items():
     assert extracted is not None
     assert len(extracted.line_items) == 2
 
+def test_an_unlabelled_subtotal_row_is_not_read_as_a_line_s_name():
+    # The row under "PLATE CHARGE" holds the bare "17,720.00" subtotal — one
+    # number, no label, nothing else on the row, and directly adjacent to the
+    # item above it. It is kept out of that item's name by its position: it
+    # is printed in the Amount column, not the description one. The IGST and
+    # ROUNDOFF rows below it are the same shape and stay out for the same
+    # reason.
+    extracted = extract_invoice_from_text(_pdf(CHAITHRA_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    first, second = extracted.line_items
+    assert first.description == "CARRY BAG"
+    assert second.description == "PLATE CHARGE"
+
+
+def test_an_unlabelled_subtotal_row_is_not_read_as_a_line_item():
+    # It carries no HSN code, so it can't be mistaken for a lump-sum line
+    # (which is a row that has one and prints only its amount) — nor can the
+    # IGST or ROUNDOFF rows beneath it. Only the two real items come back.
+    extracted = extract_invoice_from_text(_pdf(CHAITHRA_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    assert len(extracted.line_items) == 2
+    assert [(item.quantity, item.rate, item.gst_perc) for item in extracted.line_items] == [
+        (574, 30.00, 18.0),
+        (1, 500.00, 18.0),
+    ]
+
+
+def test_both_lines_share_one_hsn_code_and_the_summary_s_rate():
+    # Neither item row prints a GST %, and both are covered by the single
+    # "4819" entry in the HSN-wise summary — a four-digit code, which is the
+    # shortest one this parser recognises.
+    extracted = extract_invoice_from_text(_pdf(CHAITHRA_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    assert {item.hsn_code for item in extracted.line_items} == {"4819"}
+    assert extracted.invoice_no == "2026-27/71"
+    assert extracted.invoice_date.date().isoformat() == "2026-06-12"
+
 def test_an_unreadable_layout_returns_none_for_the_claude_fallback():
     # A PDF with no item table at all: the deterministic pass has to say so
     # rather than return a header-only invoice, since that's what hands the
@@ -460,6 +527,7 @@ def test_an_unreadable_layout_returns_none_for_the_claude_fallback():
         MUTHA_PREFIX_LAYOUT,
         NEXGEN_LAYOUT,
         DMS_LAYOUT,
+        CHAITHRA_LAYOUT,
     ],
 )
 def test_every_line_item_carries_a_usable_quantity_and_rate(layout):
