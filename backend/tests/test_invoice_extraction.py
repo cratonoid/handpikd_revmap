@@ -197,6 +197,55 @@ MUTHA_PREFIX_LAYOUT = [
 ]
 
 
+# A Tally invoice for a printing service billed as a lump sum: the Quantity
+# and Rate columns of its own table are left empty and only the amount is
+# printed, so there is no quantity x rate to check. The service's name also
+# wraps onto the row below, and the table's own "Sl / No." heading wraps onto
+# the row above it — a fragment that must NOT be read as part of the name.
+NEXGEN_LAYOUT = [
+    [
+        (14, [(225, "Tax Invoice")]),
+        (31, [(34, "NEXGEN PRINT SIGNAGE"), (260, "Invoice No."), (350, "e-Way Bill No."), (430, "Dated")]),
+        (43, [(34, "#219, 2ND FLOOR"), (260, "584"), (430, "23-Jul-26")]),
+        (97, [(34, "GSTIN/UIN: 29HZYPK7338R1ZP")]),
+        (253, [(34, "GSTIN/UIN : " + OUR_GSTIN)]),
+        (284, [(37, "Sl"), (133, "Description of Goods"), (311, "HSN/SAC"), (366, "Quantity"), (426, "Rate"), (466, "per"), (506, "Amount")]),
+        (296, [(37, "No.")]),
+        (313, [(42, "1"), (53, "NON Tearable Vinyl"), (308, "49111010"), (518, "1,200.00")]),
+        (325, [(64, "Eco Solvent Print")]),
+        (347, [(243, "SALES IGST"), (527, "216.00")]),
+        (636, [(282, "Total"), (510, "1,416.00")]),
+        (702, [(37, "49111010"), (371, "1,200.00"), (423, "18%"), (471, "216.00"), (529, "216.00")]),
+        (714, [(326, "Total"), (371, "1,200.00"), (471, "216.00"), (529, "216.00")]),
+    ]
+]
+
+
+# An invoice that centres a wrapped item name vertically against its numbers:
+# the second line's name sits on the rows both above AND below the row
+# carrying its figures, which is left holding nothing but the serial "2".
+# The row above it is the first line's own row, so the fragment between them
+# is equally adjacent to both items.
+DMS_LAYOUT = [
+    [
+        (14, [(225, "Tax Invoice")]),
+        (31, [(34, "DMS PRINT SHOP"), (260, "Invoice No."), (430, "Date")]),
+        (43, [(260, "INV/26-27-229"), (430, "22-07-2026")]),
+        (97, [(34, "GSTIN: 29IFQPS7827E1ZI")]),
+        (253, [(34, "GSTIN : " + OUR_GSTIN)]),
+        (272, [(419, "Taxable")]),
+        (284, [(36, "#"), (56, "Item name"), (180, "HSN/ SAC"), (250, "Quantity"), (317, "Unit Price/ Unit"), (488, "GST"), (529, "Amount")]),
+        (296, [(418, "amount")]),
+        (313, [(36, "1"), (56, "20mm Plain Satin SLH"), (180, "83089019"), (274, "40"), (317, "NOS"), (371, "10.00"), (424, "400.00"), (463, "72.00"), (483, "(18%)"), (537, "472.00")]),
+        (325, [(56, "Digital ID")]),
+        (337, [(36, "2"), (180, "39219096"), (274, "75"), (317, "NOS"), (371, "22.00"), (418, "1,650.00"), (459, "297.00"), (483, "(18%)"), (531, "1,947.00")]),
+        (349, [(56, "Card_D/S_Event_85X130")]),
+        (636, [(56, "Total"), (270, "115"), (414, "2,050.00"), (477, "369.00"), (527, "2,419.00")]),
+        (702, [(70, "39219096"), (178, "1,650.00"), (300, "18%"), (457, "297.00"), (500, "297.00")]),
+        (714, [(70, "83089019"), (178, "400.00"), (300, "18%"), (457, "72.00"), (500, "72.00")]),
+    ]
+]
+
 def test_reads_an_invoice_with_every_column_in_the_item_row():
     extracted = extract_invoice_from_text(_pdf(KRAFT_LAYOUT), OUR_GSTIN)
 
@@ -329,6 +378,68 @@ def test_a_model_number_that_prefixes_the_real_hsn_code_is_not_read_as_it():
     assert (item.quantity, item.rate, item.gst_perc) == (1, 1000.0, 5.0)
 
 
+def test_reads_a_lump_sum_line_with_no_quantity_or_rate_column():
+    # Nexgen leave the Quantity and Rate columns of their own table empty and
+    # print only the amount, so there is no triple for _find_quantity_rate to
+    # check and the whole invoice used to fall through to Claude. One unit at
+    # the printed amount is what the line means.
+    extracted = extract_invoice_from_text(_pdf(NEXGEN_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    (item,) = extracted.line_items
+    assert item.hsn_code == "49111010"
+    assert (item.quantity, item.rate, item.gst_perc) == (1, 1200.00, 18.0)
+
+
+def test_a_name_wrapped_onto_the_row_below_is_read_as_part_of_it():
+    # "Eco Solvent Print" is the tail of the service's name, sitting in the
+    # description column on the row below the figures. The "No." on the row
+    # above is the other half of the table's own "Sl / No." heading and sits
+    # further left than the description column starts, so it stays out.
+    extracted = extract_invoice_from_text(_pdf(NEXGEN_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    (item,) = extracted.line_items
+    assert item.description == "NON Tearable Vinyl Eco Solvent Print"
+
+
+def test_a_name_wrapped_above_and_below_its_figures_belongs_to_that_line():
+    # DMS centre a wrapped name against its numbers, so "Digital ID" sits
+    # directly below line 1's row and directly above line 2's — which is left
+    # holding nothing but the serial "2". It belongs to line 2, the line that
+    # has no name of its own; line 1 keeps only what's printed on its own row.
+    # Read naively, line 2's product was recorded as "2".
+    extracted = extract_invoice_from_text(_pdf(DMS_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    first, second = extracted.line_items
+    assert first.description == "20mm Plain Satin SLH"
+    assert second.description == "Digital ID Card_D/S_Event_85X130"
+    assert (second.quantity, second.rate, second.gst_perc) == (75, 22.00, 18.0)
+
+
+def test_a_wrapped_column_heading_is_not_read_as_a_line_s_name():
+    # "Taxable / amount" is a column heading broken over two rows, the second
+    # of which is a lone word with nothing else on its row — the same shape as
+    # a wrapped product name. It sits above the first line item and is kept
+    # out by its position: the heading is over the money columns, far to the
+    # right of the description column.
+    extracted = extract_invoice_from_text(_pdf(DMS_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    assert "amount" not in extracted.line_items[0].description
+
+
+def test_the_hsn_summary_rows_are_not_read_as_line_items():
+    # The tax summary at the foot is keyed by HSN code alone, so its rows have
+    # nothing before the code — not even a serial number. That is what tells
+    # them from a line whose name merely wrapped away (DMS's "2"), and both
+    # kinds of row are on this invoice.
+    extracted = extract_invoice_from_text(_pdf(DMS_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    assert len(extracted.line_items) == 2
+
 def test_an_unreadable_layout_returns_none_for_the_claude_fallback():
     # A PDF with no item table at all: the deterministic pass has to say so
     # rather than return a header-only invoice, since that's what hands the
@@ -339,7 +450,17 @@ def test_an_unreadable_layout_returns_none_for_the_claude_fallback():
 
 
 @pytest.mark.parametrize(
-    "layout", [KRAFT_LAYOUT, SHAH_LAYOUT, HELLO_PEN_LAYOUT, TALLY_LAYOUT, MUTHA_LAYOUT, MUTHA_PREFIX_LAYOUT]
+    "layout",
+    [
+        KRAFT_LAYOUT,
+        SHAH_LAYOUT,
+        HELLO_PEN_LAYOUT,
+        TALLY_LAYOUT,
+        MUTHA_LAYOUT,
+        MUTHA_PREFIX_LAYOUT,
+        NEXGEN_LAYOUT,
+        DMS_LAYOUT,
+    ],
 )
 def test_every_line_item_carries_a_usable_quantity_and_rate(layout):
     extracted = extract_invoice_from_text(_pdf(layout), OUR_GSTIN)
@@ -503,3 +624,22 @@ def test_a_mixed_rate_invoice_gets_no_invoice_wide_fallback():
     ]
 
     assert extract_invoice_from_text(_pdf(mixed), OUR_GSTIN) is None
+
+
+def test_the_hsn_summary_total_is_not_mistaken_for_the_grand_total_beside_a_currency_symbol():
+    # DMS print their summary's own total against a rupee sign, so the bare-
+    # "Total"-with-a-currency rule matched it — and being the last such row on
+    # the page, it won: a bill for Rs. 2,419 came back as a printed total of
+    # Rs. 2,050, and every upload was flagged to the admin as not tying out.
+    # The row above it opens with an HSN code, which no grand total's does.
+    lines = [
+        "Total 115 ₹ 2,050.00 ₹ 369.00 ₹ 2,419.00",
+        "Two Thousand Four Hundred Nineteen Rupees only Sub Total ₹ 2,419.00",
+        "Payment mode Total ₹ 2,419.00",
+        "HSN/ SAC Taxable amount Total Tax Amount",
+        "39219096 ₹ 1,650.00 18% ₹ 297.00 ₹ 297.00",
+        "83089019 ₹ 400.00 18% ₹ 72.00 ₹ 72.00",
+        "Total ₹ 2,050.00 ₹ 369.00 ₹ 369.00",
+    ]
+
+    assert _find_printed_total(lines) == 2419.00

@@ -19,7 +19,7 @@
 # against our own records, and every check that can reject an upload, lives
 # in services/purchase_invoice_intake.py.
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 import pymupdf
@@ -52,6 +52,10 @@ _HSN_RE = re.compile(r"\b(\d{4}|\d{6}|\d{8})\b")
 
 _NUMBER_RE = re.compile(r"\d[\d,]*(?:\.\d+)?")
 _PERCENT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
+
+# A row's serial number standing alone, with nothing of the item's name
+# beside it — see _read_line_item_at.
+_SERIAL_ONLY_RE = re.compile(r"\d+[.)]?")
 
 # Rows that summarize the invoice rather than list a product. Matched against
 # the start of the row so a product legitimately named "Total Station" isn't
@@ -352,13 +356,37 @@ def _find_printed_total(lines: list[str]) -> float | None:
     # further down the page. Reached by every Tally invoice, which prints
     # "Amount Chargeable (in words)" as a label with no number beside it and
     # so gets nothing out of the pass above.
-    for line in reversed(lines):
+    for index in range(len(lines) - 1, -1, -1):
+        line = lines[index]
         if _CURRENCY_TOTAL_ROW_RE.match(line.strip()) is None:
+            continue
+        if _closes_the_hsn_summary(lines, index):
             continue
         numbers = [_to_number(match.group(0)) for match in _NUMBER_RE.finditer(line)]
         if numbers:
             return max(numbers)
     return None
+
+
+def _closes_the_hsn_summary(lines: list[str], index: int) -> bool:
+    """True when the row at `index` is the foot of the HSN-wise tax summary.
+
+    That row is a "Total" of the taxable value and the tax, not of the
+    invoice, and being the last such row on the page it wins the bottom-up
+    scan above whenever it prints a currency symbol — which is how DMS Print
+    Shop's "Total ₹ 2,050.00 ₹ 369.00 ₹ 369.00" came back as a ₹2,050 total
+    against a bill for ₹2,419.
+
+    The rule that separates it from a real grand total is what sits directly
+    above it: the summary's own rows are keyed by HSN code, so they open with
+    one. No invoice's grand total does.
+    """
+    for line in reversed(lines[:index]):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        return _HSN_RE.match(stripped) is not None
+    return False
 
 
 def _hsn_gst_percentages(lines: list[str]) -> dict[str, float]:
@@ -442,9 +470,32 @@ def _find_quantity_rate(numbers: list[float]) -> tuple[int, float] | None:
     return None
 
 
+def _lump_sum_quantity_rate(numbers: list[float], corroborated: bool) -> tuple[int, float] | None:
+    """Reads a row that prints an amount and no quantity or rate at all.
+
+    A service billed as a lump sum has nothing to multiply: Nexgen Print
+    Signage's "1 NON Tearable Vinyl 49111010 1,200.00" leaves the Quantity
+    and Rate columns of its own table empty and prints only the amount, so
+    _find_quantity_rate has no triple to check and the whole invoice used to
+    fall through to the Claude fallback. One unit at the printed amount is
+    what such a line means, and it's what an admin would key in by hand.
+
+    Read on its own that rule would turn any row carrying an HSN-shaped
+    number and one other number into a line item, so it applies only to a row
+    whose HSN code was corroborated — the row printed a GST % of its own, or
+    the code appears in the invoice's HSN-wise tax summary. A code that only
+    "resolved" a rate because the whole invoice is raised at a single one is
+    no evidence that the row is a line item, which is the same distinction
+    _read_line_item draws between its two passes.
+    """
+    if not corroborated or len(numbers) != 1 or numbers[0] <= 0:
+        return None
+    return 1, numbers[0]
+
+
 def _read_line_item(
     line: str, hsn_percentages: dict[str, float], invoice_gst_perc: float | None = None
-) -> ExtractedLineItem | None:
+) -> tuple[ExtractedLineItem, re.Match[str]] | None:
     stripped = line.strip().lower()
     if any(stripped.startswith(prefix) for prefix in _SUMMARY_ROW_PREFIXES):
         return None
@@ -478,13 +529,17 @@ def _read_line_item(
     # So a candidate that another candidate on the same row merely extends is
     # dropped before any of this: between a code and a longer one that begins
     # with it, the longer is the HSN cell and the shorter is part of the name.
+    # The HSN match that produced the item is returned alongside it because
+    # it marks where the row's description column ends, which is what
+    # _read_page_line_items needs to find a name wrapped onto the rows around
+    # this one.
     candidates = _hsn_candidates(line)
     passes = (None, invoice_gst_perc) if invoice_gst_perc is not None else (None,)
     for fallback_gst_perc in passes:
         for hsn in candidates:
             item = _read_line_item_at(line, hsn, hsn_percentages, fallback_gst_perc)
             if item is not None:
-                return item
+                return item, hsn
     return None
 
 
@@ -513,10 +568,6 @@ def _read_line_item_at(
     """Reads one row on the assumption that `hsn` is its HSN/SAC cell."""
     after_hsn = line[hsn.end() :]
     numbers = [_to_number(match.group(0)) for match in _NUMBER_RE.finditer(after_hsn)]
-    quantity_rate = _find_quantity_rate(numbers)
-    if quantity_rate is None:
-        return None
-    quantity, rate = quantity_rate
 
     # A row can print CGST %, SGST % and IGST % as separate columns (of which
     # two are always 0), so the line's rate is their sum — the same
@@ -526,17 +577,43 @@ def _read_line_item_at(
     # summary, then the rate the invoice as a whole is raised at — each a
     # weaker statement about THIS line than the one before, so each is only
     # reached when the one before it says nothing.
-    gst_perc = (
-        sum(percentages) if percentages else hsn_percentages.get(hsn.group(1), invoice_gst_perc)
-    )
+    printed_gst_perc = sum(percentages) if percentages else None
+    summary_gst_perc = hsn_percentages.get(hsn.group(1))
+    gst_perc = printed_gst_perc if printed_gst_perc is not None else summary_gst_perc
+    if gst_perc is None:
+        gst_perc = invoice_gst_perc
     if gst_perc is None:
         return None
 
-    # Drop the leading serial number ("1  Ab80 Gym Shaker Bottle") — it's the
-    # row's position in the table, not part of the product's name.
-    description = re.sub(r"^\d+[.)]?\s+", "", line[: hsn.start()].strip()).strip()
-    if not description:
+    quantity_rate = _find_quantity_rate(numbers)
+    if quantity_rate is None:
+        # Only the first two of the three readings above say anything about
+        # THIS row, so only they corroborate a lump-sum line — see
+        # _lump_sum_quantity_rate.
+        quantity_rate = _lump_sum_quantity_rate(
+            numbers, corroborated=printed_gst_perc is not None or summary_gst_perc is not None
+        )
+    if quantity_rate is None:
         return None
+    quantity, rate = quantity_rate
+
+    description = line[: hsn.start()].strip()
+    if _SERIAL_ONLY_RE.fullmatch(description):
+        # The row prints nothing but its serial number before the HSN cell:
+        # DMS Print Shop centres a wrapped item name vertically, so
+        # "Digital ID Card_D/S_Event_85X130" sits on the rows above and below
+        # the numbers and this row carries a bare "2". Left as-is the serial
+        # became the product's name; emptied here, _read_page_line_items
+        # fills it in from those rows.
+        description = ""
+    else:
+        # Drop the leading serial number ("1  Ab80 Gym Shaker Bottle") — it's
+        # the row's position in the table, not part of the product's name.
+        description = re.sub(r"^\d+[.)]?\s+", "", description).strip()
+        # Nothing at all before the HSN cell, not even a serial: this is a
+        # row of the HSN-wise tax summary, which is keyed by the code alone.
+        if not description:
+            return None
 
     return ExtractedLineItem(
         description=description,
@@ -547,45 +624,137 @@ def _read_line_item_at(
     )
 
 
-def _read_line_items(pages: list[list[str]], invoice_no: str | None) -> list[ExtractedLineItem]:
+@dataclass(frozen=True)
+class _RowItem:
+    """A line item and where its description column sits on its own row."""
+
+    index: int
+    item: ExtractedLineItem
+    # Left edge of the row's description cell, and of its HSN cell. Together
+    # they bound the column a wrapped name has to sit inside — see
+    # _is_wrapped_description.
+    left: float
+    right: float
+
+
+def _is_wrapped_description(row: Row, left: float, right: float) -> bool:
+    """True when this row is nothing but the tail (or head) of an item name.
+
+    Judged on position rather than wording, because the fragments are
+    ordinary prose that says nothing about itself: "Eco Solvent Print",
+    "Digital ID". What marks them is that EVERY cell of the row falls inside
+    the description column of the line item being read — a row of the table
+    proper always puts something in the columns to the right of it, and the
+    wrapped halves of a column header ("Taxable / amount") sit well to the
+    right of the description column entirely.
+    """
+    text = row.text.strip()
+    if not text or not row.cells:
+        return False
+    if any(text.lower().startswith(prefix) for prefix in _SUMMARY_ROW_PREFIXES):
+        return False
+    return all(left <= cell_left < right for cell_left, _word in row.cells)
+
+
+def _with_wrapped_descriptions(rows: list[Row], found: list[_RowItem]) -> list[ExtractedLineItem]:
+    """Folds each item's wrapped-over name fragments back into its description.
+
+    Items that have no description of their own go first, and each row is
+    claimed by only one item, because a fragment between two line items is
+    otherwise equally adjacent to both: DMS Print Shop's "Digital ID" sits
+    directly below item 1 and directly above item 2, and belongs to item 2 —
+    which is exactly the item that can be seen to need it.
+    """
+    claimed = {row_item.index for row_item in found}
+    descriptions: dict[int, str] = {}
+
+    unnamed = [row_item for row_item in found if not row_item.item.description]
+    named = [row_item for row_item in found if row_item.item.description]
+    for row_item in (*unnamed, *named):
+        before: list[str] = []
+        after: list[str] = []
+        for step, collected in ((-1, before), (1, after)):
+            index = row_item.index + step
+            while (
+                0 <= index < len(rows)
+                and index not in claimed
+                and _is_wrapped_description(rows[index], row_item.left, row_item.right)
+            ):
+                claimed.add(index)
+                collected.append(rows[index].text.strip())
+                index += step
+        parts = [*reversed(before), row_item.item.description, *after]
+        descriptions[row_item.index] = " ".join(part for part in parts if part)
+
+    return [replace(row_item.item, description=descriptions[row_item.index]) for row_item in found]
+
+
+def _read_page_line_items(
+    rows: list[Row], hsn_percentages: dict[str, float], invoice_gst_perc: float | None
+) -> list[ExtractedLineItem]:
+    found: list[_RowItem] = []
+    for index, row in enumerate(rows):
+        read = _read_line_item(row.text, hsn_percentages, invoice_gst_perc)
+        if read is None:
+            continue
+        item, hsn = read
+        # Where the description column starts and stops on this row. An item
+        # whose row prints only a serial number has no description cell, so
+        # the column is taken to start at the serial itself — the name that's
+        # missing from this row was wrapped into that same column.
+        offset = row.text.find(item.description, 0, hsn.start()) if item.description else 0
+        left = row.column_at(max(offset, 0))
+        right = row.column_at(hsn.start())
+        # Both are only ever None on a row whose cells don't cover the offset,
+        # which can't happen for text taken from those cells; the empty band
+        # keeps the item and simply admits no wrapped rows.
+        found.append(_RowItem(index=index, item=item, left=left or 0.0, right=right or 0.0))
+    return _with_wrapped_descriptions(rows, found)
+
+
+def _read_line_items(pages: list[list[Row]], invoice_no: str | None) -> list[ExtractedLineItem]:
     # Many vendors ship the same invoice several times in one PDF — an
     # "Original for Recipient" page followed by a "Duplicate for
     # Transporter". Those copies repeat the invoice number, which is what
     # separates them from a genuine second page of line items; reading them
     # too would double every quantity.
     if invoice_no is not None:
-        pages_with_invoice_no = [page for page in pages if any(invoice_no in line for line in page)]
+        pages_with_invoice_no = [page for page in pages if any(invoice_no in row.text for row in page)]
         if len(pages_with_invoice_no) > 1:
             pages = pages_with_invoice_no[:1]
 
     # Read across every page being kept rather than per page: a multi-page
     # invoice prints its tax summary once, at the foot of the last one.
-    invoice_gst_perc = _invoice_gst_perc([line for page in pages for line in page])
+    invoice_gst_perc = _invoice_gst_perc([row.text for page in pages for row in page])
 
     line_items: list[ExtractedLineItem] = []
     for page in pages:
-        hsn_percentages = _hsn_gst_percentages(page)
-        for line in page:
-            item = _read_line_item(line, hsn_percentages, invoice_gst_perc)
-            if item is not None:
-                line_items.append(item)
+        hsn_percentages = _hsn_gst_percentages([row.text for row in page])
+        line_items.extend(_read_page_line_items(page, hsn_percentages, invoice_gst_perc))
     return line_items
 
 
 def extract_invoice_from_text(pdf_bytes: bytes, our_gstin: str) -> ExtractedInvoice | None:
     """Deterministic pass. Returns None when the PDF isn't fully readable."""
     rows = page_rows(pdf_bytes)
-    pages = [[row.text for row in page] for page in rows]
-    lines = [line for page in pages for line in page]
+    lines = [row.text for page in rows for row in page]
     if not lines:
         return None
 
     vendor_gstin = _find_vendor_gstin(lines, our_gstin)
     invoice_no = _find_invoice_no([row for page in rows for row in page])
     invoice_date = _find_invoice_date(lines)
-    line_items = _read_line_items(pages, invoice_no)
+    line_items = _read_line_items(rows, invoice_no)
 
     if vendor_gstin is None or invoice_no is None or invoice_date is None or not line_items:
+        return None
+
+    # A line whose name was wrapped away onto rows this pass couldn't
+    # identify leaves the item nameless, which is no more use to the admin
+    # than a line that was never read — so hand the document to the Claude
+    # fallback rather than to the review screen, same as any other field
+    # that couldn't be read in full.
+    if any(not item.description for item in line_items):
         return None
 
     return ExtractedInvoice(
