@@ -110,6 +110,11 @@ MIGRATIONS: list[tuple[str, str, str]] = [
         "catalogue_details.category_id -> category_ids (list)",
     ),
     (
+        "migrate_standard_invoice_no_to_fy_series",
+        AUTO,
+        "standard invoice series -> per-financial-year (H/26-27/12)",
+    ),
+    (
         "drop_legacy_proforma_invoices",
         MANUAL,
         "DESTRUCTIVE: deletes every proforma invoice_details row",

@@ -42,9 +42,13 @@ from app.schemas.invoices import (
     UpdateProformaInvoiceDetailsRequest,
     UpdateProformaInvoiceDetailsResponse,
 )
-from app.services.counters import get_next_id
+from app.services.counters import get_next_id, get_next_scoped_id
 from app.services.gst import TaxKind, resolve_state_code, split_tax, state_name_for_code, tax_kind_for
-from app.services.invoice_numbering import format_sales_invoice_no
+from app.services.invoice_numbering import (
+    financial_year_start_year,
+    format_sales_invoice_no,
+    invoice_no_filename_slug,
+)
 from app.services.invoice_pdf import InvoiceLineItem, generate_invoice_pdf
 from app.services.personal_details import get_personal_details
 from app.services.proforma_invoice_pdf import ProformaInvoiceLineItem, generate_proforma_invoice_pdf
@@ -204,12 +208,20 @@ async def create_new_invoice(
     tax_context = await _tax_context_for_customer(sales_orders[0].cust_id)
     total_igst, total_cgst, total_sgst = tax_context.totals(total_tax)
 
-    invoice_no = await get_next_id(StandardInvoiceNoCounterMaster, "next_invoice_no", InvoiceDetails)
+    # Standard invoices are numbered per financial year (H/26-27/12), so the
+    # invoice's own date — not today's — picks which year's series it comes
+    # out of, and back-dating an invoice into the previous year lands it at
+    # the end of that year's series rather than jumping this one's.
+    fy_start_year = financial_year_start_year(payload.date)
+    invoice_no = await get_next_scoped_id(
+        StandardInvoiceNoCounterMaster, "next_invoice_no", fy_start_year
+    )
     invoice_id = await get_next_id(InvoiceIdCounter, "next_invoice_id", InvoiceDetails)
 
     invoice = InvoiceDetails(
         id=invoice_id,
         invoice_no=invoice_no,
+        invoice_fy_start_year=fy_start_year,
         date=payload.date,
         sales_ids=payload.sales_ids,
         quotation_id=None,
@@ -288,7 +300,7 @@ async def create_new_proforma_invoice(
     return CreateNewProformaInvoiceResponse(
         message="proforma invoice successfully created",
         id=invoice_id,
-        invoice_no_display=format_sales_invoice_no(invoice_no, InvoiceType.proforma),
+        invoice_no_display=format_sales_invoice_no(invoice),
     )
 
 
@@ -298,7 +310,7 @@ def _to_invoice_detail_item(
     return InvoiceDetailItem(
         id=invoice.id,
         invoice_no=invoice.invoice_no,
-        invoice_no_display=format_sales_invoice_no(invoice.invoice_no, invoice.type),
+        invoice_no_display=format_sales_invoice_no(invoice),
         date=invoice.date,
         sales_ids=invoice.sales_ids,
         quotation_id=invoice.quotation_id,
@@ -363,6 +375,9 @@ async def update_invoice_details(
     sales_orders = await _get_sales_orders_or_404(invoice.sales_ids)
     total_before_tax, total_tax, total_after_tax = _sum_sales_order_totals(sales_orders)
 
+    # invoice_fy_start_year is deliberately left alone: the number has
+    # already been issued out of that year's series, so correcting the date
+    # (even across 1 April) must not restate it as another year's invoice.
     invoice.date = payload.date
     invoice.total_amount_before_tax = total_before_tax
     invoice.total_tax_amount = total_tax
@@ -516,7 +531,7 @@ async def _build_proforma_invoice_pdf_inputs(summaries: list[ProformaInvoiceSumm
 
 
 async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict[str, str]) -> tuple[bytes, str]:
-    invoice_no_display = format_sales_invoice_no(invoice.invoice_no, invoice.type)
+    invoice_no_display = format_sales_invoice_no(invoice)
     sales_orders = await _get_sales_orders_or_404(invoice.sales_ids)
     # All linked sales orders share one customer (enforced in
     # create_new_invoice), so any of them gives the right cust_id.
@@ -550,7 +565,7 @@ async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict
         tax_kind=invoice.tax_kind,
         place_of_supply_code=invoice.place_of_supply_code,
     )
-    filename = f"invoice-{invoice_no_display}.pdf"
+    filename = f"invoice-{invoice_no_filename_slug(invoice_no_display)}.pdf"
     return pdf_bytes, filename
 
 
@@ -563,7 +578,7 @@ async def get_invoice_pdf(
     if invoice is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invoice not found")
 
-    invoice_no_display = format_sales_invoice_no(invoice.invoice_no, invoice.type)
+    invoice_no_display = format_sales_invoice_no(invoice)
     personal = await get_personal_details()
 
     if invoice.type == InvoiceType.standard:
@@ -587,7 +602,7 @@ async def get_invoice_pdf(
             customer_gstin=customer_gstin,
             personal=personal,
         )
-        filename = f"proforma-invoice-{invoice_no_display}.pdf"
+        filename = f"proforma-invoice-{invoice_no_filename_slug(invoice_no_display)}.pdf"
 
     return Response(
         content=pdf_bytes,

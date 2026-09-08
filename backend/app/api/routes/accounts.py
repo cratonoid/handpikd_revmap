@@ -467,7 +467,7 @@ async def get_accounts_receivables(
         rows.append(
             ReceivableInvoiceRow(
                 id=invoice.id,
-                invoice_no_display=format_sales_invoice_no(invoice.invoice_no, invoice.type),
+                invoice_no_display=format_sales_invoice_no(invoice),
                 date=invoice.date.date(),
                 due_date=due,
                 customer_name=customer_name,

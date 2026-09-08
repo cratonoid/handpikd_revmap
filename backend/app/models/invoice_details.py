@@ -67,6 +67,14 @@ class InvoiceDetails(Document):
     total_cgst_amount: float = 0.0
     total_sgst_amount: float = 0.0
     type: InvoiceType
+    # The Indian financial year (stored as the year it starts in: 2026 for
+    # FY 2026-27) whose series this invoice's invoice_no was drawn from —
+    # standard invoices only, since they alone are numbered per financial
+    # year (H/26-27/12, see services/invoice_numbering.py). Frozen here at
+    # creation time rather than re-derived from `date`, which stays editable:
+    # correcting an issued invoice's date must not renumber it. None on rows
+    # raised before the series became year-scoped, and on every proforma.
+    invoice_fy_start_year: int | None = None
     due_date: datetime
     online_or_offline: OnlineOrOffline
     transport: str = ""  # e.g. "Hand Delivery" â€” shipping mode, invoice-specific.
