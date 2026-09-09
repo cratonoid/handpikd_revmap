@@ -42,6 +42,7 @@ from app.schemas.invoices import (
     UpdateProformaInvoiceDetailsRequest,
     UpdateProformaInvoiceDetailsResponse,
 )
+from app.api.routes.sales_orders import delivery_tax_amount
 from app.services.counters import get_next_id, get_next_scoped_id
 from app.services.gst import TaxKind, resolve_state_code, split_tax, state_name_for_code, tax_kind_for
 from app.services.invoice_numbering import (
@@ -122,6 +123,51 @@ async def _validate_products_exist(product_ids: list[int], reject_deleted: bool 
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail=f"product {product_id} has been deleted"
             )
+
+
+# What the delivery line prints as. 996511 is the SAC for road transport of
+# goods: delivery billed alongside a sale is a service supply in its own
+# right, so GSTR-1 wants a SAC on it rather than any of the goods' HSN codes.
+# Change both here and nowhere else — the PDF and the client portal read
+# them from this one place.
+DELIVERY_LINE_LABEL = "Delivery charge"
+DELIVERY_SAC_CODE = "996511"
+
+
+@dataclass
+class DeliveryChargeLine:
+    """One sales order's delivery charge, as a billable invoice line."""
+
+    amount: float
+    tax_perc: float
+
+    @property
+    def tax_amount(self) -> float:
+        # delivery_tax_amount, not a second formula: the order's stored
+        # total_tax_amount was computed with it, and a line that disagreed
+        # with it by even a paisa would print an invoice that doesn't add up
+        # to its own total.
+        return delivery_tax_amount(self.amount, self.tax_perc)
+
+    @property
+    def total(self) -> float:
+        return self.amount + self.tax_amount
+
+
+def delivery_charge_lines(sales_orders: list[SalesOrders]) -> list[DeliveryChargeLine]:
+    """One line per linked sales order that carries a delivery charge.
+
+    Not merged into a single line when an invoice covers several orders:
+    those can have been delivered under different arrangements, and so at
+    different rates — one merged figure would then reconcile with neither.
+    Orders with no delivery charge contribute nothing, which is every order
+    raised before the field existed.
+    """
+    return [
+        DeliveryChargeLine(amount=order.delivery_charge, tax_perc=order.delivery_tax_perc)
+        for order in sales_orders
+        if order.delivery_charge
+    ]
 
 
 @dataclass
@@ -558,6 +604,25 @@ async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict
     line_items, customer_name, customer_address, customer_phone, customer_gstin = (
         await _build_standard_invoice_pdf_inputs(summaries, cust_id)
     )
+    # Printed after the goods, the way a freight line sits at the foot of a
+    # tax invoice. Its tax is already inside the invoice's stored totals
+    # (they were snapshotted from these same orders), so this adds a row to
+    # the grid without moving any of the figures under it.
+    line_items += [
+        InvoiceLineItem(
+            product_name=DELIVERY_LINE_LABEL,
+            hsn_code=DELIVERY_SAC_CODE,
+            quantity=1,
+            rate=line.amount,
+            discount=0.0,
+            taxable_value=line.amount,
+            tax_perc=line.tax_perc,
+            tax_amount=line.tax_amount,
+            total=line.total,
+            is_charge=True,
+        )
+        for line in delivery_charge_lines(sales_orders)
+    ]
 
     pdf_bytes = await generate_invoice_pdf(
         invoice_no=invoice_no_display,

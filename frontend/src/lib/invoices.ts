@@ -14,7 +14,9 @@ import { apiFetch } from "@/lib/api";
 
 export type InvoiceType = "proforma" | "standard";
 export type OnlineOrOffline = "online" | "offline";
-export type InvoiceStatus = "new" | "submitted" | "paid";
+// Payment state only — an invoice is either fully outstanding or fully
+// settled, matching InvoiceStatus in backend/app/models/invoice_details.py.
+export type InvoiceStatus = "unpaid" | "paid";
 
 export type Invoice = {
   id: number;

@@ -33,8 +33,7 @@ import styles from "@/styles/dashboard.module.css";
 type Status = "idle" | "saving";
 
 const INVOICE_STATUS_OPTIONS: SingleSelectOption[] = [
-  { value: "new", label: "New", isDeleted: false },
-  { value: "submitted", label: "Submitted", isDeleted: false },
+  { value: "unpaid", label: "Unpaid", isDeleted: false },
   { value: "paid", label: "Paid", isDeleted: false },
 ];
 
@@ -66,7 +65,7 @@ export function InvoiceFormModal({
     initialInvoice?.onlineOrOffline ?? "offline",
   );
   const [transport, setTransport] = useState(initialInvoice?.transport ?? "Hand Delivery");
-  const [invoiceStatus, setInvoiceStatus] = useState<InvoiceStatus>(initialInvoice?.status ?? "new");
+  const [invoiceStatus, setInvoiceStatus] = useState<InvoiceStatus>(initialInvoice?.status ?? "unpaid");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);

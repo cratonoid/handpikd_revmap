@@ -187,14 +187,14 @@ export type InvoiceStatusSummary = {
 };
 
 // The three rules below are lifted from the admin's receivables report
-// (_UNPAID_INVOICE_STATUSES and get_accounts_receivables in
-// backend/app/api/routes/accounts.py) rather than invented here, so a client
+// (get_accounts_receivables in backend/app/api/routes/accounts.py) rather
+// than invented here, so a client
 // reading "you owe X" and the admin reading their books can never disagree
 // about the same invoice:
 //
 //   - Proforma invoices don't count at all. They aren't statutory documents,
 //     and nothing is owed on one until a tax invoice is raised.
-//   - Unpaid means status "new" or "submitted", and the FULL invoice value is
+//   - Unpaid means status "unpaid", and the FULL invoice value is
 //     outstanding — #invoice_details has no part-payment field, status is
 //     all-or-nothing.
 //   - Overdue is measured against today, not against when the invoice was

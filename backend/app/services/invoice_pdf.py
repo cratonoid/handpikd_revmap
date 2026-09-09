@@ -79,6 +79,11 @@ class InvoiceLineItem:
     tax_perc: float
     tax_amount: float
     total: float
+    # True for a service billed alongside the goods rather than one of them
+    # — today, the delivery charge (see routes/invoices.py). It still prints
+    # as an ordinary row, under its own SAC; the flag only keeps it out of
+    # the Total Qty figure, which counts pieces shipped, not rows.
+    is_charge: bool = False
 
 
 def _amount(value: float) -> str:
@@ -166,7 +171,7 @@ async def generate_invoice_pdf(
             }
         )
 
-    total_qty = sum(item.quantity for item in line_items)
+    total_qty = sum(item.quantity for item in line_items if not item.is_charge)
     total_discount = sum(item.discount for item in line_items)
 
     place_of_supply = _place_of_supply_text(place_of_supply_code)

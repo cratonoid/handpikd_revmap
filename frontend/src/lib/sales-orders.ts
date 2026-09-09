@@ -37,6 +37,13 @@ export type SalesOrder = {
   // _allocate_overall_discount in backend/app/api/routes/sales_orders.py) —
   // so nothing here should ever subtract it a second time.
   overallDiscount: number;
+  // Delivery billed to the customer, and the GST % it carries. Also already
+  // inside the three totals below — the backend adds it on top of the line
+  // items and taxes it in its own right (see SalesOrders.delivery_charge).
+  // Both 0 on an order with no delivery, and on every order raised before
+  // the field existed.
+  deliveryCharge: number;
+  deliveryTaxPerc: number;
   totalAmountBeforeTax: number;
   totalTaxAmount: number;
   totalAmountAfterTax: number;
@@ -67,6 +74,8 @@ type SalesOrderDetailItem = {
   rates: number[];
   tax_percs: number[];
   overall_discount: number;
+  delivery_charge: number;
+  delivery_tax_perc: number;
   total_amount_before_tax: number;
   total_tax_amount: number;
   total_amount_after_tax: number;
@@ -90,6 +99,9 @@ function toSalesOrder(item: SalesOrderDetailItem): SalesOrder {
     taxPercs: item.tax_percs,
     // ?? 0 for orders raised before order-level discounts existed.
     overallDiscount: item.overall_discount ?? 0,
+    // ?? 0 for orders raised before delivery charges existed.
+    deliveryCharge: item.delivery_charge ?? 0,
+    deliveryTaxPerc: item.delivery_tax_perc ?? 0,
     totalAmountBeforeTax: item.total_amount_before_tax,
     totalTaxAmount: item.total_tax_amount,
     totalAmountAfterTax: item.total_amount_after_tax,

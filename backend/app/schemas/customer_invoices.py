@@ -19,9 +19,9 @@ class CustomerInvoiceListItem(BaseModel):
     date: datetime
     due_date: datetime
     type: InvoiceType
-    # Where the invoice stands in the admin's books: "new" (raised),
-    # "submitted" (sent to the client) or "paid". Shown as-is so a client can
-    # tell a settled invoice from an outstanding one.
+    # Where the invoice stands in the admin's books: "unpaid" or "paid".
+    # Shown as-is so a client can tell a settled invoice from an outstanding
+    # one.
     status: InvoiceStatus
     # Human-readable order numbers ("SO-14") behind a standard invoice, so a
     # client can tie it back to an order they placed. Empty for proforma

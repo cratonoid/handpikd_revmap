@@ -17,7 +17,10 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.api.deps import get_authenticated_user
 from app.api.routes.invoices import (
+    DELIVERY_LINE_LABEL,
+    DELIVERY_SAC_CODE,
     build_invoice_pdf,
+    delivery_charge_lines,
     line_discount_and_taxable_value,
     pdf_response,
     resolve_invoice_customer_id,
@@ -153,7 +156,7 @@ async def _standard_line_items(invoice: InvoiceDetails) -> list[CustomerInvoiceL
     summaries = await SalesSummary.find(In(SalesSummary.sales_order_id, invoice.sales_ids)).to_list()
     products_by_id = await _products_by_id([summary.product_id for summary in summaries])
 
-    return [
+    line_items = [
         CustomerInvoiceLineItem(
             product_name=_product_name(products_by_id, summary.product_id),
             hsn_code=_hsn_code(products_by_id, summary.product_id),
@@ -166,6 +169,29 @@ async def _standard_line_items(invoice: InvoiceDetails) -> list[CustomerInvoiceL
         )
         for summary in summaries
     ]
+
+    # The delivery charge, exactly as the PDF prints it (same label, same
+    # SAC, same figures — see delivery_charge_lines). Without it the line
+    # items on screen wouldn't add up to the total shown beneath them, and
+    # the client would be looking at a different document from the one they
+    # can download.
+    orders = await SalesOrders.find(In(SalesOrders.id, invoice.sales_ids)).to_list()
+    line_items += [
+        CustomerInvoiceLineItem(
+            product_name=DELIVERY_LINE_LABEL,
+            hsn_code=DELIVERY_SAC_CODE,
+            quantity=1,
+            rate=line.amount,
+            discount=0.0,
+            taxable_value=line.amount,
+            tax_perc=line.tax_perc,
+            tax_amount=line.tax_amount,
+            total=line.total,
+        )
+        for line in delivery_charge_lines(orders)
+    ]
+
+    return line_items
 
 
 async def _proforma_line_items(invoice: InvoiceDetails) -> list[CustomerInvoiceLineItem]:

@@ -18,6 +18,12 @@ class CreateNewSalesOrderRequest(BaseModel):
     # Flat discount off the order's whole net (pre-tax) amount — see
     # SalesOrders.overall_discount. Optional: an order without one submits 0.
     overall_discount: float = Field(default=0.0, ge=0)
+    # Delivery charged to the customer, plus the GST % it carries — see
+    # SalesOrders.delivery_charge. Both optional: an order with no delivery
+    # submits 0 for each, which is exactly what an order raised before this
+    # existed reads as.
+    delivery_charge: float = Field(default=0.0, ge=0)
+    delivery_tax_perc: float = Field(default=0.0, ge=0)
     description: str
     # Optional: purchase order(s) this sales order is fulfilled from.
     related_purchase_order_ids: list[int] = []
@@ -51,6 +57,8 @@ class SalesOrderDetailItem(BaseModel):
     rates: list[float]
     tax_percs: list[float]
     overall_discount: float
+    delivery_charge: float
+    delivery_tax_perc: float
     total_amount_before_tax: float
     total_tax_amount: float
     total_amount_after_tax: float
@@ -78,6 +86,12 @@ class UpdateSalesOrderDetailsRequest(BaseModel):
     # Flat discount off the order's whole net (pre-tax) amount — see
     # SalesOrders.overall_discount. Optional: an order without one submits 0.
     overall_discount: float = Field(default=0.0, ge=0)
+    # Delivery charged to the customer, plus the GST % it carries — see
+    # SalesOrders.delivery_charge. Both optional: an order with no delivery
+    # submits 0 for each, which is exactly what an order raised before this
+    # existed reads as.
+    delivery_charge: float = Field(default=0.0, ge=0)
+    delivery_tax_perc: float = Field(default=0.0, ge=0)
     description: str
     related_purchase_order_ids: list[int] = []
     related_unbilled_purchase_order_ids: list[int] = []

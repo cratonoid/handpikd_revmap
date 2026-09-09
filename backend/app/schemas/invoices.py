@@ -71,7 +71,8 @@ class UpdateInvoiceDetailsRequest(BaseModel):
     online_or_offline: OnlineOrOffline
     transport: str = ""
     # Like QuotationDetails.status, only ever settable in edit mode — a new
-    # invoice is always created as InvoiceStatus.new (see create_new_invoice).
+    # invoice is always created as InvoiceStatus.unpaid (see
+    # create_new_invoice, which leaves the model default in place).
     status: InvoiceStatus
     is_deleted: bool = False
 

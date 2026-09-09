@@ -4,8 +4,8 @@
 // <AccountsReceivablesTab> — the "money in" tab of /admin/accounts
 // ---------------------------------------------------------------------------
 // Reads GET /admin/get_accounts_receivables for the page's shared date range.
-// Scope is unpaid standard sales invoices (status new or submitted) raised in
-// that range; the paid ones show up only as the "collected" figure.
+// Scope is unpaid standard sales invoices raised in that range; the paid ones
+// show up only as the "collected" figure.
 //
 // The two clocks at work here trip people up, so the tab states both: the
 // date RANGE picks which invoices are listed, but the AGING is measured
@@ -24,8 +24,7 @@ import { HorizontalBreakdown, type BreakdownRow } from "@/components/admin/accou
 import styles from "@/styles/dashboard.module.css";
 
 const STATUS_LABEL: Record<string, string> = {
-  new: "New",
-  submitted: "Submitted",
+  unpaid: "Unpaid",
   paid: "Paid",
 };
 

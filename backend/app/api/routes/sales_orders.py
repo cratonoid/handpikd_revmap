@@ -37,6 +37,7 @@ from app.schemas.sales_orders import (
     UpdateSalesOrderDetailsResponse,
 )
 from app.services.counters import get_next_id
+from app.services.invoice_totals import refresh_invoice_totals_for_sales_orders
 from app.services.inventory import (
     STOCK_OUT,
     apply_sales_order_stock,
@@ -243,12 +244,26 @@ async def _stored_line_discounts(
     return _allocate_line_discounts(discount_by_product, product_ids, quantities, rates)
 
 
+def delivery_tax_amount(delivery_charge: float, delivery_tax_perc: float) -> float:
+    """GST on a delivery charge, computed exactly like a line item's.
+
+    One definition, because three places have to agree on it to the paisa:
+    the order totals stored here, the delivery line the invoice PDF prints,
+    and the same line the client portal shows (both in routes/invoices.py).
+    Deliberately unrounded, like the per-line tax above it — rounding is a
+    presentation step.
+    """
+    return delivery_charge * (delivery_tax_perc / 100)
+
+
 def _compute_line_items_and_totals(
     quantities: list[int],
     rates: list[float],
     tax_percs: list[float],
     discounts: list[float] | None = None,
     overall_discount: float = 0.0,
+    delivery_charge: float = 0.0,
+    delivery_tax_perc: float = 0.0,
 ) -> tuple[list[float], list[float], float, float, float]:
     # `discounts` is each line's share of its product's costing discount (see
     # _allocate_line_discounts). None on create — a brand-new order has no
@@ -279,8 +294,18 @@ def _compute_line_items_and_totals(
         )
     ]
     tax_amounts = [subtotal * (tax_perc / 100) for subtotal, tax_perc in zip(line_subtotals, tax_percs)]
-    total_before_tax = sum(line_subtotals)
-    total_tax = sum(tax_amounts)
+    # `delivery_charge` is billed on top of the products rather than spread
+    # across them (see SalesOrders.delivery_charge), so it lands in the
+    # TOTALS only — the two per-line lists returned below stay products-only,
+    # since they become this order's #sales_summary rows and delivery is not
+    # a product. The invoice prints it as its own line instead, built from
+    # the order in routes/invoices.py.
+    #
+    # No discount interacts with it either: overall_discount is a discount on
+    # the goods, and _reject_overall_discount_above_subtotal checks it
+    # against the goods' subtotal for exactly that reason.
+    total_before_tax = sum(line_subtotals) + delivery_charge
+    total_tax = sum(tax_amounts) + delivery_tax_amount(delivery_charge, delivery_tax_perc)
     total_after_tax = total_before_tax + total_tax
     return line_subtotals, tax_amounts, total_before_tax, total_tax, total_after_tax
 
@@ -332,6 +357,8 @@ async def create_new_sales_order(
             payload.rates,
             payload.tax_percs,
             overall_discount=payload.overall_discount,
+            delivery_charge=payload.delivery_charge,
+            delivery_tax_perc=payload.delivery_tax_perc,
         )
     )
 
@@ -346,6 +373,8 @@ async def create_new_sales_order(
         cust_id=payload.cust_id,
         date=payload.date,
         overall_discount=payload.overall_discount,
+        delivery_charge=payload.delivery_charge,
+        delivery_tax_perc=payload.delivery_tax_perc,
         total_amount_before_tax=total_before_tax,
         total_tax_amount=total_tax,
         total_amount_after_tax=total_after_tax,
@@ -403,6 +432,8 @@ async def get_sales_order_details(
                 rates=[item.rate for item in line_items],
                 tax_percs=[item.tax_perc for item in line_items],
                 overall_discount=order.overall_discount,
+                delivery_charge=order.delivery_charge,
+                delivery_tax_perc=order.delivery_tax_perc,
                 total_amount_before_tax=order.total_amount_before_tax,
                 total_tax_amount=order.total_tax_amount,
                 total_amount_after_tax=order.total_amount_after_tax,
@@ -448,6 +479,8 @@ async def update_sales_order_details(
             payload.tax_percs,
             discounts,
             payload.overall_discount,
+            payload.delivery_charge,
+            payload.delivery_tax_perc,
         )
     )
 
@@ -471,6 +504,8 @@ async def update_sales_order_details(
     sales_order.cust_id = payload.cust_id
     sales_order.date = payload.date
     sales_order.overall_discount = payload.overall_discount
+    sales_order.delivery_charge = payload.delivery_charge
+    sales_order.delivery_tax_perc = payload.delivery_tax_perc
     sales_order.total_amount_before_tax = total_before_tax
     sales_order.total_tax_amount = total_tax
     sales_order.total_amount_after_tax = total_after_tax
@@ -500,6 +535,12 @@ async def update_sales_order_details(
         )
     else:
         await clear_sales_order_stock(sales_order.id)
+
+    # Any invoice already raised against this order snapshotted the totals
+    # that just changed, while its PDF prints the #sales_summary rows this
+    # very endpoint rewrote a few lines up. Left alone, the two disagree and
+    # the invoice stops adding up — see services/invoice_totals.py.
+    await refresh_invoice_totals_for_sales_orders([sales_order.id])
 
     return UpdateSalesOrderDetailsResponse(message="sales order updated successfully")
 
@@ -630,6 +671,8 @@ async def get_sales_order_costing(
         # Entered on the order form, shown read-only in this sheet's footer
         # so its totals reconcile with the order's.
         overall_discount=sales_order.overall_discount,
+        delivery_charge=sales_order.delivery_charge,
+        delivery_tax_perc=sales_order.delivery_tax_perc,
         lines=lines,
     )
 
@@ -729,8 +772,17 @@ async def update_sales_order_costing(
     # be carried into the recompute — leaving it out would silently drop it
     # from the order's totals the first time this sheet is saved.
     _reject_overall_discount_above_subtotal(sales_order.overall_discount, quantities, rates, discounts)
+    # The delivery charge isn't editable on this sheet (it belongs to the
+    # order form), but re-deriving the order's totals without it would drop
+    # it from the order the moment anyone saved the costing.
     line_subtotals, tax_amounts, total_before_tax, total_tax, total_after_tax = _compute_line_items_and_totals(
-        quantities, rates, tax_percs, discounts, sales_order.overall_discount
+        quantities,
+        rates,
+        tax_percs,
+        discounts,
+        sales_order.overall_discount,
+        sales_order.delivery_charge,
+        sales_order.delivery_tax_perc,
     )
 
     for item, line_subtotal, tax_amount in zip(sorted_items, line_subtotals, tax_amounts):
@@ -742,6 +794,12 @@ async def update_sales_order_costing(
     sales_order.total_tax_amount = total_tax
     sales_order.total_amount_after_tax = total_after_tax
     await sales_order.save()
+
+    # This sheet moves the order's totals too — editing a rate, a per-product
+    # discount or the sales tax % all land here — so any invoice raised
+    # against the order needs re-snapshotting for the same reason as in
+    # update_sales_order_details above.
+    await refresh_invoice_totals_for_sales_orders([sales_order.id])
 
     # Quantities are read-only on this sheet, so nothing here can move stock
     # — no #inventory work to do, unlike update_sales_order_details.

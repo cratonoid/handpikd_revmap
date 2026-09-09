@@ -20,6 +20,26 @@ class SalesOrders(Document):
     # already NET of it — nothing downstream (invoices, #sales_summary, the
     # costing sheet) has to subtract it again.
     overall_discount: float = 0.0
+    # A delivery/freight charge billed TO the customer, on top of the line
+    # items. Not to be confused with SalesOrderCosting.delivery, which is
+    # what delivery COST us on a given product line and never reaches the
+    # customer's document at all.
+    #
+    # Kept as its own figure rather than folded into a product's rate or
+    # spread across the lines the way overall_discount is: freight is a
+    # separate service supply, and burying it in a product's rate would
+    # misstate that product's HSN-wise taxable value. The invoice prints it
+    # as its own line under a SAC code (see routes/invoices.py).
+    delivery_charge: float = 0.0
+    # GST % charged on delivery_charge, stored per order rather than assumed
+    # the same way each line item carries its own tax_perc — the rate that
+    # applies depends on how the delivery was arranged. Left at 0 (and
+    # meaningless) on an order with no delivery charge, which is also what
+    # every order raised before this field existed reads as.
+    delivery_tax_perc: float = 0.0
+    # NOTE both totals below are INCLUSIVE of the delivery charge and its
+    # tax: it is billed on the same invoice, so an order's headline figures
+    # have to be what the customer actually owes.
     total_amount_before_tax: float
     total_tax_amount: float
     total_amount_after_tax: float

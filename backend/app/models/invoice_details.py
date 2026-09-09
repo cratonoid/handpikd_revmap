@@ -17,9 +17,15 @@ class OnlineOrOffline(str, Enum):
     offline = "offline"
 
 
+# Payment state, and only payment state. #invoice_details has no
+# part-payment field, so an invoice is either fully outstanding or fully
+# settled. The earlier "new"/"submitted" pair tracked how far the document
+# had got (raised, then sent to the client) rather than whether the money had
+# arrived, which left the books with two statuses meaning one thing. Legacy
+# rows carrying either are folded into `unpaid` by
+# scripts/migrate_invoice_status_to_unpaid_paid.py.
 class InvoiceStatus(str, Enum):
-    new = "new"
-    submitted = "submitted"
+    unpaid = "unpaid"
     paid = "paid"
 
 
@@ -78,7 +84,7 @@ class InvoiceDetails(Document):
     due_date: datetime
     online_or_offline: OnlineOrOffline
     transport: str = ""  # e.g. "Hand Delivery" — shipping mode, invoice-specific.
-    status: InvoiceStatus = InvoiceStatus.new
+    status: InvoiceStatus = InvoiceStatus.unpaid
     description: str = ""  # Scope/description shown on a proforma invoice PDF; unused by standard invoices.
     is_deleted: bool = False
 

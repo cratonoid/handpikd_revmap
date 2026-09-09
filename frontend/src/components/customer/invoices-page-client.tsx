@@ -34,8 +34,7 @@ import styles from "@/styles/dashboard.module.css";
 type LoadState = "loading" | "loaded" | "failed";
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
-  new: "Issued",
-  submitted: "Sent",
+  unpaid: "Unpaid",
   paid: "Paid",
 };
 
@@ -43,8 +42,7 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
 // is only that a settled invoice reads differently from an outstanding one
 // without having to read the word.
 const STATUS_COLOR: Record<InvoiceStatus, string> = {
-  new: styles.statusNew,
-  submitted: styles.statusProcessing,
+  unpaid: styles.statusNew,
   paid: styles.statusCompleted,
 };
 

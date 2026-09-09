@@ -41,8 +41,7 @@ type ModalState = { mode: "add" } | { mode: "edit"; invoice: Invoice } | null;
 type LoadState = "loading" | "loaded";
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
-  new: "New",
-  submitted: "Submitted",
+  unpaid: "Unpaid",
   paid: "Paid",
 };
 

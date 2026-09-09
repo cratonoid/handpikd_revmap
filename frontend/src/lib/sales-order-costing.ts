@@ -69,6 +69,13 @@ export type SalesOrderCosting = {
   // sheet, but its footer totals have to account for it — see
   // computeOrderTotals.
   overallDiscount: number;
+  // Likewise entered on the order form and read-only here (see
+  // SalesOrders.delivery_charge), and likewise something the footer totals
+  // have to account for — it is billed on top of the lines below, so
+  // ignoring it would leave this sheet understating the order's own Before
+  // tax / After tax figures.
+  deliveryCharge: number;
+  deliveryTaxPerc: number;
   lines: CostingLine[];
 };
 
@@ -102,6 +109,8 @@ type SalesOrderCostingResponse = {
   date: string;
   order_status_name: string;
   overall_discount: number;
+  delivery_charge: number;
+  delivery_tax_perc: number;
   lines: SalesOrderCostingLineItem[];
 };
 
@@ -129,6 +138,9 @@ export async function fetchSalesOrderCosting(salesOrderId: number): Promise<Sale
     orderStatusName: item.order_status_name,
     // ?? 0 for orders raised before order-level discounts existed.
     overallDiscount: item.overall_discount ?? 0,
+    // ...and before delivery charges did.
+    deliveryCharge: item.delivery_charge ?? 0,
+    deliveryTaxPerc: item.delivery_tax_perc ?? 0,
     lines: item.lines.map((line) => ({
       productId: line.product_id,
       modelName: line.model_name,
@@ -284,14 +296,23 @@ export type OrderTotals = {
   // Summed line subtotals, BEFORE the order-level discount.
   netSubtotalBeforeOrderDiscount: number;
   orderDiscount: number;
-  // ...and after it — this is the order's total_amount_before_tax.
+  // The delivery billed to the customer, added AFTER the discount (which is
+  // a discount on the goods) and taxed at its own rate.
+  deliveryCharge: number;
+  // ...goods net of the discount, plus the delivery — this is the order's
+  // total_amount_before_tax.
   netSubtotal: number;
   salesTaxAmount: number;
   grossSalesPrice: number;
   profit: number;
 };
 
-export function computeOrderTotals(lines: CostingLine[], overallDiscount: number): OrderTotals {
+export function computeOrderTotals(
+  lines: CostingLine[],
+  overallDiscount: number,
+  deliveryCharge = 0,
+  deliveryTaxPerc = 0,
+): OrderTotals {
   const figuresByLine = lines.map((line) => computeCostingFigures(line));
   const netSubtotalBeforeOrderDiscount = figuresByLine.reduce((sum, figures) => sum + figures.netSubtotal, 0);
 
@@ -302,17 +323,26 @@ export function computeOrderTotals(lines: CostingLine[], overallDiscount: number
   });
 
   const netFinalCost = figuresByLine.reduce((sum, figures) => sum + figures.netFinalCost, 0);
-  const netSubtotal = netSubtotalBeforeOrderDiscount - discountShares.reduce((sum, share) => sum + share, 0);
-  const salesTaxAmount = figuresByLine.reduce(
+  const goodsNetSubtotal =
+    netSubtotalBeforeOrderDiscount - discountShares.reduce((sum, share) => sum + share, 0);
+  const goodsTaxAmount = figuresByLine.reduce(
     (sum, figures, index) =>
       sum + (figures.netSubtotal - discountShares[index]) * (lines[index].salesTaxPerc / 100),
     0,
   );
 
+  // Delivery is revenue, not cost: it moves netSubtotal and the tax, and so
+  // moves profit with them. The cost of getting the goods there is a
+  // separate, per-line figure on this very sheet (CostingLine.delivery) and
+  // is already inside netFinalCost.
+  const netSubtotal = goodsNetSubtotal + deliveryCharge;
+  const salesTaxAmount = goodsTaxAmount + deliveryCharge * (deliveryTaxPerc / 100);
+
   return {
     netFinalCost,
     netSubtotalBeforeOrderDiscount,
     orderDiscount: overallDiscount,
+    deliveryCharge,
     netSubtotal,
     salesTaxAmount,
     grossSalesPrice: netSubtotal + salesTaxAmount,

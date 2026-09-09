@@ -29,14 +29,12 @@ type LoadState = "loading" | "loaded" | "failed";
 // Same wording and colors as the invoices table, so a status doesn't change
 // its name between the two screens.
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
-  new: "Issued",
-  submitted: "Sent",
+  unpaid: "Unpaid",
   paid: "Paid",
 };
 
 const STATUS_COLOR: Record<InvoiceStatus, string> = {
-  new: styles.statusNew,
-  submitted: styles.statusProcessing,
+  unpaid: styles.statusNew,
   paid: styles.statusCompleted,
 };
 

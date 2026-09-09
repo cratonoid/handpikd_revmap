@@ -28,6 +28,13 @@
 //     totals shown here mirror that allocation rather than subtracting it
 //     from a finished total — see _allocate_overall_discount in
 //     backend/app/api/routes/sales_orders.py.
+//   - An optional delivery charge (delivery_charge) with its own GST %, on
+//     top of the line items. Unlike the discount it is NOT spread across
+//     them: freight is a separate service supply, so it stays a figure of
+//     its own here and prints as its own line on the invoice under SAC
+//     996511 (see delivery_charge_lines in backend/app/api/routes/
+//     invoices.py). Not to be confused with the per-product "Delivery" on
+//     the "Add details" costing sheet, which is what delivery COST us.
 //   - order_no is backend-assigned (via OrderNoCounterMaster) and never
 //     submitted; shown read-only in edit mode.
 //   - order_status_id is only ever shown/submitted in edit mode — new orders
@@ -56,6 +63,10 @@ import { XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
 type Status = "idle" | "saving";
+
+// GST on goods transport. Only a default for the input — the rate is stored
+// per order (SalesOrders.delivery_tax_perc) and stays editable.
+const DEFAULT_DELIVERY_TAX_PERC = 18;
 
 type LineItem = {
   productId: string | null;
@@ -129,6 +140,16 @@ export function SalesOrderFormModal({
   // discount, which a controlled type="number" can't express cleanly.
   const [overallDiscount, setOverallDiscount] = useState(
     initialOrder?.overallDiscount ? String(initialOrder.overallDiscount) : "",
+  );
+  const [deliveryCharge, setDeliveryCharge] = useState(
+    initialOrder?.deliveryCharge ? String(initialOrder.deliveryCharge) : "",
+  );
+  // Blank until a charge is entered, then defaulted to 18% by
+  // handleDeliveryChargeChange below — the usual rate for goods transport,
+  // but editable, since what applies depends on how the delivery was
+  // arranged. An order being edited keeps whatever rate it was saved with.
+  const [deliveryTaxPerc, setDeliveryTaxPerc] = useState(
+    initialOrder?.deliveryCharge ? String(initialOrder.deliveryTaxPerc) : "",
   );
   const [description, setDescription] = useState(initialOrder?.description ?? "");
   const [status, setStatus] = useState<Status>("idle");
@@ -215,13 +236,36 @@ export function SalesOrderFormModal({
     return overallDiscountAmount * (lineValue / subtotalBeforeDiscount);
   });
 
-  const totalAmountBeforeTax = subtotalBeforeDiscount - discountShares.reduce((sum, share) => sum + share, 0);
-  const totalTaxAmount = lineItems.reduce(
+  // Added on top of the goods rather than spread across them, and taxed in
+  // its own right — mirrors _compute_line_items_and_totals' delivery terms in
+  // backend/app/api/routes/sales_orders.py, so what's shown here is what gets
+  // stored. The order discount deliberately doesn't touch it: that discount
+  // is on the goods, and the backend validates it against the goods' subtotal.
+  const deliveryChargeAmount = Number(deliveryCharge) || 0;
+  const deliveryTaxAmount = deliveryChargeAmount * ((Number(deliveryTaxPerc) || 0) / 100);
+
+  const goodsBeforeTax = subtotalBeforeDiscount - discountShares.reduce((sum, share) => sum + share, 0);
+  const goodsTaxAmount = lineItems.reduce(
     (sum, item, index) =>
       sum + (lineValues[index] - discountShares[index]) * ((Number(item.taxPerc) || 0) / 100),
     0,
   );
+
+  const totalAmountBeforeTax = goodsBeforeTax + deliveryChargeAmount;
+  const totalTaxAmount = goodsTaxAmount + deliveryTaxAmount;
   const totalAmountAfterTax = totalAmountBeforeTax + totalTaxAmount;
+
+  function handleDeliveryChargeChange(value: string) {
+    const sanitized = sanitizeDecimalInput(value);
+    setDeliveryCharge(sanitized);
+    // Fills the rate in the first time a charge is entered, rather than
+    // leaving a charge silently untaxed because the second field was missed.
+    // Only when it is still blank — an explicit 0 (delivery not taxed) is a
+    // real answer and must survive further edits to the amount.
+    if (sanitized && deliveryTaxPerc === "") {
+      setDeliveryTaxPerc(String(DEFAULT_DELIVERY_TAX_PERC));
+    }
+  }
 
   function updateLineItem(index: number, changes: Partial<LineItem>) {
     setLineItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...changes } : item)));
@@ -274,6 +318,8 @@ export function SalesOrderFormModal({
       rates,
       tax_percs: taxPercs,
       overall_discount: overallDiscountAmount,
+      delivery_charge: deliveryChargeAmount,
+      delivery_tax_perc: deliveryChargeAmount ? Number(deliveryTaxPerc) || 0 : 0,
       description,
       related_purchase_order_ids: relatedPurchaseOrderIds.map(Number),
       related_unbilled_purchase_order_ids: relatedUnbilledPurchaseOrderIds.map(Number),
@@ -571,10 +617,56 @@ export function SalesOrderFormModal({
             </div>
           </div>
 
+          <div className={styles.orderDiscountRow}>
+            <div className={styles.orderChargeFields}>
+              <div>
+                <label htmlFor="delivery-charge" className={styles.formLabel}>
+                  Delivery charge (₹)
+                </label>
+                <input
+                  id="delivery-charge"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={deliveryCharge}
+                  onChange={(e) => handleDeliveryChargeChange(e.target.value)}
+                  className={styles.formInput}
+                />
+              </div>
+              <div>
+                <label htmlFor="delivery-tax-perc" className={styles.formLabel}>
+                  Delivery GST %
+                </label>
+                <input
+                  id="delivery-tax-perc"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={deliveryTaxPerc}
+                  onChange={(e) => setDeliveryTaxPerc(sanitizeDecimalInput(e.target.value))}
+                  /* Nothing to charge tax on until there is a charge, and
+                     leaving it typeable would let a rate be saved against a
+                     delivery that isn't being billed. */
+                  disabled={!deliveryChargeAmount}
+                  className={styles.formInput}
+                />
+              </div>
+            </div>
+          </div>
+
+          <p className={styles.formHint}>
+            Billed on top of the line items and taxed separately — it prints as its own line on the invoice.
+            This is what the customer pays for delivery, not what delivery costs us (that&apos;s the per-product
+            Delivery on the &ldquo;Add details&rdquo; sheet).
+          </p>
+
           <div className={styles.totalsRow}>
             {overallDiscountAmount > 0 && (
               <>
                 <div className={styles.totalsRowItem}>
+                  {/* The goods' subtotal, which is what the discount is
+                      taken off — delivery is added after it, and gets its
+                      own figure below. */}
                   <p className={styles.totalsRowLabel}>Subtotal</p>
                   <p className={styles.totalsRowValue}>₹{subtotalBeforeDiscount.toFixed(2)}</p>
                 </div>
@@ -583,6 +675,12 @@ export function SalesOrderFormModal({
                   <p className={styles.totalsRowValue}>−₹{overallDiscountAmount.toFixed(2)}</p>
                 </div>
               </>
+            )}
+            {deliveryChargeAmount > 0 && (
+              <div className={styles.totalsRowItem}>
+                <p className={styles.totalsRowLabel}>Delivery</p>
+                <p className={styles.totalsRowValue}>₹{deliveryChargeAmount.toFixed(2)}</p>
+              </div>
             )}
             <div className={styles.totalsRowItem}>
               <p className={styles.totalsRowLabel}>Total before tax</p>

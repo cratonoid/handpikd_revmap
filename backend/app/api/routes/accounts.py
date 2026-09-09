@@ -79,11 +79,6 @@ from app.services.invoice_numbering import format_sales_invoice_no
 
 router = APIRouter(prefix="/admin", tags=["accounts"])
 
-# Invoices that still owe money. "paid" is the only terminal status, so
-# receivables is everything else — the same split analytics.py's
-# _UNPAID_INVOICE_STATUSES makes for the dashboard's unpaid count.
-_UNPAID_INVOICE_STATUSES = [InvoiceStatus.new, InvoiceStatus.submitted]
-
 # Only the top few clients are worth a table on an overview tab; the full
 # per-client picture lives on the receivables tab.
 _TOP_CLIENTS_LIMIT = 8
@@ -412,7 +407,9 @@ async def get_accounts_receivables(
     as_of = date.today()
 
     invoices = await _standard_invoices_in_range(start_dt, end_dt)
-    outstanding_invoices = [invoice for invoice in invoices if invoice.status in _UNPAID_INVOICE_STATUSES]
+    # Status is all-or-nothing (unpaid or paid, with no part-payment field),
+    # so these two lists partition the invoices raised in the range.
+    outstanding_invoices = [invoice for invoice in invoices if invoice.status == InvoiceStatus.unpaid]
     paid_invoices = [invoice for invoice in invoices if invoice.status == InvoiceStatus.paid]
 
     sales_order_ids = {sales_id for invoice in outstanding_invoices for sales_id in invoice.sales_ids}

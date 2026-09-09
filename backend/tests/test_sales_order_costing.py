@@ -12,7 +12,9 @@ from app.api.routes.sales_orders import (
     _allocate_line_discounts,
     _allocate_overall_discount,
     _compute_line_items_and_totals,
+    delivery_tax_amount,
 )
+from app.api.routes.invoices import delivery_charge_lines
 
 
 def test_no_discounts_reduces_to_quantity_times_rate():
@@ -110,3 +112,120 @@ def test_overall_discount_on_zero_value_lines_splits_evenly():
 
 def test_no_overall_discount_short_circuits_to_zeroes():
     assert _allocate_overall_discount(0.0, [100.0, 200.0]) == [0.0, 0.0]
+
+
+# ---------------------------------------------------------------------------
+# Delivery charged to the customer (SalesOrders.delivery_charge)
+# ---------------------------------------------------------------------------
+# The charge is billed on top of the goods and taxed in its own right, so the
+# thing worth pinning down is that it reaches the ORDER TOTALS without
+# touching the per-line figures — those become #sales_summary rows, and
+# delivery is not a product. The invoice prints it as its own line instead
+# (delivery_charge_lines in routes/invoices.py), and the two have to agree to
+# the paisa or the document won't add up to its own total.
+def test_delivery_charge_lands_in_the_totals_and_is_taxed_in_its_own_right():
+    subtotals, tax_amounts, before_tax, tax, after_tax = _compute_line_items_and_totals(
+        quantities=[10],
+        rates=[100.0],
+        tax_percs=[18.0],
+        delivery_charge=500.0,
+        delivery_tax_perc=18.0,
+    )
+    # The goods' own line is untouched by it.
+    assert subtotals == [1000.0]
+    assert tax_amounts == [180.0]
+    # ...but the order owes for both.
+    assert before_tax == 1500.0
+    assert tax == pytest.approx(270.0)  # 180 on the goods + 90 on the delivery
+    assert after_tax == pytest.approx(1770.0)
+
+
+def test_delivery_can_be_taxed_at_a_different_rate_from_the_goods():
+    _, _, before_tax, tax, _ = _compute_line_items_and_totals(
+        quantities=[10], rates=[100.0], tax_percs=[12.0], delivery_charge=200.0, delivery_tax_perc=18.0
+    )
+    assert before_tax == 1200.0
+    assert tax == pytest.approx(120.0 + 36.0)
+
+
+def test_an_order_level_discount_does_not_reduce_the_delivery_charge():
+    # The discount is a discount on the goods — it is validated against the
+    # goods' subtotal (_reject_overall_discount_above_subtotal), so it must
+    # not quietly eat into freight as well.
+    _, _, before_tax, tax, _ = _compute_line_items_and_totals(
+        quantities=[10],
+        rates=[100.0],
+        tax_percs=[18.0],
+        overall_discount=200.0,
+        delivery_charge=500.0,
+        delivery_tax_perc=18.0,
+    )
+    assert before_tax == 1300.0  # 800 of goods + 500 of delivery
+    assert tax == pytest.approx(144.0 + 90.0)
+
+
+def test_no_delivery_charge_leaves_every_total_exactly_as_it_was():
+    # What every order raised before the field existed reads as.
+    with_defaults = _compute_line_items_and_totals(quantities=[10], rates=[100.0], tax_percs=[18.0])
+    explicit_zero = _compute_line_items_and_totals(
+        quantities=[10], rates=[100.0], tax_percs=[18.0], delivery_charge=0.0, delivery_tax_perc=18.0
+    )
+    assert with_defaults == explicit_zero == ([1000.0], [180.0], 1000.0, 180.0, 1180.0)
+
+
+class _Order:
+    """Stands in for a SalesOrders row — delivery_charge_lines reads two fields."""
+
+    def __init__(self, delivery_charge: float, delivery_tax_perc: float = 18.0) -> None:
+        self.delivery_charge = delivery_charge
+        self.delivery_tax_perc = delivery_tax_perc
+
+
+def test_the_invoice_line_carries_the_same_tax_the_order_total_was_built_from():
+    (line,) = delivery_charge_lines([_Order(500.0, 18.0)])
+
+    assert line.amount == 500.0
+    assert line.tax_amount == delivery_tax_amount(500.0, 18.0) == 90.0
+    assert line.total == 590.0
+
+
+def test_orders_without_a_delivery_charge_print_no_delivery_line():
+    assert delivery_charge_lines([_Order(0.0), _Order(0.0, 0.0)]) == []
+
+
+def test_each_order_on_a_multi_order_invoice_keeps_its_own_delivery_line():
+    # Two orders billed together can have been delivered under different
+    # arrangements; merging them would print one figure matching neither.
+    lines = delivery_charge_lines([_Order(500.0, 18.0), _Order(300.0, 5.0)])
+
+    assert [(line.amount, line.tax_perc) for line in lines] == [(500.0, 18.0), (300.0, 5.0)]
+    assert [line.tax_amount for line in lines] == pytest.approx([90.0, 15.0])
+
+
+def test_the_printed_invoice_lines_add_up_to_the_order_total_they_were_billed_from():
+    """The property that actually matters end to end.
+
+    An invoice snapshots its totals from the sales order
+    (_sum_sales_order_totals in routes/invoices.py) but prints its rows from
+    #sales_summary plus the delivery line. Those two paths are computed by
+    different code, so if they ever drift the customer gets a document whose
+    rows don't sum to its own grand total. This pins them together.
+    """
+    quantities, rates, tax_percs = [10, 4], [100.0, 250.0], [18.0, 12.0]
+    delivery_charge, delivery_tax_perc = 500.0, 18.0
+
+    line_subtotals, tax_amounts, _, _, order_total_after_tax = _compute_line_items_and_totals(
+        quantities,
+        rates,
+        tax_percs,
+        overall_discount=200.0,
+        delivery_charge=delivery_charge,
+        delivery_tax_perc=delivery_tax_perc,
+    )
+
+    # What #sales_summary stores for each product line: subtotal + its tax.
+    printed = [subtotal + tax for subtotal, tax in zip(line_subtotals, tax_amounts)]
+    # ...plus the delivery row the invoice appends.
+    printed += [line.total for line in delivery_charge_lines([_Order(delivery_charge, delivery_tax_perc)])]
+
+    assert sum(printed) == pytest.approx(order_total_after_tax)

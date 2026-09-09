@@ -176,12 +176,19 @@ export function SalesOrderCostingPageClient({ salesOrderId }: { salesOrderId: nu
   const figuresByLine = useMemo(() => lines.map((line) => computeCostingFigures(toCostingLine(line))), [lines]);
 
   // Not a plain sum of figuresByLine: the order's own discount off its net
-  // amount belongs to the order rather than to any one product, so it is
-  // applied across the summed lines here (see computeOrderTotals). Without
-  // it this footer would disagree with the order's Before tax / After tax
-  // columns on the orders table.
+  // amount, and the delivery charged to the customer, both belong to the
+  // order rather than to any one product, so they are applied across the
+  // summed lines here (see computeOrderTotals). Without them this footer
+  // would disagree with the order's Before tax / After tax columns on the
+  // orders table.
   const totals = useMemo(
-    () => computeOrderTotals(lines.map(toCostingLine), order?.overallDiscount ?? 0),
+    () =>
+      computeOrderTotals(
+        lines.map(toCostingLine),
+        order?.overallDiscount ?? 0,
+        order?.deliveryCharge ?? 0,
+        order?.deliveryTaxPerc ?? 0,
+      ),
     [lines, order],
   );
 
@@ -563,6 +570,15 @@ export function SalesOrderCostingPageClient({ salesOrderId }: { salesOrderId: nu
                 <p className={styles.totalsRowValue}>−{currency(totals.orderDiscount)}</p>
               </div>
             </>
+          )}
+          {totals.deliveryCharge > 0 && (
+            <div className={styles.totalsRowItem}>
+              {/* Charged to the customer, entered on the order form — not
+                  the per-product Delivery column above, which is what
+                  getting the goods there cost us. */}
+              <p className={styles.totalsRowLabel}>Delivery charged</p>
+              <p className={styles.totalsRowValue}>{currency(totals.deliveryCharge)}</p>
+            </div>
           )}
           <div className={styles.totalsRowItem}>
             <p className={styles.totalsRowLabel}>Total net subtotal</p>

@@ -25,7 +25,6 @@ router = APIRouter(prefix="/admin", tags=["analytics"])
 # _get_new_status_id does for "New".
 _COMPLETED_STATUS_NAME = "Completed"
 _PENDING_QUOTATION_STATUSES = [QuotationStatus.draft, QuotationStatus.sent]
-_UNPAID_INVOICE_STATUSES = [InvoiceStatus.new, InvoiceStatus.submitted]
 
 
 async def _get_completed_status_id() -> int:
@@ -49,7 +48,7 @@ async def get_dashboard_stats(
         QuotationDetails.is_deleted == False, In(QuotationDetails.status, _PENDING_QUOTATION_STATUSES)
     ).count()
     unpaid_invoices = await InvoiceDetails.find(
-        InvoiceDetails.is_deleted == False, In(InvoiceDetails.status, _UNPAID_INVOICE_STATUSES)
+        InvoiceDetails.is_deleted == False, InvoiceDetails.status == InvoiceStatus.unpaid
     ).count()
 
     return DashboardStatsResponse(

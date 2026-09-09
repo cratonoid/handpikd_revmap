@@ -115,6 +115,11 @@ MIGRATIONS: list[tuple[str, str, str]] = [
         "standard invoice series -> per-financial-year (H/26-27/12)",
     ),
     (
+        "migrate_invoice_status_to_unpaid_paid",
+        AUTO,
+        "invoice_details.status: new/submitted -> unpaid",
+    ),
+    (
         "drop_legacy_proforma_invoices",
         MANUAL,
         "DESTRUCTIVE: deletes every proforma invoice_details row",
