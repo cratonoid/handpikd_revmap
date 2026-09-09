@@ -512,6 +512,33 @@
   color: var(--color-charcoal);
 }
 
+/* The line under a stat's figure that says what it counts ("3 invoice(s)
+   awaiting payment") — see components/customer/dashboard-page-client.tsx.
+   Optional: a card without one is unchanged. */
+.statCaption {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+}
+
+/* Heading + "see everything" link above a section further down a dashboard
+   page, where .pageHeading would compete with the page's own title. */
+.dashboardSectionHeader {
+  margin-top: 2.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.dashboardSectionTitle {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
 /* -----------------------------------------------------------------------
    Page header row with an action button (components/admin/clients-page-client.tsx)
    ----------------------------------------------------------------------- */
@@ -2555,6 +2582,19 @@ select.formInput:disabled {
   font-size: 1.125rem;
   font-weight: 600;
   color: var(--color-charcoal);
+}
+
+/* -----------------------------------------------------------------------
+   Client invoice details popup
+   (components/customer/invoice-detail-modal.tsx)
+   -----------------------------------------------------------------------
+   Wider than the default .modalPanel because this one holds a full line-item
+   table rather than a form: at 40rem the nine columns start scrolling
+   sideways on a laptop, which is the one place they should all fit. It stays
+   a max-width, so nothing changes on a phone. */
+
+.invoiceDetailPanel {
+  max-width: 56rem;
 }
 
 /* -----------------------------------------------------------------------

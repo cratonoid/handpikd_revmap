@@ -96,7 +96,7 @@ const NAV_ITEMS: Record<UserRole, NavItem[]> = {
   ],
   customer: [
     { label: "Dashboard", href: "/customer", icon: HomeIcon },
-    { label: "Orders", href: "/customer/orders", icon: ShoppingCartIcon },
+    { label: "Invoices", href: "/customer/invoices", icon: ReceiptIcon },
   ],
 };
 

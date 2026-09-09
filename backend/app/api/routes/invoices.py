@@ -85,6 +85,22 @@ def _check_same_customer(sales_orders: list[SalesOrders]) -> None:
         )
 
 
+async def resolve_invoice_customer_id(invoice: InvoiceDetails) -> int | None:
+    """The client an invoice is billed to, whichever kind it is.
+
+    Proforma invoices carry their own cust_id; standard ones derive it from
+    the sales orders they were raised against (all of which share one
+    customer — enforced in create_new_invoice). Used here to build a PDF and
+    by routes/customer_invoices.py to decide whether a signed-in client is
+    allowed to see a given invoice at all.
+    """
+    if invoice.type == InvoiceType.proforma:
+        return invoice.cust_id
+
+    sales_orders = await _get_sales_orders_or_404(invoice.sales_ids)
+    return sales_orders[0].cust_id if sales_orders else None
+
+
 async def _validate_customer_exists(cust_id: int) -> None:
     customer = await CustomerDetails.get(cust_id)
     if customer is None:
@@ -443,7 +459,7 @@ async def update_proforma_invoice_details(
     return UpdateProformaInvoiceDetailsResponse(message="proforma invoice updated successfully")
 
 
-def _line_discount_and_taxable_value(summary: SalesSummary) -> dict[str, float]:
+def line_discount_and_taxable_value(summary: SalesSummary) -> dict[str, float]:
     # #sales_summary stores the GROSS rate but a NET total: the costing
     # sheet's per-product discount and the order's overall discount are both
     # taken off the line subtotal before tax is charged, and only the result
@@ -480,7 +496,7 @@ async def _build_standard_invoice_pdf_inputs(summaries: list[SalesSummary], cust
             hsn_code=products_by_id[summary.product_id].hsn_code if summary.product_id in products_by_id else "",
             quantity=summary.quantity,
             rate=summary.rate,
-            **_line_discount_and_taxable_value(summary),
+            **line_discount_and_taxable_value(summary),
             tax_perc=summary.tax_perc,
             tax_amount=summary.tax_amount,
             total=summary.total,
@@ -569,15 +585,14 @@ async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict
     return pdf_bytes, filename
 
 
-@router.get("/get_invoice_pdf")
-async def get_invoice_pdf(
-    invoice_id: int,
-    _: User | None = Depends(require_admin),
-) -> Response:
-    invoice = await InvoiceDetails.get(invoice_id)
-    if invoice is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invoice not found")
+async def build_invoice_pdf(invoice: InvoiceDetails) -> tuple[bytes, str]:
+    """Renders `invoice` to (pdf_bytes, filename), standard or proforma.
 
+    Shared by the admin download below and the client portal's own download
+    (routes/customer_invoices.py) so a client is handed byte-for-byte the
+    document the admin sees, never a lookalike rebuilt from a second code
+    path.
+    """
     invoice_no_display = format_sales_invoice_no(invoice)
     personal = await get_personal_details()
 
@@ -604,11 +619,28 @@ async def get_invoice_pdf(
         )
         filename = f"proforma-invoice-{invoice_no_filename_slug(invoice_no_display)}.pdf"
 
+    return pdf_bytes, filename
+
+
+def pdf_response(pdf_bytes: bytes, filename: str) -> Response:
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/get_invoice_pdf")
+async def get_invoice_pdf(
+    invoice_id: int,
+    _: User | None = Depends(require_admin),
+) -> Response:
+    invoice = await InvoiceDetails.get(invoice_id)
+    if invoice is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invoice not found")
+
+    pdf_bytes, filename = await build_invoice_pdf(invoice)
+    return pdf_response(pdf_bytes, filename)
 
 
 @router.get("/get_invoices_pdf_zip")

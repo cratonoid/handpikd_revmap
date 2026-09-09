@@ -9,6 +9,7 @@ from app.api.routes import (
     authentication,
     catalogues,
     categories,
+    customer_invoices,
     inquiry_form,
     inventory,
     invoices,
@@ -48,6 +49,7 @@ api_router.include_router(sales_orders.router)
 api_router.include_router(inventory.router)
 api_router.include_router(personal_details.router)
 api_router.include_router(invoices.router)
+api_router.include_router(customer_invoices.router)
 api_router.include_router(purchase_invoices.router)
 api_router.include_router(printing_orders.router)
 api_router.include_router(printing_purchase_invoices.router)
