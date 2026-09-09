@@ -85,6 +85,13 @@ class MatchedLineItem:
     hsn_code: str
     quantity: int
     rate: float
+    # Off the invoice where it printed one. A document that states no rate
+    # anywhere (ExtractedLineItem.gst_perc None — see _states_no_gst_rate in
+    # services/invoice_extraction.py) takes the matched product's own rate
+    # instead, which is the value an admin would key in from the same
+    # catalogue; a line with no product matched carries 0 and is unresolved
+    # either way, and the review screen fills the rate in when the admin
+    # picks the product.
     gst_perc: float
     # Written for the admin, and set only when product_id is None.
     unresolved_reason: str | None = None
@@ -208,6 +215,16 @@ async def _match_line_items(extracted: ExtractedInvoice, vendor_id: int) -> tupl
     matched = []
     for item in extracted.line_items:
         product, reason = _match_product(item.description, products)
+        # See MatchedLineItem.gst_perc: an invoice that printed no rate at
+        # all leaves this None, and our own record of the product is then the
+        # only statement of what the goods are taxed at. The invoice's own
+        # printed total still cross-checks the result (total_mismatch below),
+        # so a rate filled in this way that disagrees with what the vendor
+        # actually charged shows up on the review screen rather than passing
+        # silently.
+        gst_perc = item.gst_perc
+        if gst_perc is None:
+            gst_perc = product.gst_perc if product is not None else 0.0
         matched.append(
             MatchedLineItem(
                 product_id=product.id if product is not None else None,
@@ -216,7 +233,7 @@ async def _match_line_items(extracted: ExtractedInvoice, vendor_id: int) -> tupl
                 hsn_code=item.hsn_code,
                 quantity=item.quantity,
                 rate=item.rate,
-                gst_perc=item.gst_perc,
+                gst_perc=gst_perc,
                 unresolved_reason=reason,
             )
         )

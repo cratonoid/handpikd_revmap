@@ -35,8 +35,15 @@ _GSTIN_RE = re.compile(r"\b\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]\b")
 # The value is optional: plenty of invoices print the label in one table cell
 # and the number in the cell below it, which _find_invoice_no handles by
 # looking down the label's own column.
+#
+# "Voucher No." is in there because Tally heads the number column of every
+# document that isn't a tax invoice with it — a sales order, a quotation, a
+# delivery note. Vendors raise those on us as often as they raise invoices
+# (Shah Clock Agencies bills entirely by sales order), and the number under
+# that label is the one the purchase order is filed against, exactly as an
+# invoice number would be.
 _INVOICE_NO_LABEL_RE = re.compile(
-    r"(?:tax\s+)?(?:invoice|bill)\s*(?:no|number|#)\s*\.?\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9/\-_]*)?",
+    r"(?:tax\s+)?(?:invoice|bill|voucher)\s*(?:no|number|#)\s*\.?\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9/\-_]*)?",
     re.IGNORECASE,
 )
 
@@ -117,7 +124,13 @@ class ExtractedLineItem:
     hsn_code: str
     quantity: int
     rate: float
-    gst_perc: float
+    # None when the document states no GST rate ANYWHERE — see
+    # _states_no_gst_rate. Such a line is complete apart from its rate, which
+    # services/purchase_invoice_intake.py fills in from the matched product's
+    # own gst_perc; the review screen settles any line whose product it
+    # couldn't match, as it already does for every other reason a line can go
+    # unresolved.
+    gst_perc: float | None
 
 
 @dataclass(frozen=True)
@@ -437,6 +450,33 @@ def _row_gst_perc(line: str) -> float | None:
     return None
 
 
+def _states_no_gst_rate(lines: list[str]) -> bool:
+    """True when the document prints no GST percentage at all, anywhere.
+
+    Vendors who bill by Tally sales order routinely don't: Shah Clock
+    Agencies' "Sales Order ... Quotation/1380" prints a rate and an amount
+    per line, one "Integrated IGST Output Tax 2,153.40" ledger row for the
+    whole document, and no percentage on any row or in any summary. There is
+    nothing to read a per-line rate out of — the lines are taxed at several
+    different rates, so even the one tax figure doesn't divide out — so every
+    reading above comes back empty, every row is rejected for want of a rate,
+    and the whole document used to go to the Claude fallback over a value it
+    does not contain.
+
+    Where the document is silent, the rate the goods carry is the one we
+    already hold against the product, so the lines are read without it and
+    ExtractedLineItem.gst_perc is left None for the intake to fill.
+
+    The condition is the whole document rather than the row, because a rate
+    printed anywhere is evidence about the rows that don't print one — the
+    HSN-wise summary and _invoice_gst_perc are exactly that, and both are
+    better evidence than our own catalogue. Only a document that states
+    nothing at all falls through to here, so no invoice that reads today
+    changes what it reads.
+    """
+    return not any(_PERCENT_RE.search(line) for line in lines)
+
+
 def _invoice_gst_perc(lines: list[str]) -> float | None:
     """The one GST rate this invoice is raised at, or None if it isn't one.
 
@@ -494,7 +534,10 @@ def _lump_sum_quantity_rate(numbers: list[float], corroborated: bool) -> tuple[i
 
 
 def _read_line_item(
-    line: str, hsn_percentages: dict[str, float], invoice_gst_perc: float | None = None
+    line: str,
+    hsn_percentages: dict[str, float],
+    invoice_gst_perc: float | None = None,
+    gst_required: bool = True,
 ) -> tuple[ExtractedLineItem, re.Match[str]] | None:
     stripped = line.strip().lower()
     if any(stripped.startswith(prefix) for prefix in _SUMMARY_ROW_PREFIXES):
@@ -537,7 +580,7 @@ def _read_line_item(
     passes = (None, invoice_gst_perc) if invoice_gst_perc is not None else (None,)
     for fallback_gst_perc in passes:
         for hsn in candidates:
-            item = _read_line_item_at(line, hsn, hsn_percentages, fallback_gst_perc)
+            item = _read_line_item_at(line, hsn, hsn_percentages, fallback_gst_perc, gst_required)
             if item is not None:
                 return item, hsn
     return None
@@ -564,6 +607,7 @@ def _read_line_item_at(
     hsn: re.Match[str],
     hsn_percentages: dict[str, float],
     invoice_gst_perc: float | None = None,
+    gst_required: bool = True,
 ) -> ExtractedLineItem | None:
     """Reads one row on the assumption that `hsn` is its HSN/SAC cell."""
     after_hsn = line[hsn.end() :]
@@ -582,7 +626,12 @@ def _read_line_item_at(
     gst_perc = printed_gst_perc if printed_gst_perc is not None else summary_gst_perc
     if gst_perc is None:
         gst_perc = invoice_gst_perc
-    if gst_perc is None:
+    # A rate the document never states is not a row that failed to parse, so
+    # the row is kept and its rate left None — but only when the document is
+    # silent throughout (see _states_no_gst_rate). Everywhere else an
+    # unresolvable rate stays what it has always been: the check that stops a
+    # row of running totals being read as a line item.
+    if gst_perc is None and gst_required:
         return None
 
     quantity_rate = _find_quantity_rate(numbers)
@@ -690,11 +739,14 @@ def _with_wrapped_descriptions(rows: list[Row], found: list[_RowItem]) -> list[E
 
 
 def _read_page_line_items(
-    rows: list[Row], hsn_percentages: dict[str, float], invoice_gst_perc: float | None
+    rows: list[Row],
+    hsn_percentages: dict[str, float],
+    invoice_gst_perc: float | None,
+    gst_required: bool,
 ) -> list[ExtractedLineItem]:
     found: list[_RowItem] = []
     for index, row in enumerate(rows):
-        read = _read_line_item(row.text, hsn_percentages, invoice_gst_perc)
+        read = _read_line_item(row.text, hsn_percentages, invoice_gst_perc, gst_required)
         if read is None:
             continue
         item, hsn = read
@@ -725,12 +777,16 @@ def _read_line_items(pages: list[list[Row]], invoice_no: str | None) -> list[Ext
 
     # Read across every page being kept rather than per page: a multi-page
     # invoice prints its tax summary once, at the foot of the last one.
-    invoice_gst_perc = _invoice_gst_perc([row.text for page in pages for row in page])
+    kept_lines = [row.text for page in pages for row in page]
+    invoice_gst_perc = _invoice_gst_perc(kept_lines)
+    gst_required = not _states_no_gst_rate(kept_lines)
 
     line_items: list[ExtractedLineItem] = []
     for page in pages:
         hsn_percentages = _hsn_gst_percentages([row.text for row in page])
-        line_items.extend(_read_page_line_items(page, hsn_percentages, invoice_gst_perc))
+        line_items.extend(
+            _read_page_line_items(page, hsn_percentages, invoice_gst_perc, gst_required)
+        )
     return line_items
 
 

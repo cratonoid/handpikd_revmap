@@ -135,6 +135,18 @@ async def _reject_if_already_recorded(vendor_id: int, invoice_no: str) -> None:
 
 
 def _line_items(extracted: ExtractedInvoice) -> tuple[PrintingLineItem, ...]:
+    # A document that states no GST rate anywhere leaves gst_perc None (see
+    # _states_no_gst_rate in services/invoice_extraction.py). The material
+    # side fills that in from the product the line matched; there is no
+    # product here and nothing else that knows what a service the vendor
+    # described themselves is taxed at, so this is the one place where such a
+    # document is still unreadable — and the admin is told so rather than
+    # handed a form with the tax silently left off.
+    if any(item.gst_perc is None for item in extracted.line_items):
+        raise InvoiceExtractionError(
+            "this bill states no GST rate against its lines — enter the printing purchase order manually instead"
+        )
+
     return tuple(
         PrintingLineItem(
             description=item.description,

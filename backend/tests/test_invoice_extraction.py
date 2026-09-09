@@ -273,6 +273,70 @@ CHAITHRA_LAYOUT = [
     ]
 ]
 
+# A Tally SALES ORDER — which several vendors raise on us instead of a tax
+# invoice — and the two things about one that defeat every rule above:
+#   - Its number sits under a "Voucher No." label, Tally's heading for that
+#     column on any document that isn't a tax invoice.
+#   - It states no GST percentage anywhere: not on a row, not in an HSN-wise
+#     summary. The only tax on the page is a single ledger line for the whole
+#     document, and because the lines are taxed at different rates it doesn't
+#     divide back out into one either.
+# The "Disc. %" column heading is in the fixture deliberately: a bare percent
+# sign with no figure in front of it is not a stated rate, and the document
+# has to still count as silent with one on the page.
+SALES_ORDER_LAYOUT = [
+    [
+        (14, [(225, "SALES ORDER")]),
+        (31, [(34, "Shah Clock Agencies"), (260, "Voucher No."), (430, "Dated")]),
+        (40, [(34, "No.29, Manidhari Complex"), (260, "Quotation/1380"), (430, "7-Sep-26")]),
+        (97, [(34, "GSTIN/UIN: 29ABJPN9424H1Z7")]),
+        (253, [(34, "GSTIN/UIN : " + OUR_GSTIN)]),
+        (
+            284,
+            [
+                (34, "Sl"),
+                (79, "Description of Goods"),
+                (208, "HSN/SAC"),
+                (261, "Due on"),
+                (320, "Quantity"),
+                (380, "Rate"),
+                (430, "per"),
+                (465, "Disc. %"),
+                (520, "Amount"),
+            ],
+        ),
+        (
+            313,
+            [
+                (34, "1"),
+                (44, "UGGC41 Multi Function Mouse Pad"),
+                (205, "40169990"),
+                (261, "7-Sep-26"),
+                (320, "5 pcs"),
+                (380, "321.00"),
+                (430, "pcs"),
+                (520, "1,605.00"),
+            ],
+        ),
+        (
+            330,
+            [
+                (34, "2"),
+                (44, "Wc11 Wooden Table Clock"),
+                (205, "44219090"),
+                (261, "7-Sep-26"),
+                (320, "5 pcs"),
+                (380, "225.00"),
+                (430, "pcs"),
+                (520, "1,125.00"),
+            ],
+        ),
+        (400, [(520, "2,730.00")]),
+        (420, [(44, "Integrated IGST Output Tax"), (520, "423.90")]),
+        (450, [(177, "Total"), (320, "10 pcs"), (490, "ī"), (520, "3,153.90")]),
+    ]
+]
+
 def test_reads_an_invoice_with_every_column_in_the_item_row():
     extracted = extract_invoice_from_text(_pdf(KRAFT_LAYOUT), OUR_GSTIN)
 
@@ -528,6 +592,7 @@ def test_an_unreadable_layout_returns_none_for_the_claude_fallback():
         NEXGEN_LAYOUT,
         DMS_LAYOUT,
         CHAITHRA_LAYOUT,
+        SALES_ORDER_LAYOUT,
     ],
 )
 def test_every_line_item_carries_a_usable_quantity_and_rate(layout):
@@ -711,3 +776,85 @@ def test_the_hsn_summary_total_is_not_mistaken_for_the_grand_total_beside_a_curr
     ]
 
     assert _find_printed_total(lines) == 2419.00
+
+
+def test_reads_a_voucher_number_stacked_under_its_label():
+    # "Voucher No." is the only label this document prints its number under,
+    # so without it nothing identifies the order and the whole PDF came back
+    # as None. The number is in the cell below the label, behind the
+    # letterhead's own address on the left of that row — the same stacked
+    # layout _find_invoice_no already follows down the label's column.
+    extracted = extract_invoice_from_text(_pdf(SALES_ORDER_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    assert extracted.invoice_no == "Quotation/1380"
+    assert extracted.invoice_date.date().isoformat() == "2026-09-07"
+    assert extracted.vendor_gstin == "29ABJPN9424H1Z7"
+
+
+def test_lines_of_a_document_that_states_no_gst_rate_read_without_one():
+    # Everything except the rate is printed, and the rate is printed nowhere
+    # — so the lines are read and gst_perc left None for
+    # services/purchase_invoice_intake.py to fill from the matched product.
+    # Refusing them instead lost the six other columns the document does
+    # state, over a value it does not contain.
+    extracted = extract_invoice_from_text(_pdf(SALES_ORDER_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    assert [(item.description, item.hsn_code, item.quantity, item.rate, item.gst_perc) for item in extracted.line_items] == [
+        ("UGGC41 Multi Function Mouse Pad", "40169990", 5, 321.0, None),
+        ("Wc11 Wooden Table Clock", "44219090", 5, 225.0, None),
+    ]
+
+
+def test_no_stated_rate_does_not_turn_the_ledger_rows_into_line_items():
+    # A resolvable GST % is what normally proves a row is a line item rather
+    # than a running total, so dropping that requirement has to leave the
+    # rest of the checks carrying it: the subtotal, the tax ledger line and
+    # the grand total below the items are none of them products.
+    extracted = extract_invoice_from_text(_pdf(SALES_ORDER_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    assert len(extracted.line_items) == 2
+
+
+def test_reads_the_sales_order_s_grand_total_past_its_tax_ledger_rows():
+    # Line text rather than the fixture, for the reason given above the
+    # grand-total tests: the row is identified by the currency symbol beside
+    # it, which _pdf's font cannot draw. A sales order prints its subtotal
+    # and its tax as bare ledger rows between the items and the total, and
+    # neither opens with an HSN code — so the bare-"Total"-with-a-currency
+    # rule is not looking at the foot of an HSN-wise summary here.
+    lines = [
+        "1 UGGC41 Multi Function Mouse Pad 40169990 7-Sep-26 5 pcs 321.00 pcs 1,605.00",
+        "13,155.00",
+        "Integrated IGST Output Tax 2,153.40",
+        "Round Off 0.60",
+        "Total 38 pcs ī 15,309.00",
+    ]
+
+    assert _find_printed_total(lines) == 15309.00
+
+
+def test_a_stated_rate_is_still_required_of_every_line_that_prints_one():
+    # The silence has to be the whole document's, not one row's: a rate
+    # printed anywhere is evidence about the rows that don't print one, and
+    # better evidence than our own catalogue. This invoice states 18% in its
+    # summary against a taxable value the line doesn't match, so the line
+    # stays unreadable and the document still goes to Claude.
+    partly_stated = [
+        [
+            (14, [(225, "Tax Invoice")]),
+            (31, [(34, "Shah Clock Agencies"), (260, "Invoice No."), (430, "Dated")]),
+            (40, [(260, "Sca/26-27/2791"), (430, "7-Sep-26")]),
+            (97, [(34, "GSTIN/UIN: 29ABJPN9424H1Z7")]),
+            (253, [(34, "GSTIN/UIN : " + OUR_GSTIN)]),
+            (284, [(34, "Sl"), (79, "Description"), (208, "HSN/SAC"), (320, "Quantity"), (380, "Rate"), (520, "Amount")]),
+            (313, [(34, "1"), (44, "Mouse Pad"), (205, "40169990"), (320, "5 pcs"), (380, "321.00"), (520, "1,605.00")]),
+            (690, [(180, "Taxable"), (300, "Rate"), (420, "Amount")]),
+            (702, [(180, "999.00"), (300, "18%"), (420, "179.82")]),
+            (714, [(180, "500.00"), (300, "5%"), (420, "25.00")]),
+        ]
+    ]
+
+    assert extract_invoice_from_text(_pdf(partly_stated), OUR_GSTIN) is None
