@@ -122,3 +122,33 @@ export async function fetchSalesOrders(): Promise<SalesOrder[]> {
   const items: SalesOrderDetailItem[] = await response.json();
   return items.map(toSalesOrder);
 }
+
+// Backs the status dropdown in each row of the sales orders table. Its own
+// endpoint rather than a full update_sales_order_details round trip: that
+// one re-saves the whole order (rewriting the line items, recomputing the
+// totals, clearing poUpdatedFlag), none of which changing a status should do.
+//
+// It can legitimately fail — moving an order into "Delivered"/"Completed"
+// takes its quantities out of stock, and the backend rejects the move when
+// there isn't enough — so the caller gets the reason back rather than a
+// boolean. Resolves to null on success, or the message to show on failure.
+export async function updateSalesOrderStatus(id: number, orderStatusId: number): Promise<string | null> {
+  try {
+    const response = await apiFetch("/admin/update_sales_order_status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, order_status_id: orderStatusId }),
+    });
+
+    if (response.ok) {
+      return null;
+    }
+
+    // Surface the backend's actual reason (e.g. "insufficient stock for:
+    // product 12 (on hand 3, needs 2 more)") instead of guessing.
+    const body = await response.json().catch(() => null);
+    return typeof body?.detail === "string" ? body.detail : "Couldn't update the status. Please try again.";
+  } catch {
+    return "Couldn't reach the server. Please try again.";
+  }
+}

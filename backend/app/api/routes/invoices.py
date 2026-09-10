@@ -39,6 +39,8 @@ from app.schemas.invoices import (
     InvoiceDetailItem,
     UpdateInvoiceDetailsRequest,
     UpdateInvoiceDetailsResponse,
+    UpdateInvoiceStatusRequest,
+    UpdateInvoiceStatusResponse,
     UpdateProformaInvoiceDetailsRequest,
     UpdateProformaInvoiceDetailsResponse,
 )
@@ -457,6 +459,45 @@ async def update_invoice_details(
     await invoice.save()
 
     return UpdateInvoiceDetailsResponse(message="invoice updated successfully")
+
+
+@router.post("/update_invoice_status", response_model=UpdateInvoiceStatusResponse)
+async def update_invoice_status(
+    payload: UpdateInvoiceStatusRequest,
+    _: User | None = Depends(require_admin),
+) -> UpdateInvoiceStatusResponse:
+    """Mark one invoice paid or unpaid, and nothing else.
+
+    Backs the status dropdown in each row of the admin sales invoices table.
+    update_invoice_details can set the status too, but only as part of
+    re-saving the whole invoice: it re-snapshots the totals off the linked
+    sales orders and re-decides the tax context (IGST vs CGST+SGST) against
+    the client's current state. Both are the right thing to do when an admin
+    has reviewed the invoice on the form; neither is something recording a
+    payment should quietly do to a document already sent out.
+
+    Unlike its sales order counterpart, nothing else moves here - payment
+    state has no side effects on stock or on any other collection. What it
+    does feed is the accounts module, which reads outstanding/overdue
+    straight off this field (see routes/accounts.py).
+    """
+    invoice = await InvoiceDetails.get(payload.id)
+    if invoice is None or invoice.is_deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invoice not found")
+
+    # A proforma invoice is not a payable document - it carries a due date
+    # rather than a payment state, which is also why the admin table only
+    # shows the Status column on the standard side.
+    if invoice.type != InvoiceType.standard:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="a proforma invoice has no payment status",
+        )
+
+    invoice.status = payload.status
+    await invoice.save()
+
+    return UpdateInvoiceStatusResponse(message="invoice status updated successfully")
 
 
 @router.post("/update_proforma_invoice_details", response_model=UpdateProformaInvoiceDetailsResponse)

@@ -137,6 +137,34 @@ export type UpdateInvoicePayload = {
   isDeleted: boolean;
 };
 
+// Backs the status dropdown in each row of the sales invoices table. Its own
+// endpoint rather than a full update_invoice_details round trip: that one
+// re-snapshots the totals off the linked sales orders and re-decides the
+// invoice's tax context against the client's current state, neither of which
+// recording a payment should do to a document already sent out.
+//
+// Resolves to null on success, or the message to show on failure — the
+// caller has a row to roll back, so it needs the reason rather than a
+// boolean.
+export async function updateInvoiceStatus(id: number, status: InvoiceStatus): Promise<string | null> {
+  try {
+    const response = await apiFetch("/admin/update_invoice_status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status }),
+    });
+
+    if (response.ok) {
+      return null;
+    }
+
+    const body = await response.json().catch(() => null);
+    return typeof body?.detail === "string" ? body.detail : "Couldn't update the status. Please try again.";
+  } catch {
+    return "Couldn't reach the server. Please try again.";
+  }
+}
+
 export async function updateInvoice(payload: UpdateInvoicePayload): Promise<Response> {
   return apiFetch("/admin/update_invoice_details", {
     method: "POST",

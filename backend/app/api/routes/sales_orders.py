@@ -35,6 +35,8 @@ from app.schemas.sales_orders import (
     SalesOrderDetailItem,
     UpdateSalesOrderDetailsRequest,
     UpdateSalesOrderDetailsResponse,
+    UpdateSalesOrderStatusRequest,
+    UpdateSalesOrderStatusResponse,
 )
 from app.services.counters import get_next_id
 from app.services.invoice_totals import refresh_invoice_totals_for_sales_orders
@@ -543,6 +545,67 @@ async def update_sales_order_details(
     await refresh_invoice_totals_for_sales_orders([sales_order.id])
 
     return UpdateSalesOrderDetailsResponse(message="sales order updated successfully")
+
+
+@router.post("/update_sales_order_status", response_model=UpdateSalesOrderStatusResponse)
+async def update_sales_order_status(
+    payload: UpdateSalesOrderStatusRequest,
+    _: User | None = Depends(require_admin),
+) -> UpdateSalesOrderStatusResponse:
+    """Move one sales order between statuses, and nothing else.
+
+    Backs the status dropdown in each row of the admin sales orders table.
+    update_sales_order_details can do this too, but only as part of re-saving
+    the whole order: it rewrites #sales_summary from the payload, recomputes
+    the totals, and clears po_updated_flag. Flipping a status from a table
+    row should touch none of that, hence the narrow endpoint.
+
+    The stock side, though, is the same work update_sales_order_details does,
+    for the same reason: crossing into "Delivered"/"Completed" is what takes
+    the order's quantities out of #inventory, and moving back out of them is
+    what credits them back (see _STOCK_DEDUCTED_STATUS_NAMES). So a status
+    change can legitimately fail — marking an order delivered that there
+    isn't stock for is rejected here exactly as it is on the order form.
+    """
+    sales_order = await SalesOrders.get(payload.id)
+    if sales_order is None or sales_order.is_deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="sales order not found")
+
+    await _validate_order_status_exists(payload.order_status_id)
+
+    if sales_order.order_status_id == payload.order_status_id:
+        return UpdateSalesOrderStatusResponse(message="sales order status unchanged")
+
+    # The order's line items live in #sales_summary rather than on the order
+    # document, and this endpoint takes no line items of its own — the
+    # quantities that move are whatever the order currently holds.
+    line_items = await SalesSummary.find(SalesSummary.sales_order_id == sales_order.id).to_list()
+    product_ids = [item.product_id for item in line_items]
+    quantities = [item.quantity for item in line_items]
+
+    holds_stock = payload.order_status_id in await _get_stock_deducted_status_ids()
+    stock_deltas: dict[int, int] = {}
+    if holds_stock:
+        stock_deltas = compute_stock_deltas(
+            await get_applied_sales_quantities(sales_order.id),
+            totals_by_product(product_ids, quantities),
+            STOCK_OUT,
+        )
+        # Before the save, so a rejected move leaves the order on its old
+        # status instead of half-applied.
+        await _reject_stock_going_negative(stock_deltas)
+
+    sales_order.order_status_id = payload.order_status_id
+    await sales_order.save()
+
+    if holds_stock:
+        await apply_sales_order_stock(
+            sales_order.id, product_ids, quantities, stock_deltas, sales_order.date
+        )
+    else:
+        await clear_sales_order_stock(sales_order.id)
+
+    return UpdateSalesOrderStatusResponse(message="sales order status updated successfully")
 
 
 @router.get("/get_order_status_list", response_model=list[OrderStatusListItem])

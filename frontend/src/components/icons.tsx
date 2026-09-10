@@ -108,6 +108,15 @@ export function MenuIcon(props: IconProps) {
 
 // Used for the mobile nav "close" button, and the mobile filter drawer's
 // close button (see header.tsx and products-page-client.tsx).
+export function MagnifyingGlassIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M16.5 16.5 21 21" />
+    </svg>
+  );
+}
+
 export function XMarkIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>

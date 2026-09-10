@@ -38,12 +38,14 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
   paid: "Paid",
 };
 
-// Reuses the sales order status colors (see sales-orders-tab.tsx): the point
-// is only that a settled invoice reads differently from an outstanding one
-// without having to read the word.
+// Ochre for money still owed, green for a settled invoice — the point is
+// only that a settled invoice reads differently from an outstanding one
+// without having to read the word. Shared with the admin side's invoices
+// table (see components/admin/invoices-tab.tsx) so a status doesn't change
+// meaning between the two sides of the same document.
 const STATUS_COLOR: Record<InvoiceStatus, string> = {
-  unpaid: styles.statusNew,
-  paid: styles.statusCompleted,
+  unpaid: styles.statusUnpaid,
+  paid: styles.statusPaid,
 };
 
 export function CustomerInvoicesPageClient() {

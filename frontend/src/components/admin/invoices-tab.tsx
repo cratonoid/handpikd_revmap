@@ -23,10 +23,12 @@ import { Button } from "@/components/button";
 import { InvoiceFormModal } from "@/components/admin/invoice-form-modal";
 import { ProformaInvoiceFormModal } from "@/components/admin/proforma-invoice-form-modal";
 import { PersonalDetailsModal } from "@/components/admin/personal-details-modal";
+import { StatusSelect } from "@/components/admin/status-select";
 import {
   downloadInvoicePdf,
   downloadInvoicesZip,
   fetchInvoices,
+  updateInvoiceStatus,
   type Invoice,
   type InvoiceStatus,
   type InvoiceType,
@@ -46,6 +48,23 @@ const STATUS_LABEL: Record<InvoiceStatus, string> = {
   paid: "Paid",
 };
 
+// Ochre for money still owed, green for a settled invoice — the same two
+// colors the client's own invoices screen uses for this field (see
+// components/customer/invoices-page-client.tsx), so a status doesn't change
+// meaning between the two sides of the same document.
+const STATUS_COLOR: Record<InvoiceStatus, string> = {
+  unpaid: styles.statusUnpaid,
+  paid: styles.statusPaid,
+};
+
+// Fixed, unlike the sales orders table's: payment state is an enum in the
+// backend model (InvoiceStatus in backend/app/models/invoice_details.py),
+// not a seeded collection.
+const STATUS_OPTIONS: readonly { value: InvoiceStatus; label: string }[] = [
+  { value: "unpaid", label: STATUS_LABEL.unpaid },
+  { value: "paid", label: STATUS_LABEL.paid },
+];
+
 export function InvoicesTab() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
@@ -58,6 +77,10 @@ export function InvoicesTab() {
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [invoiceType, setInvoiceType] = useState<InvoiceType>("standard");
+  // The invoice whose status dropdown is mid-save, and the reason the last
+  // attempt failed.
+  const [statusSavingId, setStatusSavingId] = useState<number | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [bulkFromDate, setBulkFromDate] = useState("");
   const [bulkToDate, setBulkToDate] = useState("");
   const [bulkDownloading, setBulkDownloading] = useState(false);
@@ -115,6 +138,33 @@ export function InvoicesTab() {
         // Keep showing the previous list rather than clearing it on a
         // transient refetch failure — the save itself already succeeded.
       });
+  }
+
+  // The Status column's dropdown. Applied optimistically then rolled back if
+  // the backend refuses, same shape as sales-orders-tab.tsx's — though a
+  // payment state has nothing behind it that can refuse on business grounds,
+  // so in practice only an unreachable server or a since-voided invoice
+  // brings a row back.
+  async function handleStatusChange(invoice: Invoice, nextStatus: InvoiceStatus) {
+    if (nextStatus === invoice.status) return;
+
+    const previousStatus = invoice.status;
+    const applyStatus = (status: InvoiceStatus) =>
+      setInvoices((current) =>
+        current.map((row) => (row.id === invoice.id ? { ...row, status } : row)),
+      );
+
+    setStatusError(null);
+    setStatusSavingId(invoice.id);
+    applyStatus(nextStatus);
+
+    const error = await updateInvoiceStatus(invoice.id, nextStatus);
+
+    setStatusSavingId(null);
+    if (error) {
+      applyStatus(previousStatus);
+      setStatusError(error);
+    }
   }
 
   function handleCompanyDetailsSaved() {
@@ -232,6 +282,12 @@ export function InvoicesTab() {
         </p>
       )}
 
+      {statusError && (
+        <p role="alert" aria-live="polite" className={styles.formError}>
+          {statusError}
+        </p>
+      )}
+
       {bulkDownloadError && (
         <p role="alert" aria-live="polite" className={styles.formError}>
           {bulkDownloadError}
@@ -280,8 +336,19 @@ export function InvoicesTab() {
                   {invoiceType === "proforma" && (
                     <td className={styles.tableCell}>{new Date(invoice.dueDate).toLocaleDateString()}</td>
                   )}
+                  {/* Standard invoices only: a proforma invoice carries a
+                      due date rather than a payment state, and the backend
+                      refuses to set one on it. */}
                   {invoiceType === "standard" && (
-                    <td className={styles.tableCell}>{STATUS_LABEL[invoice.status]}</td>
+                    <td className={`${styles.tableCell} ${styles.statusText} ${STATUS_COLOR[invoice.status]}`}>
+                      <StatusSelect
+                        value={invoice.status}
+                        options={STATUS_OPTIONS}
+                        label={`Payment status for invoice ${invoice.invoiceNoDisplay}`}
+                        disabled={statusSavingId === invoice.id}
+                        onChange={(nextStatus) => void handleStatusChange(invoice, nextStatus)}
+                      />
+                    </td>
                   )}
                   <td className={styles.tableCell}>₹{invoice.totalAmountAfterTax.toFixed(2)}</td>
                   <td className={styles.tableCell}>

@@ -15,7 +15,9 @@
 //
 // The status tabs (All + one per OrderStatusMaster row) are built from
 // `orderStatuses` rather than a hardcoded list, so they always match
-// whatever statuses are seeded in backend/app/core/db.py.
+// whatever statuses are seeded in backend/app/core/db.py. The same list
+// fills the Status column's per-row dropdown, which moves one order between
+// statuses without opening the form — see handleStatusChange.
 //
 // The "Add details" link per row opens the costing sheet at
 // /admin/orders/sales/[id]/details (components/admin/
@@ -34,7 +36,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/button";
 import { SalesOrderFormModal } from "@/components/admin/sales-order-form-modal";
-import { fetchSalesOrders, type SalesOrder } from "@/lib/sales-orders";
+import { StatusSelect } from "@/components/admin/status-select";
+import { fetchSalesOrders, updateSalesOrderStatus, type SalesOrder } from "@/lib/sales-orders";
 import { fetchCustomerList, type CustomerOption } from "@/lib/customers";
 import { fetchProducts, type Product } from "@/lib/products";
 import { fetchPurchaseOrderList, type PurchaseOrderOption } from "@/lib/purchase-orders";
@@ -81,10 +84,21 @@ export function SalesOrdersTab() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // The order whose status dropdown is mid-save, and the reason the last
+  // attempt failed. Only one row can be saving at a time — the dropdown
+  // disables itself while its own request is in flight.
+  const [statusSavingId, setStatusSavingId] = useState<number | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   const customersById = new Map(customers.map((c) => [c.id, c]));
   const statusesById = new Map(orderStatuses.map((s) => [s.id, s]));
   const sortedStatuses = [...orderStatuses].sort((a, b) => a.id - b.id);
+  // The same seeded list the filter pills are built from, in the shape the
+  // row dropdowns take.
+  const statusOptions = sortedStatuses.map((orderStatus) => ({
+    value: orderStatus.id,
+    label: orderStatus.statusName,
+  }));
   const visibleOrders = (
     statusFilter === "all" ? orders : orders.filter((order) => order.orderStatusId === statusFilter)
   )
@@ -147,6 +161,37 @@ export function SalesOrdersTab() {
       });
   }
 
+  // The Status column's dropdown. Applied optimistically — the cell (and,
+  // under an active status filter, whether the row is listed at all) follows
+  // the new status straight away — then rolled back if the backend refuses.
+  // It can refuse: moving an order into "Delivered"/"Completed" takes its
+  // quantities out of stock, and there may not be enough (see
+  // update_sales_order_status in backend/app/api/routes/sales_orders.py).
+  //
+  // Unlike handleSaved this doesn't re-fetch: one field changed, and its new
+  // value is exactly what was just sent.
+  async function handleStatusChange(order: SalesOrder, nextStatusId: number) {
+    if (nextStatusId === order.orderStatusId) return;
+
+    const previousStatusId = order.orderStatusId;
+    const applyStatus = (statusId: number) =>
+      setOrders((current) =>
+        current.map((row) => (row.id === order.id ? { ...row, orderStatusId: statusId } : row)),
+      );
+
+    setStatusError(null);
+    setStatusSavingId(order.id);
+    applyStatus(nextStatusId);
+
+    const error = await updateSalesOrderStatus(order.id, nextStatusId);
+
+    setStatusSavingId(null);
+    if (error) {
+      applyStatus(previousStatusId);
+      setStatusError(error);
+    }
+  }
+
   return (
     <>
       {/* Status pills and the "new order" button share one row. They used to be
@@ -188,6 +233,12 @@ export function SalesOrdersTab() {
         </Button>
       </div>
 
+      {statusError && (
+        <p role="alert" aria-live="polite" className={styles.formError}>
+          {statusError}
+        </p>
+      )}
+
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
@@ -219,7 +270,13 @@ export function SalesOrdersTab() {
                 <td className={styles.tableCell}>{new Date(order.date).toLocaleDateString()}</td>
                 <td className={styles.tableCell}>{customersById.get(order.custId)?.name ?? "—"}</td>
                 <td className={statusCellClassName(statusesById.get(order.orderStatusId)?.statusName)}>
-                  {statusesById.get(order.orderStatusId)?.statusName ?? "—"}
+                  <StatusSelect
+                    value={order.orderStatusId}
+                    options={statusOptions}
+                    label={`Status for order ${order.orderNo}`}
+                    disabled={statusSavingId === order.id}
+                    onChange={(nextStatusId) => void handleStatusChange(order, nextStatusId)}
+                  />
                 </td>
                 {/* Already deducted from the two totals beside it — shown
                     so the figures can be read back against the order form. */}

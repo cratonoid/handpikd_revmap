@@ -777,6 +777,88 @@
   flex: 1 1 13rem;
 }
 
+/* Search box above a data table (components/admin/table-search-input.tsx).
+   Shares .filterToggleRow with the pill toggles, and the same width cage
+   reasoning as .filterToggleRowSelect above: it takes the space the pills
+   leave, within limits, instead of stretching the full width of the row.
+
+   Pill-shaped rather than the .formInput rounded rectangle — it is a control
+   in a strip of controls next to the pills, not a field in a form. */
+.tableSearch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 11rem;
+  max-width: 20rem;
+  flex: 1 1 14rem;
+}
+
+.tableSearchIcon {
+  position: absolute;
+  left: 0.85rem;
+  width: 1rem;
+  height: 1rem;
+  color: color-mix(in srgb, var(--color-charcoal) 55%, transparent);
+  /* The icon sits over the input, so a click on it has to reach the input
+     underneath rather than landing on the icon and doing nothing. */
+  pointer-events: none;
+}
+
+.tableSearchInput {
+  width: 100%;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  /* Asymmetric: room for the icon on the left, for the clear button on the
+     right. */
+  padding: 0.55rem 2.3rem 0.55rem 2.4rem;
+  font-size: 0.8125rem;
+  color: var(--color-charcoal);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.tableSearchInput:hover {
+  border-color: color-mix(in srgb, var(--color-charcoal) 45%, var(--color-border));
+}
+
+.tableSearchInput:focus {
+  border-color: var(--color-charcoal);
+}
+
+/* WebKit draws its own clear button inside a type="search" field. Suppressed
+   in favour of .tableSearchClear, which is styled with the rest of the box
+   and is there in every browser rather than only this one. type="search" is
+   kept for the semantics, and for the Escape-to-clear that comes with it. */
+.tableSearchInput::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.tableSearchClear {
+  position: absolute;
+  right: 0.55rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 9999px;
+  background-color: transparent;
+  padding: 0.3rem;
+  color: color-mix(in srgb, var(--color-charcoal) 55%, transparent);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.tableSearchClear:hover {
+  color: var(--color-charcoal);
+}
+
+.tableSearchClearIcon {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
 /* -----------------------------------------------------------------------
    Data table (components/admin/clients-page-client.tsx)
    ----------------------------------------------------------------------- */
@@ -945,6 +1027,98 @@
 
 .statusCompleted {
   color: var(--color-status-completed);
+}
+
+/* Payment state, on both invoice tables (admin and client). Aliased onto two
+   of the sales-order colors above rather than given hexes of their own: the
+   palette in lib/brand.ts is a closed family of four, and two of them
+   already carry exactly the right meaning — ochre for something still
+   outstanding, green for closed out. Named for what they mean here so a
+   reader isn't left wondering why an invoice is "processing". */
+.statusUnpaid {
+  color: var(--color-status-processing);
+}
+
+.statusPaid {
+  color: var(--color-status-completed);
+}
+
+/* The Status column's inline dropdown (components/admin/sales-orders-tab.tsx).
+   Chromeless by default so the column still reads as the status word it
+   replaced — colored by the .status* class on the cell around it, which the
+   select inherits — and it grows a ring on hover/focus so it's discoverable
+   as something you can click.
+
+   The negative margins cancel the padding that makes that ring a comfortable
+   target, so switching the cell from text to a control left the column and
+   the row height exactly where they were. */
+.statusSelectWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin: -0.3rem -0.7rem;
+}
+
+/* The chevron. Drawn in borders rather than the data-URI SVG select.formInput
+   uses, because this one's color is not fixed: it follows the status, and
+   inverts with the rest of the row on hover. currentColor does that; a stroke
+   baked into an SVG data URI cannot. */
+.statusSelectWrap::after {
+  content: "";
+  position: absolute;
+  right: 0.75rem;
+  width: 0.36rem;
+  height: 0.36rem;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-0.1rem) rotate(45deg);
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.statusSelect {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  background-color: transparent;
+  padding: 0.3rem 1.6rem 0.3rem 0.7rem;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+
+@media (hover: hover) {
+  .statusSelect:hover {
+    border-color: color-mix(in srgb, currentColor 45%, transparent);
+    background-color: color-mix(in srgb, currentColor 10%, transparent);
+  }
+}
+
+.statusSelect:focus-visible {
+  outline: none;
+  border-color: currentColor;
+  background-color: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+/* While its own change is in flight. Not .5 opacity: the row is still
+   showing the status it is moving to, and that should stay readable. */
+.statusSelect:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+/* The dropdown list itself is painted by the OS, not by this stylesheet, so
+   the options need their own ink — inherit would hand them the cream the
+   row's hover state sets, leaving white-on-white in the open list. */
+.statusSelect option {
+  color: var(--color-ink);
+  background-color: var(--color-cream);
+  font-weight: 500;
 }
 
 /* -----------------------------------------------------------------------

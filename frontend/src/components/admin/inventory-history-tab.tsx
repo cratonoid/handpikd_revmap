@@ -15,8 +15,14 @@
 // fetchSalesOrders() — three lists rather than two because billed and
 // unbilled purchase orders live in different collections whose ids overlap,
 // so a row's transactionType is what says which one to look in.
+//
+// The search box covers everything the row is identified by — product, type,
+// date and the reference number — including the two columns that are
+// resolved rather than stored, so "PO-14" finds the entry even though the
+// row only holds that order's id.
 import { useEffect, useState } from "react";
 import { InventoryHistoryDetailModal } from "@/components/admin/inventory-history-detail-modal";
+import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import { fetchInventoryHistory, type InventoryHistoryEntry } from "@/lib/inventory";
 import { fetchProducts, type Product } from "@/lib/products";
 import { fetchPurchaseOrderList, type PurchaseOrderOption } from "@/lib/purchase-orders";
@@ -36,6 +42,7 @@ export function InventoryHistoryTab() {
   const [unbilledOrders, setUnbilledOrders] = useState<UnbilledPurchaseOrderOption[]>([]);
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [search, setSearch] = useState("");
   const [selectedEntry, setSelectedEntry] = useState<InventoryHistoryEntry | null>(null);
 
   const productsById = new Map(products.map((p) => [p.id, p]));
@@ -74,12 +81,6 @@ export function InventoryHistoryTab() {
     };
   }, []);
 
-  // Newest transaction first, by the date the stock moved — the same date
-  // the Date column shows, so the order on screen matches what's in it.
-  const sortedHistory = [...history].sort(
-    (a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime(),
-  );
-
   function referenceFor(entry: InventoryHistoryEntry): string {
     if (entry.transactionType === "purchase") {
       return entry.purchaseOrderId !== null
@@ -103,8 +104,35 @@ export function InventoryHistoryTab() {
     return "Sales";
   }
 
+  // Newest transaction first, by the date the stock moved — the same date
+  // the Date column shows, so the order on screen matches what's in it.
+  // Filtered before sorting rather than after, since the sort is the more
+  // expensive half and there is no reason to order rows about to be dropped.
+  //
+  // The date goes into the haystack as the rendered string, not the raw ISO
+  // one, so searching "10/09/2026" matches what the column actually shows.
+  const sortedHistory = history
+    .filter((entry) =>
+      matchesSearch(search, [
+        productsById.get(entry.productId)?.productName,
+        typeLabelFor(entry),
+        referenceFor(entry),
+        new Date(entry.transactionDate).toLocaleDateString(),
+      ]),
+    )
+    .sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime());
+
   return (
     <>
+      <div className={styles.filterToggleRow}>
+        <TableSearchInput
+          value={search}
+          onChange={setSearch}
+          label="Search inventory history"
+          placeholder="Search product, type or reference…"
+        />
+      </div>
+
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
@@ -130,7 +158,11 @@ export function InventoryHistoryTab() {
         </table>
         {loadState === "loading" && <p className={styles.pageSubtext}>Loading inventory history…</p>}
         {loadState === "loaded" && sortedHistory.length === 0 && (
-          <p className={styles.pageSubtext}>No inventory transactions yet.</p>
+          <p className={styles.pageSubtext}>
+            {search.trim() !== ""
+              ? "No transactions match that search."
+              : "No inventory transactions yet."}
+          </p>
         )}
       </div>
 

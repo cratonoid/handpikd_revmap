@@ -110,6 +110,19 @@ class UpdateSalesOrderDetailsResponse(BaseModel):
     message: str
 
 
+# The sales orders table's inline status dropdown. Deliberately NOT the full
+# UpdateSalesOrderDetailsRequest with one field swapped: that endpoint
+# rewrites #sales_summary, re-derives the totals, and clears po_updated_flag,
+# none of which an admin flipping a status in a table row is asking for.
+class UpdateSalesOrderStatusRequest(BaseModel):
+    id: int
+    order_status_id: int
+
+
+class UpdateSalesOrderStatusResponse(BaseModel):
+    message: str
+
+
 class OrderStatusListItem(BaseModel):
     id: int
     status_name: str

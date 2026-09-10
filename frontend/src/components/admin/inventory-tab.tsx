@@ -20,11 +20,17 @@
 // is_unbilled on the product (which is also why every unbilled row's HSN
 // column is empty). See backend/app/models/product_details.py.
 //
+// The search box filters on product name and HSN together, so a code can be
+// pasted straight in. It searches only the side of the Billed/Unbilled split
+// that is showing — the pills are the coarser filter and stay in charge of
+// which list is being looked at.
+//
 // A quantity below 0 is possible for orders created before the sales-order
 // stock check (backend/app/api/routes/sales_orders.py's
 // _validate_sufficient_stock) existed, so negative rows are flagged rather
 // than assumed impossible.
 import { useEffect, useState } from "react";
+import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import { fetchInventory, type InventoryItem } from "@/lib/inventory";
 import styles from "@/styles/dashboard.module.css";
 
@@ -34,6 +40,7 @@ type View = "billed" | "unbilled";
 export function InventoryTab() {
   const [view, setView] = useState<View>("billed");
   const [items, setItems] = useState<InventoryItem[]>([]);
+  const [search, setSearch] = useState("");
   const [loadState, setLoadState] = useState<LoadState>("loading");
 
   useEffect(() => {
@@ -60,6 +67,7 @@ export function InventoryTab() {
   const isUnbilled = view === "unbilled";
   const sortedItems = items
     .filter((item) => item.isUnbilled === isUnbilled)
+    .filter((item) => matchesSearch(search, [item.productName, item.hsnCode]))
     .sort((a, b) => a.productName.localeCompare(b.productName));
 
   return (
@@ -85,6 +93,13 @@ export function InventoryTab() {
             Unbilled
           </button>
         </div>
+
+        <TableSearchInput
+          value={search}
+          onChange={setSearch}
+          label="Search inventory"
+          placeholder="Search product or HSN…"
+        />
       </div>
 
       <div className={styles.tableWrap}>
@@ -116,7 +131,14 @@ export function InventoryTab() {
         {loadState === "loading" && <p className={styles.pageSubtext}>Loading inventory…</p>}
         {loadState === "loaded" && sortedItems.length === 0 && (
           <p className={styles.pageSubtext}>
-            {isUnbilled ? "No unbilled stock yet." : "No products yet."}
+            {/* An empty list and an empty search result are different
+                answers to different questions — saying "no products yet"
+                to someone who just mistyped a name is misleading. */}
+            {search.trim() !== ""
+              ? "No stock matches that search."
+              : isUnbilled
+                ? "No unbilled stock yet."
+                : "No products yet."}
           </p>
         )}
       </div>

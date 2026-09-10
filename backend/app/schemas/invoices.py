@@ -81,6 +81,19 @@ class UpdateInvoiceDetailsResponse(BaseModel):
     message: str
 
 
+# The sales invoices table's inline status dropdown. Deliberately NOT
+# UpdateInvoiceDetailsRequest with one field swapped: that endpoint
+# re-snapshots the totals off the linked sales orders and re-decides the tax
+# context, neither of which marking an invoice paid should touch.
+class UpdateInvoiceStatusRequest(BaseModel):
+    id: int
+    status: InvoiceStatus
+
+
+class UpdateInvoiceStatusResponse(BaseModel):
+    message: str
+
+
 class CreateNewProformaInvoiceRequest(BaseModel):
     cust_id: int
     date: datetime
