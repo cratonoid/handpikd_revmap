@@ -18,6 +18,7 @@ class CreateNewInvoiceRequest(BaseModel):
     due_date: datetime
     online_or_offline: OnlineOrOffline
     transport: str = ""
+    notes: str = ""
 
     @model_validator(mode="after")
     def _check_sales_ids(self) -> "CreateNewInvoiceRequest":
@@ -54,6 +55,7 @@ class InvoiceDetailItem(BaseModel):
     rates: list[float]
     tax_percs: list[float]
     description: str
+    notes: str
     total_amount_before_tax: float
     total_tax_amount: float
     total_amount_after_tax: float
@@ -70,6 +72,7 @@ class UpdateInvoiceDetailsRequest(BaseModel):
     due_date: datetime
     online_or_offline: OnlineOrOffline
     transport: str = ""
+    notes: str = ""
     # Like QuotationDetails.status, only ever settable in edit mode — a new
     # invoice is always created as InvoiceStatus.unpaid (see
     # create_new_invoice, which leaves the model default in place).
@@ -105,6 +108,7 @@ class CreateNewProformaInvoiceRequest(BaseModel):
     rates: list[float]
     tax_percs: list[float]
     description: str = ""
+    notes: str = ""
 
     @model_validator(mode="after")
     def _check_line_items_match(self) -> "CreateNewProformaInvoiceRequest":
@@ -133,6 +137,7 @@ class UpdateProformaInvoiceDetailsRequest(BaseModel):
     rates: list[float]
     tax_percs: list[float]
     description: str = ""
+    notes: str = ""
 
     @model_validator(mode="after")
     def _check_line_items_match(self) -> "UpdateProformaInvoiceDetailsRequest":

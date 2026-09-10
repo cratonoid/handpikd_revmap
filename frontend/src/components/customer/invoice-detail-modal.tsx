@@ -161,6 +161,13 @@ export function CustomerInvoiceDetailModal({
             </div>
           )}
 
+          {detail && detail.notes && (
+            <div>
+              <span className={styles.formLabel}>Notes</span>
+              <p className={styles.formStaticValue}>{detail.notes}</p>
+            </div>
+          )}
+
           {!detail && !error && <p className={styles.pageSubtext}>Loading invoice details…</p>}
 
           {detail && (

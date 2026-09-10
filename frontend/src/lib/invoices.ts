@@ -36,6 +36,10 @@ export type Invoice = {
   rates: number[];
   taxPercs: number[];
   description: string;
+  // Free-text note for this one invoice, printed on its PDF — both types
+  // carry it. See InvoiceDetails.notes in
+  // backend/app/models/invoice_details.py.
+  notes: string;
   totalAmountBeforeTax: number;
   totalTaxAmount: number;
   totalAmountAfterTax: number;
@@ -61,6 +65,7 @@ type InvoiceDetailItem = {
   rates: number[];
   tax_percs: number[];
   description: string;
+  notes: string;
   total_amount_before_tax: number;
   total_tax_amount: number;
   total_amount_after_tax: number;
@@ -86,6 +91,7 @@ function toInvoice(item: InvoiceDetailItem): Invoice {
     rates: item.rates,
     taxPercs: item.tax_percs,
     description: item.description,
+    notes: item.notes,
     totalAmountBeforeTax: item.total_amount_before_tax,
     totalTaxAmount: item.total_tax_amount,
     totalAmountAfterTax: item.total_amount_after_tax,
@@ -111,6 +117,7 @@ export type CreateInvoicePayload = {
   dueDate: string;
   onlineOrOffline: OnlineOrOffline;
   transport: string;
+  notes: string;
 };
 
 export async function createInvoice(payload: CreateInvoicePayload): Promise<Response> {
@@ -123,6 +130,7 @@ export async function createInvoice(payload: CreateInvoicePayload): Promise<Resp
       due_date: payload.dueDate,
       online_or_offline: payload.onlineOrOffline,
       transport: payload.transport,
+      notes: payload.notes,
     }),
   });
 }
@@ -133,6 +141,7 @@ export type UpdateInvoicePayload = {
   dueDate: string;
   onlineOrOffline: OnlineOrOffline;
   transport: string;
+  notes: string;
   status: InvoiceStatus;
   isDeleted: boolean;
 };
@@ -175,6 +184,7 @@ export async function updateInvoice(payload: UpdateInvoicePayload): Promise<Resp
       due_date: payload.dueDate,
       online_or_offline: payload.onlineOrOffline,
       transport: payload.transport,
+      notes: payload.notes,
       status: payload.status,
       is_deleted: payload.isDeleted,
     }),
@@ -199,6 +209,7 @@ export type CreateProformaInvoicePayload = {
   dueDate: string;
   lineItems: ProformaInvoiceLineItemPayload[];
   description: string;
+  notes: string;
 };
 
 export type UpdateProformaInvoicePayload = CreateProformaInvoicePayload & {
@@ -226,6 +237,7 @@ export async function createProformaInvoice(
       date: payload.date,
       due_date: payload.dueDate,
       description: payload.description,
+      notes: payload.notes,
       ...proformaLineItemsToParallelArrays(payload.lineItems),
     }),
   });
@@ -250,6 +262,7 @@ export async function updateProformaInvoice(payload: UpdateProformaInvoicePayloa
       date: payload.date,
       due_date: payload.dueDate,
       description: payload.description,
+      notes: payload.notes,
       ...proformaLineItemsToParallelArrays(payload.lineItems),
     }),
   });

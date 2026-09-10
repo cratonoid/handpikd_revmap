@@ -86,6 +86,15 @@ class InvoiceDetails(Document):
     transport: str = ""  # e.g. "Hand Delivery" — shipping mode, invoice-specific.
     status: InvoiceStatus = InvoiceStatus.unpaid
     description: str = ""  # Scope/description shown on a proforma invoice PDF; unused by standard invoices.
+    # Free-text note for this one invoice, printed on the PDF (above Terms
+    # and Conditions on a standard invoice, above the "Please Note" block on
+    # a proforma) and so visible to the client, including through the portal
+    # download. Distinct from the personal-details invoice_tnc/
+    # quotation_notes wording, which is the same boilerplate on every
+    # document — this is what's true of this invoice alone ("PO ref 4471",
+    # "delivered in two lots"). Blank on rows raised before it existed, and
+    # blank prints nothing at all rather than an empty heading.
+    notes: str = ""
     is_deleted: bool = False
 
     class Settings:

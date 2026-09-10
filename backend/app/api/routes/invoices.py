@@ -302,6 +302,7 @@ async def create_new_invoice(
         due_date=payload.due_date,
         online_or_offline=payload.online_or_offline,
         transport=payload.transport,
+        notes=payload.notes,
     )
     await invoice.insert()
 
@@ -345,6 +346,7 @@ async def create_new_proforma_invoice(
         online_or_offline=OnlineOrOffline.offline,
         transport="",
         description=payload.description,
+        notes=payload.notes,
     )
     await invoice.insert()
 
@@ -389,6 +391,7 @@ def _to_invoice_detail_item(
         rates=[item.rate for item in proforma_summaries],
         tax_percs=[item.tax_perc for item in proforma_summaries],
         description=invoice.description,
+        notes=invoice.notes,
         total_amount_before_tax=invoice.total_amount_before_tax,
         total_tax_amount=invoice.total_tax_amount,
         total_amount_after_tax=invoice.total_amount_after_tax,
@@ -454,6 +457,7 @@ async def update_invoice_details(
     invoice.due_date = payload.due_date
     invoice.online_or_offline = payload.online_or_offline
     invoice.transport = payload.transport
+    invoice.notes = payload.notes
     invoice.status = payload.status
     invoice.is_deleted = payload.is_deleted
     await invoice.save()
@@ -529,6 +533,7 @@ async def update_proforma_invoice_details(
     invoice.total_amount_after_tax = total_after_tax
     _apply_tax_context(invoice, await _tax_context_for_customer(payload.cust_id), total_tax)
     invoice.description = payload.description
+    invoice.notes = payload.notes
     invoice.is_deleted = payload.is_deleted
     await invoice.save()
 
@@ -670,6 +675,7 @@ async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict
         invoice_date=invoice.date,
         due_date=invoice.due_date,
         transport=invoice.transport,
+        notes=invoice.notes,
         line_items=line_items,
         total_amount_before_tax=invoice.total_amount_before_tax,
         total_tax_amount=invoice.total_tax_amount,
@@ -717,6 +723,7 @@ async def build_invoice_pdf(invoice: InvoiceDetails) -> tuple[bytes, str]:
             line_items=line_items,
             total_amount_after_tax=invoice.total_amount_after_tax,
             description=invoice.description,
+            notes=invoice.notes,
             customer_name=customer_name,
             customer_address=customer_address,
             customer_phone=customer_phone,

@@ -53,6 +53,7 @@ export type CustomerInvoiceLineItem = {
 export type CustomerInvoiceDetail = CustomerInvoice & {
   transport: string;
   description: string;
+  notes: string;
   lineItems: CustomerInvoiceLineItem[];
   taxKind: TaxKind | null;
   placeOfSupplyCode: string;
@@ -95,6 +96,7 @@ type CustomerInvoiceLineItemResponse = {
 type CustomerInvoiceDetailResponse = CustomerInvoiceListItemResponse & {
   transport: string;
   description: string;
+  notes: string;
   line_items: CustomerInvoiceLineItemResponse[];
   tax_kind: TaxKind | null;
   place_of_supply_code: string;
@@ -157,6 +159,7 @@ export async function fetchMyInvoiceDetail(invoiceId: number): Promise<CustomerI
     ...toInvoice(item),
     transport: item.transport,
     description: item.description,
+    notes: item.notes,
     lineItems: item.line_items.map(toLineItem),
     taxKind: item.tax_kind,
     placeOfSupplyCode: item.place_of_supply_code,

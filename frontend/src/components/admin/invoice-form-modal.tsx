@@ -65,6 +65,7 @@ export function InvoiceFormModal({
     initialInvoice?.onlineOrOffline ?? "offline",
   );
   const [transport, setTransport] = useState(initialInvoice?.transport ?? "Hand Delivery");
+  const [notes, setNotes] = useState(initialInvoice?.notes ?? "");
   const [invoiceStatus, setInvoiceStatus] = useState<InvoiceStatus>(initialInvoice?.status ?? "unpaid");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +108,7 @@ export function InvoiceFormModal({
             dueDate: fromDatetimeLocalValue(dueDate),
             onlineOrOffline,
             transport,
+            notes,
             status: invoiceStatus,
             isDeleted: isDeletedValue,
           })
@@ -116,6 +118,7 @@ export function InvoiceFormModal({
             dueDate: fromDatetimeLocalValue(dueDate),
             onlineOrOffline,
             transport,
+            notes,
           });
 
       if (!response.ok) {
@@ -278,6 +281,22 @@ export function InvoiceFormModal({
                 className={styles.formInput}
               />
             </div>
+          </div>
+
+          {/* Outside .formGrid so the note gets the full modal width — it
+              prints on the invoice PDF above the Terms and Conditions, so
+              it's usually a sentence, not a field value. */}
+          <div>
+            <label htmlFor="invoiceNotes" className={styles.formLabel}>
+              Notes (optional)
+            </label>
+            <textarea
+              id="invoiceNotes"
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className={styles.formTextarea}
+            />
           </div>
 
           {!isEdit && selectedSalesOrders.length > 0 && (

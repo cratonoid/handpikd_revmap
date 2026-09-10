@@ -124,6 +124,9 @@ async def generate_invoice_pdf(
     invoice_date: datetime,
     due_date: datetime,
     transport: str,
+    # This invoice's own note (InvoiceDetails.notes), printed above the
+    # boilerplate Terms and Conditions. Blank prints no heading at all.
+    notes: str = "",
     line_items: list[InvoiceLineItem],
     total_amount_before_tax: float,
     total_tax_amount: float,
@@ -226,6 +229,9 @@ async def generate_invoice_pdf(
             ("IFSC", personal.get("bank_ifsc", "")),
         ],
         qr_data_uri=qr_data_uri,
+        # Split per line the same way tnc_lines is, so a multi-line note
+        # prints as separate paragraphs rather than one run-on block.
+        notes_lines=[line.strip() for line in notes.splitlines() if line.strip()],
         tnc_lines=[line.strip() for line in personal.get("invoice_tnc", "").splitlines() if line.strip()],
         signature_data_uri=signature_data_uri,
     )

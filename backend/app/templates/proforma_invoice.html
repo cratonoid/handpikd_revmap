@@ -328,6 +328,15 @@
   </div>
   {% endif %}
 
+  {% if notes_lines %}
+  <div class="notes-section">
+    <p class="heading">Notes</p>
+    {% for line in notes_lines %}
+    <p>{{ line }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% if quotation_notes %}
   <div class="notes-section">
     <p class="heading">Please Note</p>

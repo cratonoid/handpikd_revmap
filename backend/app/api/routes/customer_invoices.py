@@ -256,6 +256,7 @@ async def get_my_invoice_details(
         **base.model_dump(),
         transport=invoice.transport,
         description=invoice.description,
+        notes=invoice.notes,
         line_items=line_items,
         tax_kind=invoice.tax_kind,
         place_of_supply_code=invoice.place_of_supply_code,

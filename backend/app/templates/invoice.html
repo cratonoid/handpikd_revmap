@@ -179,8 +179,8 @@
   .bank td.k { width: 38%; }
   .qr { text-align: center; padding: 1.5mm 1.8mm; }
   .qr img { width: 20mm; height: 20mm; }
-  .tnc { padding: 1.2mm 1.8mm; }
-  .tnc p { line-height: 1.4; }
+  .tnc, .notes { padding: 1.2mm 1.8mm; }
+  .tnc p, .notes p { line-height: 1.4; }
 
   .sign { text-align: center; }
   .sign .eoe { text-align: right; font-size: 7.5pt; font-weight: bold; padding: 1mm 1.8mm; border-bottom: 0.8pt solid var(--rule); }
@@ -360,6 +360,14 @@
               </table>
             </td>
           </tr>
+          {% if notes_lines %}
+          <tr><td class="sec">Notes</td></tr>
+          <tr>
+            <td class="notes">
+              {% for line in notes_lines %}<p>{{ line }}</p>{% endfor %}
+            </td>
+          </tr>
+          {% endif %}
           <tr><td class="sec">Terms and Conditions</td></tr>
           <tr>
             <td class="tnc">

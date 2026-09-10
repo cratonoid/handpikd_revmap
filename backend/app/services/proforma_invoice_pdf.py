@@ -100,6 +100,10 @@ async def generate_proforma_invoice_pdf(
     line_items: list[ProformaInvoiceLineItem],
     total_amount_after_tax: float,
     description: str,
+    # This invoice's own note (InvoiceDetails.notes), printed under its own
+    # heading above the boilerplate "Please Note" block. Blank prints
+    # nothing.
+    notes: str = "",
     customer_name: str,
     customer_address: str,
     customer_phone: str,
@@ -139,6 +143,9 @@ async def generate_proforma_invoice_pdf(
         invoice_date=invoice_date.strftime("%d %b, %Y"),
         due_date=due_date.strftime("%d %b, %Y"),
         description=description,
+        # Split per line so a multi-line note prints as separate paragraphs,
+        # matching how quotation_notes below is handled.
+        notes_lines=[line.strip() for line in notes.splitlines() if line.strip()],
         customer_name=customer_name,
         customer_address=customer_address,
         customer_phone=customer_phone or "-",

@@ -56,6 +56,10 @@ class CustomerInvoiceLineItem(BaseModel):
 class CustomerInvoiceDetail(CustomerInvoiceListItem):
     transport: str
     description: str
+    # The invoice's own note. Already printed on the PDF the client
+    # downloads (see InvoiceDetails.notes), so it's shown on the portal's
+    # detail view too rather than only inside the document.
+    notes: str
     line_items: list[CustomerInvoiceLineItem]
     # The GST heads this invoice was raised under, frozen on the invoice at
     # creation time (see InvoiceDetails.tax_kind). None on rows raised before

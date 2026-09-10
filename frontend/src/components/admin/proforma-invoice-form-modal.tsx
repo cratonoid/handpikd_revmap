@@ -94,6 +94,7 @@ export function ProformaInvoiceFormModal({
     initialInvoice ? lineItemsFromInvoice(initialInvoice) : [emptyLineItem()],
   );
   const [description, setDescription] = useState(initialInvoice?.description ?? "");
+  const [notes, setNotes] = useState(initialInvoice?.notes ?? "");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -176,6 +177,7 @@ export function ProformaInvoiceFormModal({
         date: fromDatetimeLocalValue(date),
         dueDate: fromDatetimeLocalValue(dueDate),
         description,
+        notes,
         lineItems: buildLineItemsPayload(),
       });
 
@@ -206,6 +208,7 @@ export function ProformaInvoiceFormModal({
         date: fromDatetimeLocalValue(date),
         dueDate: fromDatetimeLocalValue(dueDate),
         description,
+        notes,
         lineItems: buildLineItemsPayload(),
       });
 
@@ -429,6 +432,19 @@ export function ProformaInvoiceFormModal({
               rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              className={styles.formTextarea}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="proformaInvoiceNotes" className={styles.formLabel}>
+              Notes (optional)
+            </label>
+            <textarea
+              id="proformaInvoiceNotes"
+              rows={2}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
               className={styles.formTextarea}
             />
           </div>
