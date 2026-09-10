@@ -22,6 +22,7 @@ import { downloadQuotationPdf, fetchQuotations, type Quotation, type QuotationSt
 import { fetchPersonalDetails } from "@/lib/personal-details";
 import { fetchCustomerList, type CustomerOption } from "@/lib/customers";
 import { fetchProducts, type Product } from "@/lib/products";
+import { byNewestFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
 
 type ModalState = { mode: "add" } | { mode: "edit"; quotation: Quotation } | null;
@@ -47,6 +48,7 @@ export function QuotationsTab() {
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const customersById = new Map(customers.map((c) => [c.id, c]));
+  const sortedQuotations = [...quotations].sort(byNewestFirst);
 
   function loadAll() {
     return Promise.all([fetchQuotations(), fetchCustomerList(), fetchProducts(), fetchPersonalDetails()]).then(
@@ -148,7 +150,7 @@ export function QuotationsTab() {
             </tr>
           </thead>
           <tbody>
-            {quotations.map((quotation, index) => {
+            {sortedQuotations.map((quotation, index) => {
               // A one-off buyer has no client row to look up — its name is
               // stored on the quotation itself (see lib/quotations.ts).
               const customerName =
@@ -161,7 +163,7 @@ export function QuotationsTab() {
                   onDoubleClick={() => setModalState({ mode: "edit", quotation })}
                   className={styles.tableRow}
                 >
-                  <td className={styles.tableCell}>{index + 1}</td>
+                  <td className={styles.tableCell}>{sortedQuotations.length - index}</td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{quotation.quotationNo}</td>
                   <td className={styles.tableCell}>{new Date(quotation.date).toLocaleDateString()}</td>
                   <td className={styles.tableCell}>{new Date(quotation.validTill).toLocaleDateString()}</td>

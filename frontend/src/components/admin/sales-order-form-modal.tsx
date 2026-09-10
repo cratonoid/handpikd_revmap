@@ -190,13 +190,27 @@ export function SalesOrderFormModal({
   // the admin knows why the line came in at 0% tax and will invoice with a
   // blank HSN. Folded into `label` rather than rendered separately so the
   // dropdown's search still matches on it.
+  //
+  // The HSN code rides in the label for the same reason: product names here
+  // repeat across variants that are billed under different codes, and the
+  // code is what decides the tax the line comes in at — so it belongs next
+  // to the name both while searching (admins look a product up by the code
+  // off a vendor bill) and in the closed picker, where it's the confirmation
+  // that the right variant was picked. Unbilled products have no code at
+  // all, so they just get their own suffix.
   const productOptions: SingleSelectOption[] = useMemo(
     () =>
       products
         .filter((product) => !product.isDeleted)
         .map((product) => ({
           value: String(product.id),
-          label: product.isUnbilled ? `${product.productName} · unbilled` : product.productName,
+          label: [
+            product.productName,
+            product.hsnCode ? `HSN ${product.hsnCode}` : null,
+            product.isUnbilled ? "unbilled" : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
           isDeleted: false,
         })),
     [products],
@@ -383,7 +397,7 @@ export function SalesOrderFormModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="sales-order-modal-title"
-        className={styles.modalPanel}
+        className={`${styles.modalPanel} ${styles.salesOrderModalPanel}`}
         onClick={(event) => event.stopPropagation()}
       >
         <div className={styles.modalHeader}>

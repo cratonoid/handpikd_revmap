@@ -52,6 +52,7 @@ import {
   type PrintingPurchaseOrder,
 } from "@/lib/printing-purchase-orders";
 import { fetchVendorsList, type VendorOption } from "@/lib/vendors";
+import { byNewestFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
 
 type View = "material" | "printing";
@@ -79,6 +80,8 @@ export function PurchaseInvoicesTab() {
   const purchaseOrdersById = new Map(purchaseOrders.map((po) => [po.id, po]));
   const printingPurchaseOrdersById = new Map(printingPurchaseOrders.map((po) => [po.id, po]));
   const vendorsById = new Map(vendors.map((v) => [v.id, v]));
+  const sortedPurchaseInvoices = [...purchaseInvoices].sort(byNewestFirst);
+  const sortedPrintingPurchaseInvoices = [...printingPurchaseInvoices].sort(byNewestFirst);
 
   function loadAll() {
     return Promise.all([
@@ -284,7 +287,7 @@ export function PurchaseInvoicesTab() {
               </tr>
             </thead>
             <tbody>
-              {purchaseInvoices.map((purchaseInvoice, index) => {
+              {sortedPurchaseInvoices.map((purchaseInvoice, index) => {
                 const po = purchaseInvoice.poId ? purchaseOrdersById.get(purchaseInvoice.poId) : undefined;
                 const poNumberLabel = po ? `PO-${po.purchaseOrderNo}` : "—";
                 return (
@@ -293,7 +296,7 @@ export function PurchaseInvoicesTab() {
                     onDoubleClick={() => setModalState({ mode: "edit", purchaseInvoice })}
                     className={styles.tableRow}
                   >
-                    <td className={styles.tableCell}>{index + 1}</td>
+                    <td className={styles.tableCell}>{sortedPurchaseInvoices.length - index}</td>
                     <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
                       {purchaseInvoice.purchaseInvoiceNoDisplay}
                     </td>
@@ -349,7 +352,7 @@ export function PurchaseInvoicesTab() {
               </tr>
             </thead>
             <tbody>
-              {printingPurchaseInvoices.map((printingPurchaseInvoice, index) => {
+              {sortedPrintingPurchaseInvoices.map((printingPurchaseInvoice, index) => {
                 const po = printingPurchaseInvoice.poId
                   ? printingPurchaseOrdersById.get(printingPurchaseInvoice.poId)
                   : undefined;
@@ -359,7 +362,7 @@ export function PurchaseInvoicesTab() {
                     onDoubleClick={() => setModalState({ mode: "printingEdit", printingPurchaseInvoice })}
                     className={styles.tableRow}
                   >
-                    <td className={styles.tableCell}>{index + 1}</td>
+                    <td className={styles.tableCell}>{sortedPrintingPurchaseInvoices.length - index}</td>
                     <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
                       {printingPurchaseInvoice.printingPurchaseInvoiceNoDisplay}
                     </td>

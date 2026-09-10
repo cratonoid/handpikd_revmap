@@ -73,6 +73,7 @@ import { fetchVendors, fetchVendorsList, type Vendor, type VendorOption } from "
 import { fetchProducts, type Product } from "@/lib/products";
 import { fetchProfileDetails } from "@/lib/profile-details";
 import { resolveStateCode } from "@/lib/gst";
+import { byNewestFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
 
 // The inner pill's two values. Which of them is showing is irrelevant while
@@ -106,24 +107,6 @@ type LoadState = "loading" | "loaded";
 //
 // The two series are independent, as the collections are: a material and a
 // printing order may legitimately carry the same number.
-// Row order for both tables: oldest first, so the list reads as the
-// purchasing history in the order it actually happened.
-//
-// Sorted for display only — the fetched arrays keep whatever order the
-// backend sent, and S.No is a row counter rather than an identifier, so it
-// renumbers with the sort instead of following a row around.
-//
-// The id tiebreaker matters because the date field is entered by hand and
-// two orders keyed in the same minute compare equal. JS sort is stable, so
-// without it those two would fall back to the backend's iteration order,
-// which is not something to depend on.
-function byDateThenId(
-  a: { date: string; id: number },
-  b: { date: string; id: number },
-): number {
-  return new Date(a.date).getTime() - new Date(b.date).getTime() || a.id - b.id;
-}
-
 function nextOrderNo(numbers: string[]): string {
   return String(
     numbers.reduce((max, value) => {
@@ -155,9 +138,9 @@ export function PurchaseOrdersTab() {
   const [modalState, setModalState] = useState<ModalState>(null);
 
   const vendorsById = new Map(vendors.map((v) => [v.id, v]));
-  const sortedOrders = [...orders].sort(byDateThenId);
-  const sortedPrintingOrders = [...printingOrders].sort(byDateThenId);
-  const sortedUnbilledOrders = [...unbilledOrders].sort(byDateThenId);
+  const sortedOrders = [...orders].sort(byNewestFirst);
+  const sortedPrintingOrders = [...printingOrders].sort(byNewestFirst);
+  const sortedUnbilledOrders = [...unbilledOrders].sort(byNewestFirst);
   const unbilledTotal = unbilledOrders.reduce((sum, order) => sum + order.totalAmount, 0);
 
   useEffect(() => {
@@ -340,7 +323,7 @@ export function PurchaseOrdersTab() {
                   onDoubleClick={() => setModalState({ mode: "edit", order })}
                   className={styles.tableRow}
                 >
-                  <td className={styles.tableCell}>{index + 1}</td>
+                  <td className={styles.tableCell}>{sortedOrders.length - index}</td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{order.purchaseOrderNo}</td>
                   <td className={styles.tableCell}>{new Date(order.date).toLocaleDateString()}</td>
                   <td className={styles.tableCell}>{vendorsById.get(order.vendorId)?.registeredName ?? "—"}</td>
@@ -382,7 +365,7 @@ export function PurchaseOrdersTab() {
                   onDoubleClick={() => setModalState({ mode: "printingEdit", order })}
                   className={styles.tableRow}
                 >
-                  <td className={styles.tableCell}>{index + 1}</td>
+                  <td className={styles.tableCell}>{sortedPrintingOrders.length - index}</td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{order.purchaseOrderNo}</td>
                   <td className={styles.tableCell}>{new Date(order.date).toLocaleDateString()}</td>
                   <td className={styles.tableCell}>{vendorsById.get(order.vendorId)?.registeredName ?? "—"}</td>
@@ -432,7 +415,7 @@ export function PurchaseOrdersTab() {
                   onDoubleClick={() => setModalState({ mode: "unbilledEdit", order })}
                   className={styles.tableRow}
                 >
-                  <td className={styles.tableCell}>{index + 1}</td>
+                  <td className={styles.tableCell}>{sortedUnbilledOrders.length - index}</td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{order.purchaseOrderNo}</td>
                   <td className={styles.tableCell}>{new Date(order.date).toLocaleDateString()}</td>
                   <td className={styles.tableCell}>{vendorsById.get(order.vendorId)?.registeredName ?? "—"}</td>

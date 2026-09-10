@@ -22,6 +22,7 @@ import {
   type SubmissionSelectionNode,
 } from "@/lib/inquiry-form";
 import { formatInr } from "@/lib/public-products";
+import { byNewestCreatedFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
 
 function SelectionNodeList({ nodes, depth = 0 }: { nodes: SubmissionSelectionNode[]; depth?: number }) {
@@ -51,6 +52,8 @@ export function InquiryFormSubmissionsTab() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+
+  const sortedSubmissions = [...submissions].sort(byNewestCreatedFirst);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,7 +109,7 @@ export function InquiryFormSubmissionsTab() {
             </tr>
           </thead>
           <tbody>
-            {submissions.map((submission, index) => {
+            {sortedSubmissions.map((submission, index) => {
               const isExpanded = expandedIds.has(submission.id);
               const selectionTree = buildSubmissionSelectionTree(submission.selections);
 
@@ -118,7 +121,7 @@ export function InquiryFormSubmissionsTab() {
                     aria-expanded={isExpanded}
                     title="Click to view selections"
                   >
-                    <td className={`${styles.tableCell} ${styles.tableCellSerial}`}>{index + 1}</td>
+                    <td className={`${styles.tableCell} ${styles.tableCellSerial}`}>{sortedSubmissions.length - index}</td>
                     <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{submission.firmName}</td>
                     <td className={styles.tableCell}>{submission.occasion}</td>
                     <td className={styles.tableCell}>{submission.itemQuantity}</td>

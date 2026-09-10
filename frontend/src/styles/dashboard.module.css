@@ -2365,11 +2365,34 @@ select.formInput:disabled {
    flat order-level SGST/CGST/IGST amount.
    ----------------------------------------------------------------------- */
 
+/* Wider than the default .modalPanel because this form is a line-item table,
+   not a stack of fields: at 40rem the seven columns squeeze the product
+   picker down to a couple of words, so its trigger wraps onto three lines and
+   the dropdown it opens (which spans exactly the trigger's width) is too
+   narrow to read a product name and its HSN code on one line. Stays a
+   max-width, so the phone layout is untouched. */
+.salesOrderModalPanel {
+  max-width: 62rem;
+}
+
+/* The header fields (order no., customer, date, and status when editing) are
+   short ones, and two of them stretched across 62rem read as a mostly-empty
+   band above a dense line-item table. Three columns keeps them at roughly the
+   width they had before the panel widened. Only inside this panel — every
+   other modal is still 40rem, where two is right. */
+@media (min-width: 900px) {
+  .salesOrderModalPanel .formGrid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
 .salesLineItemsHeaderRow {
   display: none;
-  /* See .lineItemsHeaderRow above for why Product gives up relative space
-     to the numeric columns. */
-  grid-template-columns: 1.5fr 1fr 1.1fr 0.7fr 1.1fr 1.1fr 2.75rem;
+  /* Unlike .lineItemsHeaderRow above, Product takes space FROM the numeric
+     columns here: its label carries the HSN code alongside the name, and the
+     numeric fields hold at most a 5-digit value plus "₹" — at 62rem
+     (.salesOrderModalPanel) they still render that unclipped at 0.8-1.1fr. */
+  grid-template-columns: 2.6fr 0.8fr 1fr 0.7fr 1.1fr 1.1fr 2.75rem;
   gap: 0.5rem;
 }
 
@@ -2388,7 +2411,7 @@ select.formInput:disabled {
 
 @media (min-width: 640px) {
   .salesLineItemRow {
-    grid-template-columns: 1.5fr 1fr 1.1fr 0.7fr 1.1fr 1.1fr 2.75rem;
+    grid-template-columns: 2.6fr 0.8fr 1fr 0.7fr 1.1fr 1.1fr 2.75rem;
   }
 }
 

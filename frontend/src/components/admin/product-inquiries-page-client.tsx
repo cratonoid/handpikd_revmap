@@ -17,6 +17,7 @@ import { Fragment, useEffect, useState } from "react";
 import { ChevronRightIcon } from "@/components/icons";
 import { fetchProductInquiries, type ProductInquiry } from "@/lib/product-inquiries";
 import { formatInr } from "@/lib/public-products";
+import { byNewestCreatedFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
 
 export function ProductInquiriesPageClient() {
@@ -24,6 +25,8 @@ export function ProductInquiriesPageClient() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+
+  const sortedInquiries = [...inquiries].sort(byNewestCreatedFirst);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,7 +85,7 @@ export function ProductInquiriesPageClient() {
               </tr>
             </thead>
             <tbody>
-              {inquiries.map((inquiry, index) => {
+              {sortedInquiries.map((inquiry, index) => {
                 const isExpanded = expandedIds.has(inquiry.id);
 
                 return (
@@ -93,7 +96,7 @@ export function ProductInquiriesPageClient() {
                       aria-expanded={isExpanded}
                       title="Click to view products"
                     >
-                      <td className={`${styles.tableCell} ${styles.tableCellSerial}`}>{index + 1}</td>
+                      <td className={`${styles.tableCell} ${styles.tableCellSerial}`}>{sortedInquiries.length - index}</td>
                       <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{inquiry.name}</td>
                       <td className={styles.tableCell}>{inquiry.company}</td>
                       <td className={styles.tableCell}>{inquiry.email}</td>

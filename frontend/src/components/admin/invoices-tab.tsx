@@ -35,6 +35,7 @@ import { fetchPersonalDetails } from "@/lib/personal-details";
 import { fetchSalesOrders, type SalesOrder } from "@/lib/sales-orders";
 import { fetchProducts, type Product } from "@/lib/products";
 import { fetchCustomerList, type CustomerOption } from "@/lib/customers";
+import { byNewestFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
 
 type ModalState = { mode: "add" } | { mode: "edit"; invoice: Invoice } | null;
@@ -64,7 +65,9 @@ export function InvoicesTab() {
 
   const salesOrdersById = new Map(salesOrders.map((order) => [order.id, order]));
   const customersById = new Map(customers.map((c) => [c.id, c]));
-  const visibleInvoices = invoices.filter((invoice) => invoice.type === invoiceType);
+  const visibleInvoices = invoices
+    .filter((invoice) => invoice.type === invoiceType)
+    .sort(byNewestFirst);
 
   function loadAll() {
     return Promise.all([
@@ -263,7 +266,7 @@ export function InvoicesTab() {
                   onDoubleClick={() => setModalState({ mode: "edit", invoice })}
                   className={styles.tableRow}
                 >
-                  <td className={styles.tableCell}>{index + 1}</td>
+                  <td className={styles.tableCell}>{visibleInvoices.length - index}</td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{invoice.invoiceNoDisplay}</td>
                   <td className={styles.tableCell}>{new Date(invoice.date).toLocaleDateString()}</td>
                   {invoiceType === "standard" && (

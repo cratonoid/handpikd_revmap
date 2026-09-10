@@ -43,6 +43,7 @@ import {
   type UnbilledPurchaseOrderOption,
 } from "@/lib/unbilled-purchase-orders";
 import { fetchOrderStatusList, type OrderStatus } from "@/lib/order-status";
+import { byNewestFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
 
 type ModalState = { mode: "add" } | { mode: "edit"; order: SalesOrder } | null;
@@ -84,8 +85,11 @@ export function SalesOrdersTab() {
   const customersById = new Map(customers.map((c) => [c.id, c]));
   const statusesById = new Map(orderStatuses.map((s) => [s.id, s]));
   const sortedStatuses = [...orderStatuses].sort((a, b) => a.id - b.id);
-  const visibleOrders =
-    statusFilter === "all" ? orders : orders.filter((order) => order.orderStatusId === statusFilter);
+  const visibleOrders = (
+    statusFilter === "all" ? orders : orders.filter((order) => order.orderStatusId === statusFilter)
+  )
+    .slice()
+    .sort(byNewestFirst);
 
   useEffect(() => {
     let cancelled = false;
@@ -207,7 +211,7 @@ export function SalesOrdersTab() {
                 onDoubleClick={() => setModalState({ mode: "edit", order })}
                 className={styles.tableRow}
               >
-                <td className={styles.tableCell}>{index + 1}</td>
+                <td className={styles.tableCell}>{visibleOrders.length - index}</td>
                 <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
                   {order.orderNo}
                   {order.poUpdatedFlag && <span className={styles.inactiveBadge}>PO updated</span>}
