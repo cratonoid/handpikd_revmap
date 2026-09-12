@@ -30,6 +30,7 @@ import {
   type InvoiceType,
 } from "@/lib/customer-invoices";
 import styles from "@/styles/dashboard.module.css";
+import { formatDate } from "@/lib/format-date";
 
 type LoadState = "loading" | "loaded" | "failed";
 
@@ -147,7 +148,7 @@ export function CustomerInvoicesPageClient() {
                 <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
                   {invoice.invoiceNoDisplay}
                 </td>
-                <td className={styles.tableCell}>{new Date(invoice.date).toLocaleDateString()}</td>
+                <td className={styles.tableCell}>{formatDate(invoice.date)}</td>
                 {invoiceType === "standard" && (
                   <td className={styles.tableCell}>
                     {invoice.salesOrderNos.length > 0
@@ -155,7 +156,7 @@ export function CustomerInvoicesPageClient() {
                       : "—"}
                   </td>
                 )}
-                <td className={styles.tableCell}>{new Date(invoice.dueDate).toLocaleDateString()}</td>
+                <td className={styles.tableCell}>{formatDate(invoice.dueDate)}</td>
                 {invoiceType === "standard" && (
                   <td className={`${styles.tableCell} ${styles.statusText} ${STATUS_COLOR[invoice.status]}`}>
                     {STATUS_LABEL[invoice.status]}

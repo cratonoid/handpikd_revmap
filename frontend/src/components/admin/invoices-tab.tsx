@@ -39,6 +39,7 @@ import { fetchProducts, type Product } from "@/lib/products";
 import { fetchCustomerList, type CustomerOption } from "@/lib/customers";
 import { byNewestFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
+import { formatDate } from "@/lib/format-date";
 
 type ModalState = { mode: "add" } | { mode: "edit"; invoice: Invoice } | null;
 type LoadState = "loading" | "loaded";
@@ -324,7 +325,7 @@ export function InvoicesTab() {
                 >
                   <td className={styles.tableCell}>{visibleInvoices.length - index}</td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{invoice.invoiceNoDisplay}</td>
-                  <td className={styles.tableCell}>{new Date(invoice.date).toLocaleDateString()}</td>
+                  <td className={styles.tableCell}>{formatDate(invoice.date)}</td>
                   {invoiceType === "standard" && (
                     <td className={styles.tableCell}>
                       {linkedSalesOrders.length > 0
@@ -334,7 +335,7 @@ export function InvoicesTab() {
                   )}
                   <td className={styles.tableCell}>{customerName ?? "—"}</td>
                   {invoiceType === "proforma" && (
-                    <td className={styles.tableCell}>{new Date(invoice.dueDate).toLocaleDateString()}</td>
+                    <td className={styles.tableCell}>{formatDate(invoice.dueDate)}</td>
                   )}
                   {/* Standard invoices only: a proforma invoice carries a
                       due date rather than a payment state, and the backend

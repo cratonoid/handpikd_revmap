@@ -465,11 +465,6 @@ export function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
 }
 
-export function formatDate(value: string): string {
-  // The backend sends plain YYYY-MM-DD date strings here (not timestamps),
-  // so they're split by hand rather than passed through Date, which would
-  // read them as UTC midnight and shift the day backwards in IST.
-  const [year, month, day] = value.split("-");
-  if (!year || !month || !day) return value;
-  return `${day}/${month}/${year}`;
-}
+// Re-exported so the accounts tabs keep importing everything from here; the
+// dd/mm/yyyy rule itself lives in lib/format-date.ts with every other row.
+export { formatDate } from "@/lib/format-date";

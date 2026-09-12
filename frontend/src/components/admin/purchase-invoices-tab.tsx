@@ -54,6 +54,7 @@ import {
 import { fetchVendorsList, type VendorOption } from "@/lib/vendors";
 import { byNewestFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
+import { formatDate } from "@/lib/format-date";
 
 type View = "material" | "printing";
 type ModalState =
@@ -300,7 +301,7 @@ export function PurchaseInvoicesTab() {
                     <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
                       {purchaseInvoice.purchaseInvoiceNoDisplay}
                     </td>
-                    <td className={styles.tableCell}>{new Date(purchaseInvoice.date).toLocaleDateString()}</td>
+                    <td className={styles.tableCell}>{formatDate(purchaseInvoice.date)}</td>
                     <td className={styles.tableCell}>{vendorsById.get(purchaseInvoice.vendorId)?.name ?? "—"}</td>
                     <td className={styles.tableCell}>{poNumberLabel}</td>
                     <td className={styles.tableCell}>₹{purchaseInvoice.totalAmountAfterTax.toFixed(2)}</td>
@@ -367,7 +368,7 @@ export function PurchaseInvoicesTab() {
                       {printingPurchaseInvoice.printingPurchaseInvoiceNoDisplay}
                     </td>
                     <td className={styles.tableCell}>
-                      {new Date(printingPurchaseInvoice.date).toLocaleDateString()}
+                      {formatDate(printingPurchaseInvoice.date)}
                     </td>
                     <td className={styles.tableCell}>
                       {vendorsById.get(printingPurchaseInvoice.vendorId)?.name ?? "—"}

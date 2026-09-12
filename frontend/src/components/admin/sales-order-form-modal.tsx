@@ -478,12 +478,7 @@ export function SalesOrderFormModal({
           </div>
 
           <div className={styles.lineItemsSection}>
-            <div className={styles.contactsHeader}>
-              <span className={styles.formLabel}>Line items</span>
-              <button type="button" onClick={addLineItem} className={styles.addContactButton}>
-                + Add line item
-              </button>
-            </div>
+            <span className={styles.formLabel}>Line items</span>
 
             <div className={styles.salesLineItemsHeaderRow}>
               <span className={styles.formLabel}>Product</span>
@@ -578,6 +573,16 @@ export function SalesOrderFormModal({
                 </div>
               );
             })}
+
+            {/* Below the rows rather than up in the section header: the
+                admin adds a product, fills it in, then wants the next one —
+                and with a few rows in, that next click is right here rather
+                than a scroll back up. */}
+            <div className={styles.lineItemsFooter}>
+              <button type="button" onClick={addLineItem} className={styles.addContactButton}>
+                + Add line item
+              </button>
+            </div>
           </div>
 
           <MultiSelectDropdown

@@ -36,6 +36,7 @@ import {
 } from "@/lib/sales-order-costing";
 import { PlusIcon, XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
+import { formatDate } from "@/lib/format-date";
 
 type LoadState = "loading" | "loaded" | "error";
 type SaveState = "idle" | "saving" | "saved";
@@ -282,7 +283,7 @@ export function SalesOrderCostingPageClient({ salesOrderId }: { salesOrderId: nu
         <div>
           <h1 className={styles.pageHeading}>Order #{order.orderNo} details</h1>
           <p className={styles.pageSubtext}>
-            {order.customerName} · {new Date(order.date).toLocaleDateString()} · {order.orderStatusName}
+            {order.customerName} · {formatDate(order.date)} · {order.orderStatusName}
           </p>
         </div>
       </div>

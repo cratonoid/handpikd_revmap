@@ -2379,6 +2379,14 @@ select.formInput:disabled {
   gap: 0.75rem;
 }
 
+/* Holds the "+ Add line item" button when it sits under the rows instead of
+   in the section header (sales order form). A flex row so the underlined
+   text button keeps its own width at the left edge rather than being
+   stretched across the column by .lineItemsSection. */
+.lineItemsFooter {
+  display: flex;
+}
+
 .lineItemsHeaderRow {
   display: none;
   /* Product gets less relative space than the numeric columns (Quantity/

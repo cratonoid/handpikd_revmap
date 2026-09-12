@@ -19,6 +19,7 @@ import { fetchProductInquiries, type ProductInquiry } from "@/lib/product-inquir
 import { formatInr } from "@/lib/public-products";
 import { byNewestCreatedFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
+import { formatDateTime } from "@/lib/format-date";
 
 export function ProductInquiriesPageClient() {
   const [inquiries, setInquiries] = useState<ProductInquiry[]>([]);
@@ -103,7 +104,7 @@ export function ProductInquiriesPageClient() {
                       <td className={styles.tableCell}>{inquiry.phone ?? "—"}</td>
                       <td className={styles.tableCell}>{formatInr(inquiry.totalAmount)}</td>
                       <td className={styles.tableCell}>
-                        {new Date(inquiry.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                        {formatDateTime(inquiry.createdAt)}
                       </td>
                       <td className={styles.tableCell}>
                         <span className={styles.tableCategoryName}>

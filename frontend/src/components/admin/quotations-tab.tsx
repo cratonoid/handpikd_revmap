@@ -24,6 +24,7 @@ import { fetchCustomerList, type CustomerOption } from "@/lib/customers";
 import { fetchProducts, type Product } from "@/lib/products";
 import { byNewestFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
+import { formatDate } from "@/lib/format-date";
 
 type ModalState = { mode: "add" } | { mode: "edit"; quotation: Quotation } | null;
 type LoadState = "loading" | "loaded";
@@ -165,8 +166,8 @@ export function QuotationsTab() {
                 >
                   <td className={styles.tableCell}>{sortedQuotations.length - index}</td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{quotation.quotationNo}</td>
-                  <td className={styles.tableCell}>{new Date(quotation.date).toLocaleDateString()}</td>
-                  <td className={styles.tableCell}>{new Date(quotation.validTill).toLocaleDateString()}</td>
+                  <td className={styles.tableCell}>{formatDate(quotation.date)}</td>
+                  <td className={styles.tableCell}>{formatDate(quotation.validTill)}</td>
                   <td className={styles.tableCell}>{customerName || "—"}</td>
                   <td className={styles.tableCell}>{STATUS_LABEL[quotation.status]}</td>
                   <td className={styles.tableCell}>₹{quotation.totalAmountAfterTax.toFixed(2)}</td>

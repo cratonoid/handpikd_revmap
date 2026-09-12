@@ -14,6 +14,7 @@ import { Button } from "@/components/button";
 import { XMarkIcon } from "@/components/icons";
 import type { InventoryHistoryEntry } from "@/lib/inventory";
 import styles from "@/styles/dashboard.module.css";
+import { formatDate } from "@/lib/format-date";
 
 export function InventoryHistoryDetailModal({
   entry,
@@ -61,7 +62,7 @@ export function InventoryHistoryDetailModal({
             <div>
               <span className={styles.formLabel}>Date</span>
               <p className={styles.formStaticValue}>
-                {new Date(entry.transactionDate).toLocaleDateString()}
+                {formatDate(entry.transactionDate)}
               </p>
             </div>
 

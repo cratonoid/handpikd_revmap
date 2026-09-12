@@ -27,10 +27,7 @@ import {
   type CustomerInvoiceDetail,
 } from "@/lib/customer-invoices";
 import styles from "@/styles/dashboard.module.css";
-
-function formatDate(value: string): string {
-  return new Date(value).toLocaleDateString();
-}
+import { formatDate } from "@/lib/format-date";
 
 export function CustomerInvoiceDetailModal({
   invoice,

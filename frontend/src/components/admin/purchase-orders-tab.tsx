@@ -75,6 +75,7 @@ import { fetchProfileDetails } from "@/lib/profile-details";
 import { resolveStateCode } from "@/lib/gst";
 import { byNewestFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
+import { formatDate } from "@/lib/format-date";
 
 // The inner pill's two values. Which of them is showing is irrelevant while
 // `section` is "unbilled" — that pill isn't rendered — but it is remembered,
@@ -325,7 +326,7 @@ export function PurchaseOrdersTab() {
                 >
                   <td className={styles.tableCell}>{sortedOrders.length - index}</td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{order.purchaseOrderNo}</td>
-                  <td className={styles.tableCell}>{new Date(order.date).toLocaleDateString()}</td>
+                  <td className={styles.tableCell}>{formatDate(order.date)}</td>
                   <td className={styles.tableCell}>{vendorsById.get(order.vendorId)?.registeredName ?? "—"}</td>
                   <td className={styles.tableCell}>₹{order.totalAmountBeforeTax.toFixed(2)}</td>
                   <td className={styles.tableCell}>₹{order.totalAmountAfterTax.toFixed(2)}</td>
@@ -367,7 +368,7 @@ export function PurchaseOrdersTab() {
                 >
                   <td className={styles.tableCell}>{sortedPrintingOrders.length - index}</td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{order.purchaseOrderNo}</td>
-                  <td className={styles.tableCell}>{new Date(order.date).toLocaleDateString()}</td>
+                  <td className={styles.tableCell}>{formatDate(order.date)}</td>
                   <td className={styles.tableCell}>{vendorsById.get(order.vendorId)?.registeredName ?? "—"}</td>
                   <td className={styles.tableCell}>
                     {order.descriptions.length === 0
@@ -417,7 +418,7 @@ export function PurchaseOrdersTab() {
                 >
                   <td className={styles.tableCell}>{sortedUnbilledOrders.length - index}</td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{order.purchaseOrderNo}</td>
-                  <td className={styles.tableCell}>{new Date(order.date).toLocaleDateString()}</td>
+                  <td className={styles.tableCell}>{formatDate(order.date)}</td>
                   <td className={styles.tableCell}>{vendorsById.get(order.vendorId)?.registeredName ?? "—"}</td>
                   <td className={styles.tableCell}>
                     {order.productNames.length === 0

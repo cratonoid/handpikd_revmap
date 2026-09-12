@@ -48,6 +48,7 @@ import {
 import { fetchOrderStatusList, type OrderStatus } from "@/lib/order-status";
 import { byNewestFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
+import { formatDate } from "@/lib/format-date";
 
 type ModalState = { mode: "add" } | { mode: "edit"; order: SalesOrder } | null;
 type LoadState = "loading" | "loaded";
@@ -267,7 +268,7 @@ export function SalesOrdersTab() {
                   {order.orderNo}
                   {order.poUpdatedFlag && <span className={styles.inactiveBadge}>PO updated</span>}
                 </td>
-                <td className={styles.tableCell}>{new Date(order.date).toLocaleDateString()}</td>
+                <td className={styles.tableCell}>{formatDate(order.date)}</td>
                 <td className={styles.tableCell}>{customersById.get(order.custId)?.name ?? "—"}</td>
                 <td className={statusCellClassName(statusesById.get(order.orderStatusId)?.statusName)}>
                   <StatusSelect

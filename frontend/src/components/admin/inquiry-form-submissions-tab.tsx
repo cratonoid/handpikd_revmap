@@ -24,6 +24,7 @@ import {
 import { formatInr } from "@/lib/public-products";
 import { byNewestCreatedFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
+import { formatDateTime } from "@/lib/format-date";
 
 function SelectionNodeList({ nodes, depth = 0 }: { nodes: SubmissionSelectionNode[]; depth?: number }) {
   return (
@@ -128,7 +129,7 @@ export function InquiryFormSubmissionsTab() {
                     <td className={styles.tableCell}>₹{submission.budgetPerItem}</td>
                     <td className={styles.tableCell}>{formatInr(submission.totalMinAmount)}</td>
                     <td className={styles.tableCell}>
-                      {new Date(submission.createdAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}
+                      {formatDateTime(submission.createdAt)}
                     </td>
                     <td className={styles.tableCell}>
                       <span className={styles.tableCategoryName}>

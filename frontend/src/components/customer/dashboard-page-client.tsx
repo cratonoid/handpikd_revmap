@@ -23,6 +23,7 @@ import {
   type InvoiceStatus,
 } from "@/lib/customer-invoices";
 import styles from "@/styles/dashboard.module.css";
+import { formatDate } from "@/lib/format-date";
 
 type LoadState = "loading" | "loaded" | "failed";
 
@@ -137,8 +138,8 @@ export function CustomerDashboardPageClient() {
                 <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
                   {invoice.invoiceNoDisplay}
                 </td>
-                <td className={styles.tableCell}>{new Date(invoice.date).toLocaleDateString()}</td>
-                <td className={styles.tableCell}>{new Date(invoice.dueDate).toLocaleDateString()}</td>
+                <td className={styles.tableCell}>{formatDate(invoice.date)}</td>
+                <td className={styles.tableCell}>{formatDate(invoice.dueDate)}</td>
                 <td className={`${styles.tableCell} ${styles.statusText} ${STATUS_COLOR[invoice.status]}`}>
                   {/* A proforma invoice has no payment status worth showing —
                       nothing is owed on one — so it says what it is instead. */}

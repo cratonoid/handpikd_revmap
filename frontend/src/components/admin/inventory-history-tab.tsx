@@ -32,6 +32,7 @@ import {
   type UnbilledPurchaseOrderOption,
 } from "@/lib/unbilled-purchase-orders";
 import styles from "@/styles/dashboard.module.css";
+import { formatDate } from "@/lib/format-date";
 
 type LoadState = "loading" | "loaded";
 
@@ -117,7 +118,7 @@ export function InventoryHistoryTab() {
         productsById.get(entry.productId)?.productName,
         typeLabelFor(entry),
         referenceFor(entry),
-        new Date(entry.transactionDate).toLocaleDateString(),
+        formatDate(entry.transactionDate),
       ]),
     )
     .sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime());
@@ -151,7 +152,7 @@ export function InventoryHistoryTab() {
                   {productsById.get(entry.productId)?.productName ?? "—"}
                 </td>
                 <td className={styles.tableCell}>{typeLabelFor(entry)}</td>
-                <td className={styles.tableCell}>{new Date(entry.transactionDate).toLocaleDateString()}</td>
+                <td className={styles.tableCell}>{formatDate(entry.transactionDate)}</td>
               </tr>
             ))}
           </tbody>
