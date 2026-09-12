@@ -110,6 +110,30 @@ async def find_stock_shortfalls(stock_deltas: dict[int, int]) -> list[tuple[int,
     ]
 
 
+async def stock_shortfall_labels(shortfalls: list[tuple[int, int, int]]) -> dict[int, str]:
+    # How a product is named in the "insufficient stock" errors the three
+    # order routes raise from a find_stock_shortfalls result. The admin reads
+    # the tables by HSN code, not by the internal id, so the HSN is what the
+    # message leads with. An unbilled product has no HSN at all (see
+    # models/product_details.py), so it falls back to its name; and a product
+    # that has since vanished falls back to the bare id rather than dropping
+    # out of the message.
+    product_ids = [product_id for product_id, _on_hand, _delta in shortfalls]
+    products = await ProductDetails.find(In(ProductDetails.id, product_ids)).to_list()
+    products_by_id = {product.id: product for product in products}
+
+    labels: dict[int, str] = {}
+    for product_id in product_ids:
+        product = products_by_id.get(product_id)
+        if product is None:
+            labels[product_id] = f"product {product_id}"
+        elif product.hsn_code:
+            labels[product_id] = f"HSN {product.hsn_code}"
+        else:
+            labels[product_id] = product.product_name
+    return labels
+
+
 async def _set_product_visibility(product_id: int, is_visible: bool) -> None:
     product = await ProductDetails.get(product_id)
     if product is None:

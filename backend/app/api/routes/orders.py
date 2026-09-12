@@ -50,6 +50,7 @@ from app.services.inventory import (
     apply_purchase_order_stock,
     compute_stock_deltas,
     find_stock_shortfalls,
+    stock_shortfall_labels,
     get_applied_purchase_quantities,
     totals_by_product,
 )
@@ -223,8 +224,9 @@ async def _reject_stock_going_negative(stock_deltas: dict[int, int]) -> None:
     if not shortfalls:
         return
 
+    labels = await stock_shortfall_labels(shortfalls)
     details = ", ".join(
-        f"product {product_id} (on hand {on_hand}, this edit removes {-delta})"
+        f"{labels[product_id]} (on hand {on_hand}, this edit removes {-delta})"
         for product_id, on_hand, delta in shortfalls
     )
     raise HTTPException(
