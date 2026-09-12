@@ -35,6 +35,11 @@
 // from the unbilled purchase they came in on (see
 // components/admin/unbilled-purchase-order-form-modal.tsx). The list itself is deliberately the unfiltered
 // get_product_details, so the tabs are pure client-side splits of one fetch.
+// The category filter and the search box above the table are further
+// client-side filters over the same fetch, applied on top of whichever tab
+// is open (see visibleProducts). Search matches product name, HSN code and
+// the resolved vendor name — the columns an admin actually reads a row by —
+// via the shared matchesSearch rules in table-search-input.tsx.
 // The tabs share one table; the only per-tab differences are that Hidden and
 // Unbilled drop the MOQ column (an unbilled product has no meaningful
 // minimum order quantity) and that Unbilled's rows don't open the popup.
@@ -46,6 +51,7 @@ import { Button } from "@/components/button";
 import { resolveMediaUrl } from "@/lib/api";
 import { ProductFormModal } from "@/components/admin/product-form-modal";
 import { CategoryTreeSelect } from "@/components/admin/category-tree-select";
+import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import { fetchProducts, type Product } from "@/lib/products";
 import { fetchVendors, fetchVendorsList, type Vendor, type VendorOption } from "@/lib/vendors";
 import { fetchCategories, descendantIdsById, type CategoryNode } from "@/lib/categories";
@@ -64,6 +70,7 @@ export function ProductsPageClient() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
   const [view, setView] = useState<View>("active");
+  const [search, setSearch] = useState("");
 
   // Unfolding category filter above the table — same expand-on-check tree
   // as the product form's "Categories" field (category-tree-select.tsx),
@@ -86,6 +93,7 @@ export function ProductsPageClient() {
   }, [categoryFilterIds, descendantsById]);
 
   const isUnbilledView = view === "unbilled";
+  const vendorsById = new Map(vendors.map((v) => [v.id, v]));
   const visibleProducts = products
     .filter((p) => {
       if (view === "deleted") return p.isDeleted;
@@ -96,8 +104,8 @@ export function ProductsPageClient() {
       if (p.isUnbilled) return isUnbilledView;
       return !isUnbilledView && p.isVisible === (view === "active");
     })
-    .filter((p) => categoryFilterIds.length === 0 || p.categoryIds.some((id) => expandedFilterIds.has(id)));
-  const vendorsById = new Map(vendors.map((v) => [v.id, v]));
+    .filter((p) => categoryFilterIds.length === 0 || p.categoryIds.some((id) => expandedFilterIds.has(id)))
+    .filter((p) => matchesSearch(search, [p.productName, p.hsnCode, vendorsById.get(p.vendorId)?.registeredName]));
 
   useEffect(() => {
     let cancelled = false;
@@ -230,6 +238,13 @@ export function ProductsPageClient() {
             Clear category filter
           </Button>
         )}
+
+        <TableSearchInput
+          value={search}
+          onChange={setSearch}
+          label="Search products"
+          placeholder="Search product, HSN or vendor…"
+        />
       </div>
 
       <div className={styles.tableWrap}>
@@ -294,7 +309,9 @@ export function ProductsPageClient() {
         {loadState === "loading" && <p className={styles.pageSubtext}>Loading products…</p>}
         {loadState === "error" && <p className={styles.pageSubtext}>No products available.</p>}
         {loadState === "loaded" && visibleProducts.length === 0 && (
-          <p className={styles.pageSubtext}>No products available.</p>
+          <p className={styles.pageSubtext}>
+            {search.trim() !== "" ? "No products match your search." : "No products available."}
+          </p>
         )}
       </div>
 
