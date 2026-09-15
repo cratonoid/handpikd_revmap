@@ -135,7 +135,6 @@ export function CustomerInvoicesPageClient() {
             <tr>
               <th className={styles.tableHeadCell}>Invoice no.</th>
               <th className={styles.tableHeadCell}>Date</th>
-              {invoiceType === "standard" && <th className={styles.tableHeadCell}>Order</th>}
               <th className={styles.tableHeadCell}>Due date</th>
               {invoiceType === "standard" && <th className={styles.tableHeadCell}>Status</th>}
               <th className={styles.tableHeadCell}>Amount</th>
@@ -149,13 +148,6 @@ export function CustomerInvoicesPageClient() {
                   {invoice.invoiceNoDisplay}
                 </td>
                 <td className={styles.tableCell}>{formatDate(invoice.date)}</td>
-                {invoiceType === "standard" && (
-                  <td className={styles.tableCell}>
-                    {invoice.salesOrderNos.length > 0
-                      ? invoice.salesOrderNos.map((orderNo) => `SO-${orderNo}`).join(", ")
-                      : "—"}
-                  </td>
-                )}
                 <td className={styles.tableCell}>{formatDate(invoice.dueDate)}</td>
                 {invoiceType === "standard" && (
                   <td className={`${styles.tableCell} ${styles.statusText} ${STATUS_COLOR[invoice.status]}`}>

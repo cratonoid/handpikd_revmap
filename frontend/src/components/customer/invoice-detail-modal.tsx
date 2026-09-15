@@ -111,17 +111,6 @@ export function CustomerInvoiceDetailModal({
               <p className={styles.formStaticValue}>{formatDate(invoice.dueDate)}</p>
             </div>
 
-            {!isProforma && (
-              <div>
-                <span className={styles.formLabel}>Order</span>
-                <p className={styles.formStaticValue}>
-                  {invoice.salesOrderNos.length > 0
-                    ? invoice.salesOrderNos.map((orderNo) => `SO-${orderNo}`).join(", ")
-                    : "—"}
-                </p>
-              </div>
-            )}
-
             {detail && !isProforma && detail.transport && (
               <div>
                 <span className={styles.formLabel}>Transport</span>

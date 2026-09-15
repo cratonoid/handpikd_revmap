@@ -6,10 +6,10 @@
 // Read-only ledger view of GET /admin/get_inventory_history
 // (backend/app/api/routes/inventory.py), one row per purchase/sale line
 // item (see app/services/inventory.py). The table itself only shows enough
-// to identify an entry — product, type, date — resolving the raw product_id
+// to identify an entry — product, type, quantity, date — resolving the raw product_id
 // FK against fetchProducts() the same way sales-orders-tab.tsx resolves
 // customer names. Double-clicking a row opens <InventoryHistoryDetailModal>
-// with the rest (reference no., HSN, quantity), the reference resolved from
+// with the rest (reference no., HSN), the reference resolved from
 // purchase_order_id/unbilled_purchase_order_id/sales_order_id against
 // fetchPurchaseOrderList()/fetchUnbilledPurchaseOrderList()/
 // fetchSalesOrders() — three lists rather than two because billed and
@@ -141,6 +141,7 @@ export function InventoryHistoryTab() {
               <th className={styles.tableHeadCell}>S.No</th>
               <th className={styles.tableHeadCell}>Product</th>
               <th className={styles.tableHeadCell}>Type</th>
+              <th className={styles.tableHeadCell}>Quantity</th>
               <th className={styles.tableHeadCell}>Date</th>
             </tr>
           </thead>
@@ -152,6 +153,7 @@ export function InventoryHistoryTab() {
                   {productsById.get(entry.productId)?.productName ?? "—"}
                 </td>
                 <td className={styles.tableCell}>{typeLabelFor(entry)}</td>
+                <td className={styles.tableCell}>{entry.quantity}</td>
                 <td className={styles.tableCell}>{formatDate(entry.transactionDate)}</td>
               </tr>
             ))}

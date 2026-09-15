@@ -3,8 +3,8 @@
 // ---------------------------------------------------------------------------
 // <CustomerDashboardPageClient> — the interactive body of /customer
 // ---------------------------------------------------------------------------
-// Where a client's invoices stand: what's outstanding, what's late, what's
-// settled, and the most recent few with their status. It reads the same
+// Where a client's invoices stand: what's late, what's settled, and the most
+// recent few with their status. Outstanding is deliberately not shown here. It reads the same
 // GET /customer/get_my_invoices the invoices screen does and totals it here
 // (summariseInvoiceStatus in lib/customer-invoices.ts, which follows the
 // admin's receivables rules) — there is no separate stats endpoint to drift
@@ -70,11 +70,6 @@ export function CustomerDashboardPageClient() {
   const ready = loadState === "loaded";
 
   const stats = [
-    {
-      label: "Outstanding",
-      value: ready ? formatAmount(summary.outstandingAmount) : "—",
-      caption: ready ? `${summary.outstandingCount} invoice(s) awaiting payment` : null,
-    },
     {
       label: "Overdue",
       value: ready ? formatAmount(summary.overdueAmount) : "—",
