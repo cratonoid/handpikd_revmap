@@ -11,6 +11,11 @@
 // one customer name/address) — picking the first sales order locks the
 // picker to that customer's other orders, mirroring how
 // purchase-order-form-modal.tsx scopes its product picker to one vendor.
+// A sales order can only be billed once, so the picker also leaves out any
+// order a live standard invoice already lists (the `invoices` prop —
+// voided ones don't count, their orders are free again). The backend
+// enforces the same rule (_check_not_already_invoiced in routes/invoices.py)
+// in case two admins pick the same order from stale lists.
 // Proforma invoices have their own dedicated modal
 // (proforma-invoice-form-modal.tsx), since they carry their own line items
 // instead of a sales-order link.
@@ -41,6 +46,7 @@ export function InvoiceFormModal({
   mode,
   initialInvoice,
   salesOrders,
+  invoices,
   customers,
   onClose,
   onSaved,
@@ -48,6 +54,8 @@ export function InvoiceFormModal({
   mode: "add" | "edit";
   initialInvoice?: Invoice;
   salesOrders: SalesOrder[];
+  // Every live invoice — used only to hide sales orders already billed.
+  invoices: Invoice[];
   customers: CustomerOption[];
   onClose: () => void;
   onSaved: () => void;
@@ -85,15 +93,32 @@ export function InvoiceFormModal({
   // _check_same_customer in routes/invoices.py, which enforces this
   // server-side too).
   const lockedCustId = selectedSalesOrders[0]?.custId ?? null;
+  // Sales orders a live standard invoice already covers. The tab's list
+  // comes from get_invoice_details, which never returns voided invoices,
+  // but the isDeleted check keeps this right if that ever changes.
+  const invoicedSalesIds = useMemo(
+    () =>
+      new Set(
+        invoices
+          .filter((invoice) => invoice.type === "standard" && !invoice.isDeleted)
+          .flatMap((invoice) => invoice.salesIds),
+      ),
+    [invoices],
+  );
   const salesOrderOptions: MultiSelectOption[] = useMemo(
     () =>
       salesOrders
-        .filter((order) => !order.isDeleted && (lockedCustId === null || order.custId === lockedCustId))
+        .filter(
+          (order) =>
+            !order.isDeleted &&
+            !invoicedSalesIds.has(order.id) &&
+            (lockedCustId === null || order.custId === lockedCustId),
+        )
         .map((order) => ({
           value: String(order.id),
           label: `SO-${order.orderNo} · ${customersById.get(order.custId)?.name ?? "Unknown customer"}`,
         })),
-    [salesOrders, customersById, lockedCustId],
+    [salesOrders, customersById, lockedCustId, invoicedSalesIds],
   );
 
   async function submitPayload(isDeletedValue: boolean) {
@@ -205,7 +230,7 @@ export function InvoiceFormModal({
                 label="Sales orders"
                 placeholder="Select sales orders"
                 searchPlaceholder="Search sales orders…"
-                emptyMessage="No sales orders match."
+                emptyMessage="No sales orders match. Orders already on an invoice aren't listed."
                 options={salesOrderOptions}
                 selectedValues={salesIds}
                 onChange={setSalesIds}

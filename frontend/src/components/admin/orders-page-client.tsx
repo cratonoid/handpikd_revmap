@@ -7,6 +7,12 @@
 // sales-orders-tab.tsx — table + "+ New sales order" form) and "Purchase
 // orders" (components/admin/purchase-orders-tab.tsx). Sales orders is the
 // default/first tab since it's the primary day-to-day workflow.
+//
+// The heading and the Sales/Purchase pill share one line, the pill flush
+// right, the same way invoices-page-client.tsx lays out its header — the
+// pill used to sit on its own row under the heading, which with each tab's
+// own pill-and-button row below it put three rows of chrome above the
+// first order.
 import { useState } from "react";
 import { PurchaseOrdersTab } from "@/components/admin/purchase-orders-tab";
 import { SalesOrdersTab } from "@/components/admin/sales-orders-tab";
@@ -19,27 +25,28 @@ export function OrdersPageClient() {
 
   return (
     <>
-      <h1 className={styles.pageHeading}>Orders</h1>
-
-      <div className={styles.viewToggle} role="tablist" aria-label="Orders section">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "sales"}
-          onClick={() => setTab("sales")}
-          className={`${styles.viewToggleButton} ${tab === "sales" ? styles.viewToggleButtonActive : ""}`}
-        >
-          Sales orders
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === "purchase"}
-          onClick={() => setTab("purchase")}
-          className={`${styles.viewToggleButton} ${tab === "purchase" ? styles.viewToggleButtonActive : ""}`}
-        >
-          Purchase orders
-        </button>
+      <div className={styles.pageHeaderWithTabs}>
+        <h1 className={styles.pageHeading}>Orders</h1>
+        <div className={styles.viewToggle} role="tablist" aria-label="Orders section">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "sales"}
+            onClick={() => setTab("sales")}
+            className={`${styles.viewToggleButton} ${tab === "sales" ? styles.viewToggleButtonActive : ""}`}
+          >
+            Sales orders
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "purchase"}
+            onClick={() => setTab("purchase")}
+            className={`${styles.viewToggleButton} ${tab === "purchase" ? styles.viewToggleButtonActive : ""}`}
+          >
+            Purchase orders
+          </button>
+        </div>
       </div>
 
       {tab === "sales" ? <SalesOrdersTab /> : <PurchaseOrdersTab />}

@@ -3,8 +3,9 @@
 // ---------------------------------------------------------------------------
 // <ColumnFilterDropdown> — funnel button + multiselect panel in a table header
 // ---------------------------------------------------------------------------
-// The "filter this column" control that sits beside a column label
-// (currently the Customer column of components/admin/sales-orders-tab.tsx).
+// The "filter this column" control that sits beside a column label: the
+// Customer column of components/admin/sales-orders-tab.tsx and the Vendor
+// column of each table in components/admin/purchase-orders-tab.tsx.
 // It is the same checkbox-list-with-search idea as multi-select-dropdown.tsx,
 // cut down for a header: no trigger with chips (there is no room for chips
 // on a header line — the count beside the funnel stands in for them), and

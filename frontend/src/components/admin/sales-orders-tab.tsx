@@ -228,7 +228,7 @@ export function SalesOrdersTab() {
           two stacked rows, with a third above them for a subtitle that only
           restated the page subtext in orders-page-client.tsx — three rows of
           chrome that left barely two orders visible under it. */}
-      <div className={styles.filterToggleRow}>
+      <div className={`${styles.filterToggleRow} ${styles.filterToggleRowCompact}`}>
         <div className={styles.viewToggle} role="tablist" aria-label="Sales order status">
           <button
             type="button"

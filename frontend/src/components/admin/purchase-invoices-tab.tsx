@@ -278,8 +278,12 @@ export function PurchaseInvoicesTab() {
           <table className={styles.table}>
             <thead>
               <tr>
+                {/* No invoice-number column: our own running number is not
+                    what anyone looks a purchase up by (the vendor's PO
+                    number and their name are), so it only spent width. It
+                    is still on the row's form and in the download's file
+                    name. */}
                 <th className={styles.tableHeadCell}>S.No</th>
-                <th className={styles.tableHeadCell}>Purchase invoice no.</th>
                 <th className={styles.tableHeadCell}>Date</th>
                 <th className={styles.tableHeadCell}>Vendor</th>
                 <th className={styles.tableHeadCell}>PO number</th>
@@ -298,9 +302,6 @@ export function PurchaseInvoicesTab() {
                     className={styles.tableRow}
                   >
                     <td className={styles.tableCell}>{sortedPurchaseInvoices.length - index}</td>
-                    <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
-                      {purchaseInvoice.purchaseInvoiceNoDisplay}
-                    </td>
                     <td className={styles.tableCell}>{formatDate(purchaseInvoice.date)}</td>
                     <td className={styles.tableCell}>{vendorsById.get(purchaseInvoice.vendorId)?.name ?? "—"}</td>
                     <td className={styles.tableCell}>{poNumberLabel}</td>

@@ -88,6 +88,40 @@ def _check_same_customer(sales_orders: list[SalesOrders]) -> None:
         )
 
 
+async def _check_not_already_invoiced(
+    sales_orders: list[SalesOrders], exclude_invoice_id: int | None = None
+) -> None:
+    """Reject a sales order that a live standard invoice already covers.
+
+    One sales order, one invoice: raising a second invoice against the same
+    order would bill the client twice for the same goods. Only live invoices
+    count - a voided one has released its orders, which is exactly what
+    voiding is for. `exclude_invoice_id` lets an invoice's own orders pass
+    when it is the one being restored (see update_invoice_details).
+
+    The frontend picker hides already-invoiced orders too (see
+    invoice-form-modal.tsx), but two admins working from stale lists can
+    still both pick the same order, so the check has to live here.
+    """
+    claimed_by = await InvoiceDetails.find(
+        InvoiceDetails.is_deleted == False,
+        InvoiceDetails.type == InvoiceType.standard,
+        In(InvoiceDetails.sales_ids, [order.id for order in sales_orders]),
+    ).to_list()
+
+    conflicts = []
+    for order in sales_orders:
+        for invoice in claimed_by:
+            if invoice.id != exclude_invoice_id and order.id in invoice.sales_ids:
+                conflicts.append(f"SO-{order.order_no} (on {format_sales_invoice_no(invoice)})")
+                break
+    if conflicts:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="sales order(s) already invoiced: " + ", ".join(conflicts),
+        )
+
+
 async def resolve_invoice_customer_id(invoice: InvoiceDetails) -> int | None:
     """The client an invoice is billed to, whichever kind it is.
 
@@ -267,6 +301,7 @@ async def create_new_invoice(
 ) -> CreateNewInvoiceResponse:
     sales_orders = await _get_sales_orders_or_404(payload.sales_ids)
     _check_same_customer(sales_orders)
+    await _check_not_already_invoiced(sales_orders)
     total_before_tax, total_tax, total_after_tax = _sum_sales_order_totals(sales_orders)
     # All linked sales orders share one customer (just enforced above).
     tax_context = await _tax_context_for_customer(sales_orders[0].cust_id)
@@ -441,6 +476,12 @@ async def update_invoice_details(
     # pattern as update_sales_order_details.
     sales_orders = await _get_sales_orders_or_404(invoice.sales_ids)
     total_before_tax, total_tax, total_after_tax = _sum_sales_order_totals(sales_orders)
+
+    # Restoring a voided invoice re-claims its sales orders, so it has to
+    # pass the same one-invoice-per-order check a new invoice does: another
+    # invoice may have been raised against them while this one was void.
+    if invoice.is_deleted and not payload.is_deleted:
+        await _check_not_already_invoiced(sales_orders, exclude_invoice_id=invoice.id)
 
     # invoice_fy_start_year is deliberately left alone: the number has
     # already been issued out of that year's series, so correcting the date

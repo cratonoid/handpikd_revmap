@@ -383,6 +383,7 @@ export function InvoicesTab() {
           mode={modalState.mode}
           initialInvoice={modalState.mode === "edit" ? modalState.invoice : undefined}
           salesOrders={salesOrders}
+          invoices={invoices}
           customers={customers}
           onClose={() => setModalState(null)}
           onSaved={handleSaved}

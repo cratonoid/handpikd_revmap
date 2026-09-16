@@ -579,20 +579,21 @@
 }
 
 /* -----------------------------------------------------------------------
-   Compact invoices toolbar (components/admin/invoices-page-client.tsx,
-   components/admin/invoices-tab.tsx) — the invoices page used to stack a
-   section tab, a type tab, a header row and a date-range row on top of
-   each other, each carrying its own margin-top, which pushed the table
-   far down the page. These scoped rules fold the toggle and actions
+   Compact page header + toolbar (components/admin/invoices-page-client.tsx,
+   orders-page-client.tsx, invoices-tab.tsx) — the invoices page used to
+   stack a section tab, a type tab, a header row and a date-range row on
+   top of each other, each carrying its own margin-top, which pushed the
+   table far down the page. These scoped rules fold the toggle and actions
    onto one line and shrink the date-range row, without touching the
    shared .viewToggle/.pageHeaderRow/.bulkDownloadRow classes that other
-   pages still use at full size.
+   pages still use at full size. The orders page later took the same
+   header treatment.
    ----------------------------------------------------------------------- */
 
 /* Page title and the Sales/Purchase pill share one line instead of stacking.
    The heading alone claimed a full row whose right two-thirds sat empty; the
    pill now rides in that space, giving the table back ~40px. */
-.invoicesPageHeader {
+.pageHeaderWithTabs {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -601,9 +602,15 @@
 
 /* margin-left: auto rather than justify-content: space-between so the pill
    still sits flush right if a third control is ever added to the row. */
-.invoicesPageHeader .viewToggle {
+.pageHeaderWithTabs .viewToggle {
   margin-top: 0;
   margin-left: auto;
+}
+
+/* The orders tabs' pill + button row, pulled up to .invoicesToolbar's
+   spacing so the two pages' tables start at the same height. */
+.filterToggleRowCompact {
+  margin-top: 0.75rem;
 }
 
 .invoicesToolbar {

@@ -20,7 +20,7 @@ export function InvoicesPageClient() {
 
   return (
     <>
-      <div className={styles.invoicesPageHeader}>
+      <div className={styles.pageHeaderWithTabs}>
         <h1 className={styles.pageHeading}>Invoices</h1>
         <div className={styles.viewToggle} role="tablist" aria-label="Invoices section">
           <button

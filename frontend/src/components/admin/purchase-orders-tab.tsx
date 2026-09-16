@@ -40,6 +40,14 @@
 // unbilled purchase" opens its form directly, and nothing it saves reaches
 // the invoices page.
 //
+// Each table's Vendor header carries a multiselect filter
+// (components/admin/column-filter-dropdown.tsx, the same control the sales
+// table's Customer column has). One `vendorFilterIds` serves all three
+// tables, and switching section or view clears it: the three views draw on
+// different vendor pools (material vs printing vs unbilled), so a filter
+// carried across would often leave the next table empty for no visible
+// reason.
+//
 // Two separate vendor fetches: the full get_vendor_details list (`vendors`)
 // resolves each table's vendor column, including for orders whose vendor has
 // since been soft-deleted; the lightweight get_vendors_list
@@ -47,6 +55,7 @@
 // active vendors.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
+import { ColumnFilterDropdown, type ColumnFilterOption } from "@/components/admin/column-filter-dropdown";
 import { PurchaseInvoiceUploadModal } from "@/components/admin/purchase-invoice-upload-modal";
 import { PurchaseOrderFormModal } from "@/components/admin/purchase-order-form-modal";
 import { PurchaseOrderSourceModal } from "@/components/admin/purchase-order-source-modal";
@@ -137,12 +146,38 @@ export function PurchaseOrdersTab() {
   const [ownStateCode, setOwnStateCode] = useState("");
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
+  // Vendor ids ticked in the Vendor header's dropdown. Empty means no filter.
+  const [vendorFilterIds, setVendorFilterIds] = useState<number[]>([]);
 
   const vendorsById = new Map(vendors.map((v) => [v.id, v]));
-  const sortedOrders = [...orders].sort(byNewestFirst);
-  const sortedPrintingOrders = [...printingOrders].sort(byNewestFirst);
-  const sortedUnbilledOrders = [...unbilledOrders].sort(byNewestFirst);
-  const unbilledTotal = unbilledOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+  const vendorName = (vendorId: number) => vendorsById.get(vendorId)?.registeredName;
+  const vendorFilterSet = new Set(vendorFilterIds);
+  const passesVendorFilter = (order: { vendorId: number }) =>
+    vendorFilterSet.size === 0 || vendorFilterSet.has(order.vendorId);
+  // The dropdown's choices for one table: only vendors who have an order in
+  // it, A-Z — a vendor with nothing to filter to would just be a checkbox
+  // that empties the table.
+  function vendorFilterOptionsFor(rows: { vendorId: number }[]): ColumnFilterOption[] {
+    return [...new Set(rows.map((row) => row.vendorId))]
+      .map((vendorId) => ({ value: vendorId, label: vendorName(vendorId) ?? `Vendor #${vendorId}` }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }
+  const sortedOrders = orders.filter(passesVendorFilter).sort(byNewestFirst);
+  const sortedPrintingOrders = printingOrders.filter(passesVendorFilter).sort(byNewestFirst);
+  const sortedUnbilledOrders = unbilledOrders.filter(passesVendorFilter).sort(byNewestFirst);
+  // Follows the filter, so ticking a vendor reads off what was spent with
+  // just them.
+  const unbilledTotal = sortedUnbilledOrders.reduce((sum, order) => sum + order.totalAmount, 0);
+
+  function switchSection(next: Section) {
+    setSection(next);
+    setVendorFilterIds([]);
+  }
+
+  function switchView(next: View) {
+    setView(next);
+    setVendorFilterIds([]);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -232,13 +267,13 @@ export function PurchaseOrdersTab() {
 
   return (
     <>
-      <div className={styles.filterToggleRow}>
+      <div className={`${styles.filterToggleRow} ${styles.filterToggleRowCompact}`}>
         <div className={styles.viewToggle} role="tablist" aria-label="Purchase order billing">
           <button
             type="button"
             role="tab"
             aria-selected={!isUnbilled}
-            onClick={() => setSection("billed")}
+            onClick={() => switchSection("billed")}
             className={`${styles.viewToggleButton} ${!isUnbilled ? styles.viewToggleButtonActive : ""}`}
           >
             Billed
@@ -247,7 +282,7 @@ export function PurchaseOrdersTab() {
             type="button"
             role="tab"
             aria-selected={isUnbilled}
-            onClick={() => setSection("unbilled")}
+            onClick={() => switchSection("unbilled")}
             className={`${styles.viewToggleButton} ${isUnbilled ? styles.viewToggleButtonActive : ""}`}
           >
             Unbilled
@@ -264,7 +299,7 @@ export function PurchaseOrdersTab() {
               type="button"
               role="tab"
               aria-selected={!isPrinting}
-              onClick={() => setView("material")}
+              onClick={() => switchView("material")}
               className={`${styles.viewToggleButton} ${!isPrinting ? styles.viewToggleButtonActive : ""}`}
             >
               Material
@@ -273,7 +308,7 @@ export function PurchaseOrdersTab() {
               type="button"
               role="tab"
               aria-selected={isPrinting}
-              onClick={() => setView("printing")}
+              onClick={() => switchView("printing")}
               className={`${styles.viewToggleButton} ${isPrinting ? styles.viewToggleButtonActive : ""}`}
             >
               Printing
@@ -312,7 +347,19 @@ export function PurchaseOrdersTab() {
                 <th className={styles.tableHeadCell}>S.No</th>
                 <th className={styles.tableHeadCell}>PO no.</th>
                 <th className={styles.tableHeadCell}>Date</th>
-                <th className={styles.tableHeadCell}>Vendor</th>
+                <th className={styles.tableHeadCell}>
+                  <span className={styles.tableHeadControls}>
+                    Vendor
+                    <ColumnFilterDropdown
+                      label="Filter by vendor"
+                      searchPlaceholder="Search vendors…"
+                      emptyMessage="No vendors match."
+                      options={vendorFilterOptionsFor(orders)}
+                      selectedValues={vendorFilterIds}
+                      onChange={setVendorFilterIds}
+                    />
+                  </span>
+                </th>
                 <th className={styles.tableHeadCell}>Before tax</th>
                 <th className={styles.tableHeadCell}>After tax</th>
               </tr>
@@ -327,7 +374,7 @@ export function PurchaseOrdersTab() {
                   <td className={styles.tableCell}>{sortedOrders.length - index}</td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{order.purchaseOrderNo}</td>
                   <td className={styles.tableCell}>{formatDate(order.date)}</td>
-                  <td className={styles.tableCell}>{vendorsById.get(order.vendorId)?.registeredName ?? "—"}</td>
+                  <td className={styles.tableCell}>{vendorName(order.vendorId) ?? "—"}</td>
                   <td className={styles.tableCell}>₹{order.totalAmountBeforeTax.toFixed(2)}</td>
                   <td className={styles.tableCell}>₹{order.totalAmountAfterTax.toFixed(2)}</td>
                 </tr>
@@ -335,8 +382,10 @@ export function PurchaseOrdersTab() {
             </tbody>
           </table>
           {loadState === "loading" && <p className={styles.pageSubtext}>Loading purchase orders…</p>}
-          {loadState === "loaded" && orders.length === 0 && (
-            <p className={styles.pageSubtext}>No purchase orders yet.</p>
+          {loadState === "loaded" && sortedOrders.length === 0 && (
+            <p className={styles.pageSubtext}>
+              {orders.length === 0 ? "No purchase orders yet." : "No purchase orders for the selected vendors."}
+            </p>
           )}
         </div>
       )}
@@ -349,7 +398,19 @@ export function PurchaseOrdersTab() {
                 <th className={styles.tableHeadCell}>S.No</th>
                 <th className={styles.tableHeadCell}>PO no.</th>
                 <th className={styles.tableHeadCell}>Date</th>
-                <th className={styles.tableHeadCell}>Vendor</th>
+                <th className={styles.tableHeadCell}>
+                  <span className={styles.tableHeadControls}>
+                    Vendor
+                    <ColumnFilterDropdown
+                      label="Filter by vendor"
+                      searchPlaceholder="Search vendors…"
+                      emptyMessage="No vendors match."
+                      options={vendorFilterOptionsFor(printingOrders)}
+                      selectedValues={vendorFilterIds}
+                      onChange={setVendorFilterIds}
+                    />
+                  </span>
+                </th>
                 {/* Stands in for the material table's product column: a
                     printing order's lines are free text, so the first one
                     (and a count of the rest) is what identifies the order at
@@ -369,7 +430,7 @@ export function PurchaseOrdersTab() {
                   <td className={styles.tableCell}>{sortedPrintingOrders.length - index}</td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{order.purchaseOrderNo}</td>
                   <td className={styles.tableCell}>{formatDate(order.date)}</td>
-                  <td className={styles.tableCell}>{vendorsById.get(order.vendorId)?.registeredName ?? "—"}</td>
+                  <td className={styles.tableCell}>{vendorName(order.vendorId) ?? "—"}</td>
                   <td className={styles.tableCell}>
                     {order.descriptions.length === 0
                       ? "—"
@@ -384,8 +445,12 @@ export function PurchaseOrdersTab() {
             </tbody>
           </table>
           {loadState === "loading" && <p className={styles.pageSubtext}>Loading printing purchase orders…</p>}
-          {loadState === "loaded" && printingOrders.length === 0 && (
-            <p className={styles.pageSubtext}>No printing purchase orders yet.</p>
+          {loadState === "loaded" && sortedPrintingOrders.length === 0 && (
+            <p className={styles.pageSubtext}>
+              {printingOrders.length === 0
+                ? "No printing purchase orders yet."
+                : "No printing purchase orders for the selected vendors."}
+            </p>
           )}
         </div>
       )}
@@ -398,7 +463,19 @@ export function PurchaseOrdersTab() {
                 <th className={styles.tableHeadCell}>S.No</th>
                 <th className={styles.tableHeadCell}>Purchase no.</th>
                 <th className={styles.tableHeadCell}>Date</th>
-                <th className={styles.tableHeadCell}>Vendor</th>
+                <th className={styles.tableHeadCell}>
+                  <span className={styles.tableHeadControls}>
+                    Vendor
+                    <ColumnFilterDropdown
+                      label="Filter by vendor"
+                      searchPlaceholder="Search vendors…"
+                      emptyMessage="No vendors match."
+                      options={vendorFilterOptionsFor(unbilledOrders)}
+                      selectedValues={vendorFilterIds}
+                      onChange={setVendorFilterIds}
+                    />
+                  </span>
+                </th>
                 {/* Stands in for the material table's missing product
                     column, the same way the printing table's Services column
                     does: the first item and a count of the rest is what
@@ -419,7 +496,7 @@ export function PurchaseOrdersTab() {
                   <td className={styles.tableCell}>{sortedUnbilledOrders.length - index}</td>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{order.purchaseOrderNo}</td>
                   <td className={styles.tableCell}>{formatDate(order.date)}</td>
-                  <td className={styles.tableCell}>{vendorsById.get(order.vendorId)?.registeredName ?? "—"}</td>
+                  <td className={styles.tableCell}>{vendorName(order.vendorId) ?? "—"}</td>
                   <td className={styles.tableCell}>
                     {order.productNames.length === 0
                       ? "—"
@@ -433,8 +510,10 @@ export function PurchaseOrdersTab() {
             </tbody>
           </table>
           {loadState === "loading" && <p className={styles.pageSubtext}>Loading unbilled purchases…</p>}
-          {loadState === "loaded" && unbilledOrders.length === 0 && (
-            <p className={styles.pageSubtext}>No unbilled purchases yet.</p>
+          {loadState === "loaded" && sortedUnbilledOrders.length === 0 && (
+            <p className={styles.pageSubtext}>
+              {unbilledOrders.length === 0 ? "No unbilled purchases yet." : "No unbilled purchases for the selected vendors."}
+            </p>
           )}
           {/* The only place this spend is totalled. It is deliberately absent
               from /admin/accounts, which reports GST-bearing purchases and
@@ -442,8 +521,10 @@ export function PurchaseOrdersTab() {
               listing it there would invite it into a tax figure. It still
               reaches margin through the product's vendor_rate, which
               #sales_order_costing defaults each line's cost from. */}
-          {loadState === "loaded" && unbilledOrders.length > 0 && (
-            <p className={styles.pageSubtext}>Total unbilled spend: ₹{unbilledTotal.toFixed(2)}</p>
+          {loadState === "loaded" && sortedUnbilledOrders.length > 0 && (
+            <p className={styles.pageSubtext}>
+              Total unbilled spend{vendorFilterIds.length > 0 ? " (selected vendors)" : ""}: ₹{unbilledTotal.toFixed(2)}
+            </p>
           )}
         </div>
       )}
