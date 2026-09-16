@@ -19,6 +19,8 @@ from app.models import (
     CustomerIdCounter,
     CustomerPocDetails,
     CustomerPocIdCounter,
+    ExpenseDetails,
+    ExpenseIdCounter,
     InquiryFormNode,
     InquiryFormNodeIdCounter,
     InquiryFormSubmission,
@@ -287,6 +289,25 @@ async def _backfill_purchase_summary_gst() -> None:
         )
 
 
+async def _backfill_expense_dates() -> None:
+    # `date` was added to ExpenseDetails after the first expenses were
+    # entered; before it, created_at was the only date a row carried and the
+    # overview bucketed by that. Copying it across (at midnight) keeps those
+    # rows in the month they were already reported under.
+    db = get_db()
+    stale = (
+        await db["expense_details"]
+        .find({"date": {"$exists": False}}, {"_id": 1, "created_at": 1})
+        .to_list(length=None)
+    )
+    for row in stale:
+        created_at = row.get("created_at") or datetime.now(timezone.utc).replace(tzinfo=None)
+        await db["expense_details"].update_one(
+            {"_id": row["_id"]},
+            {"$set": {"date": datetime.combine(created_at.date(), datetime.min.time())}},
+        )
+
+
 async def _backfill_inventory_history_transaction_date() -> None:
     # `transaction_date` was added to InventoryHistory so the inventory
     # history tab could show when the stock actually moved instead of when
@@ -410,6 +431,8 @@ async def connect_to_mongo() -> None:
             QuotationIdCounter,
             QuotationSummary,
             QuotationSummaryIdCounter,
+            ExpenseDetails,
+            ExpenseIdCounter,
         ],
     )
     await _seed_order_statuses()
@@ -420,6 +443,7 @@ async def connect_to_mongo() -> None:
     await _backfill_purchase_order_tax_kind()
     await _backfill_purchase_summary_gst()
     await _backfill_inventory_history_transaction_date()
+    await _backfill_expense_dates()
 
 
 async def close_mongo_connection() -> None:

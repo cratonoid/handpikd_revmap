@@ -524,6 +524,8 @@ export function SalesOrderCostingPageClient({ salesOrderId }: { salesOrderId: nu
                 <FigureRow label="Net printing cost" value={currency(figures.netPrintingCost)} />
                 <FigureRow label="Printing tax amount" value={currency(figures.printingTaxAmount)} />
                 <FigureRow label="Gross printing cost" value={currency(figures.grossPrintingCost)} />
+                <FigureRow label="Delivery" value={currency(Number(line.delivery) || 0)} />
+                <FigureRow label="Miscellaneous" value={currency(Number(line.miscellaneous) || 0)} />
                 <FigureRow label="Net final cost" value={currency(figures.netFinalCost)} strong />
               </div>
 

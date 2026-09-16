@@ -1,9 +1,9 @@
 # Request/response bodies for the accounts module's endpoints.
 #
 # Every figure here is DERIVED — nothing in this file is stored. The accounts
-# module is read-only reporting over the invoice/order/costing collections
-# that the rest of the app writes, so there is no create/update request body
-# to define, only response shapes.
+# module is read-only reporting over the invoice/order/costing/expense
+# collections that the rest of the app writes, so there is no create/update
+# request body to define, only response shapes.
 #
 # Money conventions used throughout, matching the rest of the backend:
 #   - "revenue"/"taxable value" figures are NET of tax and net of any
@@ -26,7 +26,9 @@ class AccountsTrendPoint(BaseModel):
     label: str  # e.g. "Jan 2026"
     revenue: float
     cost: float
-    profit: float
+    profit: float  # Gross: revenue - cost.
+    expenses: float
+    net_profit: float  # profit - expenses.
     invoice_count: int
 
 
@@ -50,6 +52,13 @@ class AccountsOverviewResponse(BaseModel):
     cost_of_goods: float
     gross_profit: float
     gross_margin_perc: float
+    # Hand-entered expenses (routes/expenses.py) dated in the range, taken
+    # off gross profit to give the net figure. See get_accounts_overview for
+    # which rows count.
+    expenses: float
+    expense_count: int
+    net_profit: float
+    net_margin_perc: float
     invoice_count: int
     average_invoice_value: float
     # Costing coverage, so the UI can warn that margin is incomplete rather

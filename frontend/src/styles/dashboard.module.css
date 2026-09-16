@@ -2736,6 +2736,19 @@ select.formInput:disabled {
   margin: 0;
 }
 
+/* The line's optional note: the last cell of .salesLineItemRow, stretched
+   under all seven columns so the remark gets the row's full width instead of
+   an eighth squeezed column. Slightly smaller and quieter than the fields
+   above it, so it reads as an annotation on the line rather than another
+   figure to fill in. Tucked up towards its own row (the grid gap is 0.5rem)
+   and pushed away from the next line so each row-plus-note reads as one. */
+.salesLineItemNote {
+  grid-column: 1 / -1;
+  margin-top: -0.125rem;
+  margin-bottom: 0.375rem;
+  font-size: 0.8125rem;
+}
+
 /* -----------------------------------------------------------------------
    Quotation line items
    (components/admin/quotation-form-modal.tsx)
@@ -3507,17 +3520,10 @@ select.formInput:disabled {
   font-size: 0.8125rem;
 }
 
+/* Only the "Showing <range>" line now — the section tabs moved up beside
+   the page heading (.pageHeaderWithTabs in accounts-page-client.tsx). */
 .accountsToolbar {
   margin-top: 1rem;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.accountsToolbar .viewToggle {
-  margin-top: 0;
 }
 
 .accountsRangeSummary {
@@ -3687,6 +3693,11 @@ select.formInput:disabled {
   background-color: var(--color-status-processing);
 }
 
+.accountsBarExpenses {
+  fill: var(--color-status-delivered);
+  background-color: var(--color-status-delivered);
+}
+
 .accountsBarProfit {
   fill: var(--color-status-completed);
   background-color: var(--color-status-completed);
@@ -3768,6 +3779,84 @@ select.formInput:disabled {
   font-size: 0.6875rem;
   font-weight: 500;
   color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+}
+
+/* Expenses tab (components/admin/accounts-expenses-tab.tsx) — the one
+   accounts tab with an entry form. The form sits in the same bordered card
+   as .accountsRangeBar so the page's two "type here" surfaces match, with
+   its three fields and the button on one row that stacks on a phone. */
+.expenseForm {
+  margin-top: 1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  padding: 1rem 1.1rem;
+}
+
+.expenseFormFields {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.75rem;
+}
+
+.expenseFormField {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.expenseFormField .formLabel {
+  margin-bottom: 0;
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.expenseFormField .formInput {
+  min-height: 2.75rem;
+}
+
+.expenseForm .formError {
+  margin-top: 0.75rem;
+}
+
+/* Text-only row actions (Delete / Cancel / Yes, delete). Given their own
+   class rather than .linkButton so they can turn cream on the inverted
+   hovered row, which .linkButton's fixed charcoal never would. */
+.expenseRowButton {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+  text-decoration: underline;
+  text-underline-offset: 0.15rem;
+}
+
+.expenseRowButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.expenseRowButtonDanger {
+  color: var(--color-red);
+}
+
+@media (hover: hover) {
+  .tableRow:hover .expenseRowButton,
+  .tableRow:hover .deleteConfirmText {
+    color: var(--color-cream);
+  }
+}
+
+@media (max-width: 900px) {
+  .expenseFormFields {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .expenseFormField:first-child,
+  .expenseFormSubmit {
+    grid-column: 1 / -1;
+  }
 }
 
 @media (max-width: 640px) {

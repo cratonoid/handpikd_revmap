@@ -3,9 +3,10 @@
 // ---------------------------------------------------------------------------
 // <AccountsPageClient> — the interactive half of /admin/accounts
 // ---------------------------------------------------------------------------
-// Three tabs (Overview/P&L, Receivables, GST) over one shared date range,
-// following orders-page-client.tsx and invoices-page-client.tsx's .viewToggle
-// pattern. Overview is the default since it answers "how did we do" first.
+// Three report tabs (Overview/P&L, Receivables, GST) over one shared date
+// range, following orders-page-client.tsx and invoices-page-client.tsx's
+// .viewToggle pattern, plus an Expenses tab that is entered rather than
+// reported. Overview is the default since it answers "how did we do" first.
 //
 // The date range lives HERE rather than in each tab, so switching tabs keeps
 // the period you were looking at — the whole point of a global range. It's
@@ -14,12 +15,18 @@
 // concerned, and would otherwise fire a request for a two-thousand-month
 // range on the way to the one you wanted.
 //
-// Each tab fetches its own endpoint, and results are cached per (tab, range)
-// in `cache` below so flipping back to an already-loaded tab is instant and
-// doesn't re-hit the backend. Changing the range clears the cache, since
-// every entry in it was keyed to the old period.
+// Each report tab fetches its own endpoint, and results are cached per
+// (tab, range) in `cache` below so flipping back to an already-loaded tab is
+// instant and doesn't re-hit the backend. Changing the range clears the
+// cache, since every entry in it was keyed to the old period.
+//
+// The Expenses tab sits outside all of that: it has no date on its rows to
+// range over, so it loads and saves on its own (accounts-expenses-tab.tsx)
+// and the range bar is hidden while it's open rather than shown doing
+// nothing.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/button";
+import { AccountsExpensesTab } from "@/components/admin/accounts-expenses-tab";
 import { AccountsOverviewTab } from "@/components/admin/accounts-overview-tab";
 import { AccountsReceivablesTab } from "@/components/admin/accounts-receivables-tab";
 import { AccountsTaxTab } from "@/components/admin/accounts-tax-tab";
@@ -38,12 +45,15 @@ import {
 } from "@/lib/accounts";
 import styles from "@/styles/dashboard.module.css";
 
-type Tab = "overview" | "receivables" | "tax";
+type Tab = "overview" | "receivables" | "tax" | "expenses";
+// The tabs the date range applies to — everything but Expenses.
+type RangeTab = Exclude<Tab, "expenses">;
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "overview", label: "Overview & P&L" },
   { key: "receivables", label: "Receivables" },
   { key: "tax", label: "GST summary" },
+  { key: "expenses", label: "Expenses" },
 ];
 
 // One cache entry per tab, remembering which range produced it so a stale
@@ -65,7 +75,7 @@ export function AccountsPageClient() {
   const [draftStart, setDraftStart] = useState(range.startDate);
   const [draftEnd, setDraftEnd] = useState(range.endDate);
 
-  const [cache, setCache] = useState<Partial<Record<Tab, CacheEntry>>>({});
+  const [cache, setCache] = useState<Partial<Record<RangeTab, CacheEntry>>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Bumped by "Try again" to re-run the effect after a failure, where nothing
@@ -76,7 +86,8 @@ export function AccountsPageClient() {
   // since moved away from is discarded instead of overwriting the new one.
   const requestRef = useRef(0);
 
-  const entry = cache[tab];
+  const rangeTab: RangeTab | null = tab === "expenses" ? null : tab;
+  const entry = rangeTab === null ? undefined : cache[rangeTab];
   const isCurrent =
     entry !== undefined && entry.range.startDate === range.startDate && entry.range.endDate === range.endDate;
 
@@ -85,7 +96,7 @@ export function AccountsPageClient() {
   // admin tabs use (invoices-tab.tsx) and what react-hooks/set-state-in-effect
   // requires — it rejects state updates reachable synchronously from an
   // effect body, which an async/await version would be.
-  const fetchEntry = useCallback((targetTab: Tab, targetRange: DateRange): Promise<CacheEntry> => {
+  const fetchEntry = useCallback((targetTab: RangeTab, targetRange: DateRange): Promise<CacheEntry> => {
     const { startDate, endDate } = targetRange;
     if (targetTab === "overview") {
       return fetchAccountsOverview(startDate, endDate).then(
@@ -103,7 +114,7 @@ export function AccountsPageClient() {
   }, []);
 
   useEffect(() => {
-    if (isCurrent) return;
+    if (rangeTab === null || isCurrent) return;
 
     const requestId = ++requestRef.current;
     // Deferred into a microtask rather than set straight from the effect
@@ -115,7 +126,7 @@ export function AccountsPageClient() {
       setError(null);
     });
 
-    fetchEntry(tab, range)
+    fetchEntry(rangeTab, range)
       .then((loaded) => {
         if (requestId !== requestRef.current) return;
         setCache((previous) => ({ ...previous, [loaded.tab]: loaded }));
@@ -126,7 +137,7 @@ export function AccountsPageClient() {
         setError(caught instanceof Error ? caught.message : "Failed to load accounts data");
         setLoading(false);
       });
-  }, [tab, range, isCurrent, reloadToken, fetchEntry]);
+  }, [rangeTab, range, isCurrent, reloadToken, fetchEntry]);
 
   function applyPreset(key: Exclude<DateRangePresetKey, "custom">) {
     const next = resolvePreset(key);
@@ -155,71 +166,10 @@ export function AccountsPageClient() {
 
   return (
     <>
-      <h1 className={styles.pageHeading}>Accounts</h1>
-      <p className={styles.pageSubtext}>
-        Revenue, profitability, outstanding payments and GST across a period of your choosing.
-      </p>
-
-      {/* ------------------------------------------------------------------
-          Global date range — owned by this component, read by every tab
-          ------------------------------------------------------------------ */}
-      <div className={styles.accountsRangeBar}>
-        <div className={styles.accountsPresetRow} role="group" aria-label="Date range presets">
-          {DATE_RANGE_PRESETS.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              onClick={() => applyPreset(option.key)}
-              aria-pressed={preset === option.key}
-              className={`${styles.accountsPresetButton} ${
-                preset === option.key ? styles.accountsPresetButtonActive : ""
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-
-        <div className={styles.accountsRangeInputs}>
-          <label className={styles.accountsRangeField}>
-            <span className={styles.formLabel}>From</span>
-            <input
-              type="date"
-              className={styles.formInput}
-              value={draftStart}
-              max={draftEnd || undefined}
-              onChange={(event) => setDraftStart(event.target.value)}
-            />
-          </label>
-          <label className={styles.accountsRangeField}>
-            <span className={styles.formLabel}>To</span>
-            <input
-              type="date"
-              className={styles.formInput}
-              value={draftEnd}
-              min={draftStart || undefined}
-              onChange={(event) => setDraftEnd(event.target.value)}
-            />
-          </label>
-          <Button
-            type="button"
-            onClick={applyCustomRange}
-            disabled={!draftStart || !draftEnd || rangeIsInverted || !draftDiffersFromApplied}
-          >
-            Apply
-          </Button>
-        </div>
-      </div>
-
-      {rangeIsInverted ? (
-        <p className={styles.formError}>The &quot;From&quot; date must not be after the &quot;To&quot; date.</p>
-      ) : null}
-
-      <div className={styles.accountsToolbar}>
-        <p className={styles.accountsRangeSummary}>
-          Showing <strong>{rangeSummary}</strong>
-        </p>
-
+      {/* Tabs ride on the heading's line, top right, the way the Orders and
+          Invoices pages do — see .pageHeaderWithTabs. */}
+      <div className={styles.pageHeaderWithTabs}>
+        <h1 className={styles.pageHeading}>Accounts</h1>
         <div className={styles.viewToggle} role="tablist" aria-label="Accounts section">
           {TABS.map((option) => (
             <button
@@ -237,10 +187,86 @@ export function AccountsPageClient() {
           ))}
         </div>
       </div>
+      <p className={styles.pageSubtext}>
+        Revenue, profitability, outstanding payments and GST across a period of your choosing, plus a running
+        list of out-of-pocket expenses.
+      </p>
+
+      {/* ------------------------------------------------------------------
+          Global date range — owned by this component, read by every report
+          tab. Hidden on Expenses, which has nothing to range over.
+          ------------------------------------------------------------------ */}
+      {rangeTab !== null && (
+        <div className={styles.accountsRangeBar}>
+          <div className={styles.accountsPresetRow} role="group" aria-label="Date range presets">
+            {DATE_RANGE_PRESETS.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => applyPreset(option.key)}
+                aria-pressed={preset === option.key}
+                className={`${styles.accountsPresetButton} ${
+                  preset === option.key ? styles.accountsPresetButtonActive : ""
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          <div className={styles.accountsRangeInputs}>
+            <label className={styles.accountsRangeField}>
+              <span className={styles.formLabel}>From</span>
+              <input
+                type="date"
+                className={styles.formInput}
+                value={draftStart}
+                max={draftEnd || undefined}
+                onChange={(event) => setDraftStart(event.target.value)}
+              />
+            </label>
+            <label className={styles.accountsRangeField}>
+              <span className={styles.formLabel}>To</span>
+              <input
+                type="date"
+                className={styles.formInput}
+                value={draftEnd}
+                min={draftStart || undefined}
+                onChange={(event) => setDraftEnd(event.target.value)}
+              />
+            </label>
+            <Button
+              type="button"
+              onClick={applyCustomRange}
+              disabled={!draftStart || !draftEnd || rangeIsInverted || !draftDiffersFromApplied}
+            >
+              Apply
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {rangeTab !== null && rangeIsInverted ? (
+        <p className={styles.formError}>The &quot;From&quot; date must not be after the &quot;To&quot; date.</p>
+      ) : null}
+
+      <div className={styles.accountsToolbar}>
+        <p className={styles.accountsRangeSummary}>
+          {rangeTab !== null ? (
+            <>
+              Showing <strong>{rangeSummary}</strong>
+            </>
+          ) : (
+            "All expenses, regardless of the date range"
+          )}
+        </p>
+      </div>
 
       {/* Errors replace the body, since a partial figure is worse than none —
           an admin reading "₹0 revenue" from a failed request would act on it. */}
-      {error ? (
+      {rangeTab === null ? (
+        <AccountsExpensesTab />
+      ) : error ? (
         <div className={styles.placeholderCard}>
           <p className={styles.placeholderHeading}>Couldn&apos;t load this tab</p>
           <p className={styles.placeholderBlurb}>{error}</p>

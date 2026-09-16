@@ -1,14 +1,15 @@
 # Accounts module: read-only finance reporting over a date range, backing the
 # admin's /admin/accounts page (frontend components/admin/
-# accounts-page-client.tsx and its three tabs). Restricted to admins
-# (bypassed entirely when settings.auth_enabled is False, matching
+# accounts-page-client.tsx and its three report tabs; the fourth, Expenses,
+# is the one hand-entered list and lives in routes/expenses.py). Restricted
+# to admins (bypassed entirely when settings.auth_enabled is False, matching
 # require_admin in routes/admin.py).
 #
 # Nothing here writes. Every figure is derived on each request from the
 # collections the operational modules already maintain — there is no
 # "accounts" collection and deliberately no cached/posted ledger, because a
 # second stored copy of these numbers would be one more thing to keep in sync
-# with an edited invoice or a re-costed order.
+# with an edited invoice, a re-costed order or a deleted expense.
 #
 # ---------------------------------------------------------------------------
 # What counts as revenue
@@ -26,6 +27,16 @@
 # net of any line discount, because the sales order totals the invoice
 # snapshots are computed that way (see _compute_line_items_and_totals in
 # routes/sales_orders.py).
+#
+# ---------------------------------------------------------------------------
+# What counts as an expense
+# ---------------------------------------------------------------------------
+# Rows from #expense_details (the Expenses tab, routes/expenses.py) whose
+# admin-entered date falls in the range. Every row counts regardless of
+# status: "paid" vs "reimbursed" says whether the
+# person who paid has been paid back, not whether the business bore the
+# cost. It did either way. Expenses come off gross profit to give net profit;
+# they are NOT part of cost of goods, since they attach to no order.
 #
 # ---------------------------------------------------------------------------
 # What counts as cost
@@ -52,6 +63,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.routes.admin import require_admin
 from app.models import (
     CustomerDetails,
+    ExpenseDetails,
     InvoiceDetails,
     InvoiceStatus,
     InvoiceType,
@@ -289,7 +301,16 @@ async def get_accounts_overview(
     span = _month_span(start_date, end_date)
     bucket_revenue: dict[str, float] = {key: 0.0 for key, _ in span}
     bucket_cost: dict[str, float] = {key: 0.0 for key, _ in span}
+    bucket_expenses: dict[str, float] = {key: 0.0 for key, _ in span}
     bucket_count: dict[str, int] = {key: 0 for key, _ in span}
+
+    expense_rows = await ExpenseDetails.find(ExpenseDetails.date >= start_dt, ExpenseDetails.date <= end_dt).to_list()
+    expenses = 0.0
+    for expense in expense_rows:
+        expenses += expense.amount
+        key = _month_key(expense.date)
+        if key in bucket_expenses:
+            bucket_expenses[key] += expense.amount
 
     client_revenue: dict[int, float] = defaultdict(float)
     client_cost: dict[int, float] = defaultdict(float)
@@ -345,6 +366,7 @@ async def get_accounts_overview(
     )[:_TOP_CLIENTS_LIMIT]
 
     gross_profit = revenue - cost_of_goods
+    net_profit = gross_profit - expenses
     invoice_count = len(invoices)
 
     return AccountsOverviewResponse(
@@ -354,6 +376,10 @@ async def get_accounts_overview(
         cost_of_goods=round(cost_of_goods, 2),
         gross_profit=round(gross_profit, 2),
         gross_margin_perc=round(gross_profit / revenue * 100, 2) if revenue else 0.0,
+        expenses=round(expenses, 2),
+        expense_count=len(expense_rows),
+        net_profit=round(net_profit, 2),
+        net_margin_perc=round(net_profit / revenue * 100, 2) if revenue else 0.0,
         invoice_count=invoice_count,
         average_invoice_value=round(total_billed / invoice_count, 2) if invoice_count else 0.0,
         sales_orders_in_range=len(all_sales_order_ids),
@@ -365,6 +391,8 @@ async def get_accounts_overview(
                 revenue=round(bucket_revenue[key], 2),
                 cost=round(bucket_cost[key], 2),
                 profit=round(bucket_revenue[key] - bucket_cost[key], 2),
+                expenses=round(bucket_expenses[key], 2),
+                net_profit=round(bucket_revenue[key] - bucket_cost[key] - bucket_expenses[key], 2),
                 invoice_count=bucket_count[key],
             )
             for key, label in span

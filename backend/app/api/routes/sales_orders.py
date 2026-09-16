@@ -362,17 +362,27 @@ def _compute_line_items_and_totals(
     return line_subtotals, tax_amounts, total_before_tax, total_tax, total_after_tax
 
 
+def _line_notes(notes: list[str] | None, line_count: int) -> list[str]:
+    # The optional per-line notes as one entry per line: a client that left
+    # the list out gets no note on any line, and whitespace-only entries are
+    # stored as "" so "no note" is spelled one way. See SalesSummary.note.
+    if notes is None:
+        return [""] * line_count
+    return [note.strip() for note in notes]
+
+
 async def _insert_sales_summary_rows(
     sales_order_id: int,
     product_ids: list[int],
     quantities: list[int],
     rates: list[float],
     tax_percs: list[float],
+    notes: list[str],
     tax_amounts: list[float],
     line_subtotals: list[float],
 ) -> None:
-    for product_id, quantity, rate, tax_perc, tax_amount, line_subtotal in zip(
-        product_ids, quantities, rates, tax_percs, tax_amounts, line_subtotals
+    for product_id, quantity, rate, tax_perc, note, tax_amount, line_subtotal in zip(
+        product_ids, quantities, rates, tax_percs, notes, tax_amounts, line_subtotals
     ):
         summary_id = await get_next_id(SalesSummaryIdCounter, "next_sales_summary_id", SalesSummary)
         await SalesSummary(
@@ -384,6 +394,7 @@ async def _insert_sales_summary_rows(
             tax_perc=tax_perc,
             tax_amount=tax_amount,
             total=line_subtotal + tax_amount,
+            note=note,
         ).insert()
 
 
@@ -445,6 +456,7 @@ async def _write_sales_summary_rows(
     quantities: list[int],
     rates: list[float],
     tax_percs: list[float],
+    notes: list[str],
     tax_amounts: list[float],
     line_subtotals: list[float],
 ) -> None:
@@ -455,8 +467,8 @@ async def _write_sales_summary_rows(
     # its line is gone.
     existing_by_id = {row.id: row for row in existing}
     kept_ids: set[int] = set()
-    for line_item_id, product_id, quantity, rate, tax_perc, tax_amount, line_subtotal in zip(
-        line_item_ids, product_ids, quantities, rates, tax_percs, tax_amounts, line_subtotals
+    for line_item_id, product_id, quantity, rate, tax_perc, note, tax_amount, line_subtotal in zip(
+        line_item_ids, product_ids, quantities, rates, tax_percs, notes, tax_amounts, line_subtotals
     ):
         if line_item_id is None:
             summary_id = await get_next_id(SalesSummaryIdCounter, "next_sales_summary_id", SalesSummary)
@@ -469,6 +481,7 @@ async def _write_sales_summary_rows(
                 tax_perc=tax_perc,
                 tax_amount=tax_amount,
                 total=line_subtotal + tax_amount,
+                note=note,
             ).insert()
             continue
         row = existing_by_id[line_item_id]
@@ -478,6 +491,7 @@ async def _write_sales_summary_rows(
         row.tax_perc = tax_perc
         row.tax_amount = tax_amount
         row.total = line_subtotal + tax_amount
+        row.note = note
         await row.save()
         kept_ids.add(line_item_id)
 
@@ -545,6 +559,7 @@ async def create_new_sales_order(
         payload.quantities,
         payload.rates,
         payload.tax_percs,
+        _line_notes(payload.notes, len(payload.product_ids)),
         tax_amounts,
         line_subtotals,
     )
@@ -589,6 +604,7 @@ async def get_sales_order_details(
                 quantities=[item.quantity for item in line_items],
                 rates=[item.rate for item in line_items],
                 tax_percs=[item.tax_perc for item in line_items],
+                notes=[item.note for item in line_items],
                 overall_discount=order.overall_discount,
                 delivery_charge=order.delivery_charge,
                 delivery_tax_perc=order.delivery_tax_perc,
@@ -689,6 +705,7 @@ async def update_sales_order_details(
         payload.quantities,
         payload.rates,
         payload.tax_percs,
+        _line_notes(payload.notes, len(payload.product_ids)),
         tax_amounts,
         line_subtotals,
     )

@@ -6,7 +6,9 @@
 // Reads GET /admin/get_accounts_overview for the page's shared date range
 // (accounts-page-client.tsx owns it and passes it down). Revenue is standard
 // sales invoices dated in range, net of tax; cost is the matching sales order
-// costing. See backend/app/api/routes/accounts.py for the full definitions.
+// costing; expenses are the Expenses tab's rows entered in range. Gross
+// profit is revenue less cost, net profit is that less expenses. See
+// backend/app/api/routes/accounts.py for the full definitions.
 //
 // The costing-coverage notice is the important bit of honesty here: entering
 // costing is optional, so an order without it contributes revenue but no
@@ -22,10 +24,13 @@ import {
 import { ChartLegend, GroupedBarChart, type ChartSeries } from "@/components/admin/accounts-charts";
 import styles from "@/styles/dashboard.module.css";
 
+// Net rather than gross profit on the chart: it's the bottom line, and the
+// gross figure is one subtraction away in the table below.
 const TREND_SERIES: ChartSeries[] = [
   { key: "revenue", label: "Revenue", tone: "revenue" },
   { key: "cost", label: "Cost of goods", tone: "cost" },
-  { key: "profit", label: "Gross profit", tone: "profit" },
+  { key: "expenses", label: "Expenses", tone: "expenses" },
+  { key: "profit", label: "Net profit", tone: "profit" },
 ];
 
 export function AccountsOverviewTab({ data }: { data: AccountsOverview }) {
@@ -41,7 +46,13 @@ export function AccountsOverviewTab({ data }: { data: AccountsOverview }) {
           value={formatCurrency(data.grossProfit)}
           tone={data.grossProfit < 0 ? "negative" : "positive"}
         />
-        <StatCard label="Gross margin" value={data.revenue ? formatPercent(data.grossMarginPerc) : "—"} />
+        <StatCard label="Expenses" value={formatCurrency(data.expenses)} />
+        <StatCard
+          label="Net profit"
+          value={formatCurrency(data.netProfit)}
+          tone={data.netProfit < 0 ? "negative" : "positive"}
+        />
+        <StatCard label="Net margin" value={data.revenue ? formatPercent(data.netMarginPerc) : "—"} />
         <StatCard label="Invoices raised" value={`${data.invoiceCount}`} />
         <StatCard label="Avg invoice value" value={formatCurrency(data.averageInvoiceValue)} />
       </div>
@@ -69,11 +80,16 @@ export function AccountsOverviewTab({ data }: { data: AccountsOverview }) {
           // here would have turned into a false "₹0".
           groups={data.trend.map((point) => ({
             label: point.label,
-            values: { revenue: point.revenue, cost: point.cost, profit: point.profit },
+            values: {
+              revenue: point.revenue,
+              cost: point.cost,
+              expenses: point.expenses,
+              profit: point.netProfit,
+            },
           }))}
           series={TREND_SERIES}
           formatValue={formatCompactCurrency}
-          emptyMessage="No invoices were raised in this range."
+          emptyMessage="No invoices or expenses were recorded in this range."
         />
       </section>
 
@@ -139,7 +155,9 @@ export function AccountsOverviewTab({ data }: { data: AccountsOverview }) {
                 <th className={styles.tableHeadCellTight}>Revenue</th>
                 <th className={styles.tableHeadCellTight}>Cost</th>
                 <th className={styles.tableHeadCellTight}>Gross profit</th>
-                <th className={styles.tableHeadCellTight}>Margin</th>
+                <th className={styles.tableHeadCellTight}>Expenses</th>
+                <th className={styles.tableHeadCellTight}>Net profit</th>
+                <th className={styles.tableHeadCellTight}>Net margin</th>
               </tr>
             </thead>
             <tbody>
@@ -156,8 +174,16 @@ export function AccountsOverviewTab({ data }: { data: AccountsOverview }) {
                   >
                     {formatCurrency(point.profit)}
                   </td>
+                  <td className={styles.tableCellTight}>{formatCurrency(point.expenses)}</td>
+                  <td
+                    className={`${styles.tableCellTight} ${
+                      point.netProfit < 0 ? styles.accountsNegative : styles.accountsPositive
+                    }`}
+                  >
+                    {formatCurrency(point.netProfit)}
+                  </td>
                   <td className={styles.tableCellTight}>
-                    {point.revenue ? formatPercent((point.profit / point.revenue) * 100) : "—"}
+                    {point.revenue ? formatPercent((point.netProfit / point.revenue) * 100) : "—"}
                   </td>
                 </tr>
               ))}
@@ -173,8 +199,16 @@ export function AccountsOverviewTab({ data }: { data: AccountsOverview }) {
                 >
                   {formatCurrency(data.grossProfit)}
                 </td>
+                <td className={styles.tableCellTight}>{formatCurrency(data.expenses)}</td>
+                <td
+                  className={`${styles.tableCellTight} ${
+                    data.netProfit < 0 ? styles.accountsNegative : styles.accountsPositive
+                  }`}
+                >
+                  {formatCurrency(data.netProfit)}
+                </td>
                 <td className={styles.tableCellTight}>
-                  {data.revenue ? formatPercent(data.grossMarginPerc) : "—"}
+                  {data.revenue ? formatPercent(data.netMarginPerc) : "—"}
                 </td>
               </tr>
             </tbody>
@@ -182,7 +216,9 @@ export function AccountsOverviewTab({ data }: { data: AccountsOverview }) {
         </div>
         <p className={styles.accountsFootnote}>
           Revenue excludes GST ({formatCurrency(data.taxCollected)} collected in this range) and is net of
-          discounts. Total billed to customers: {formatCurrency(data.totalBilled)}.
+          discounts. Total billed to customers: {formatCurrency(data.totalBilled)}. Expenses are the{" "}
+          {data.expenseCount} {data.expenseCount === 1 ? "entry" : "entries"} from the Expenses tab dated in
+          this range.
         </p>
       </section>
     </>

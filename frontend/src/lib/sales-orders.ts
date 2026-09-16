@@ -36,6 +36,10 @@ export type SalesOrder = {
   quantities: number[];
   rates: number[];
   taxPercs: number[];
+  // Optional per-line remark, "" where none was left — see
+  // backend/app/models/sales_summary.py's note field. Also parallel to the
+  // arrays above.
+  notes: string[];
   // Flat discount off the whole order's net (pre-tax) amount, entered on the
   // order form. It is already baked into the three totals below — the
   // backend splits it across the line items before charging tax (see
@@ -79,6 +83,7 @@ type SalesOrderDetailItem = {
   quantities: number[];
   rates: number[];
   tax_percs: number[];
+  notes?: string[];
   overall_discount: number;
   delivery_charge: number;
   delivery_tax_perc: number;
@@ -104,6 +109,8 @@ function toSalesOrder(item: SalesOrderDetailItem): SalesOrder {
     quantities: item.quantities,
     rates: item.rates,
     taxPercs: item.tax_percs,
+    // ?? for a backend that predates per-line notes: no note on any line.
+    notes: item.notes ?? item.product_ids.map(() => ""),
     // ?? 0 for orders raised before order-level discounts existed.
     overallDiscount: item.overall_discount ?? 0,
     // ?? 0 for orders raised before delivery charges existed.

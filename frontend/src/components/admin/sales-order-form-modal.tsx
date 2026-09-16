@@ -81,10 +81,14 @@ type LineItem = {
   // purchase-order-form-modal.tsx's LineItem.rate.
   rate: string;
   taxPerc: string;
+  // Optional free-text remark on this one line ("print on both sides"),
+  // stored on the #sales_summary row — see SalesSummary.note. Sent as ""
+  // when left blank.
+  note: string;
 };
 
 function emptyLineItem(): LineItem {
-  return { lineItemId: null, productId: null, quantity: 1, rate: "", taxPerc: "" };
+  return { lineItemId: null, productId: null, quantity: 1, rate: "", taxPerc: "", note: "" };
 }
 
 // Reassembles an existing order's parallel productIds/quantities/rates/
@@ -98,6 +102,7 @@ function lineItemsFromOrder(order: SalesOrder): LineItem[] {
     quantity: order.quantities[index] ?? 1,
     rate: String(order.rates[index] ?? ""),
     taxPerc: String(order.taxPercs[index] ?? ""),
+    note: order.notes?.[index] ?? "",
   }));
 }
 
@@ -326,6 +331,7 @@ export function SalesOrderFormModal({
     const quantities = lineItems.map((item) => item.quantity);
     const rates = lineItems.map((item) => Number(item.rate) || 0);
     const taxPercs = lineItems.map((item) => Number(item.taxPerc) || 0);
+    const notes = lineItems.map((item) => item.note.trim());
 
     const payload = {
       ...(isEdit
@@ -342,6 +348,7 @@ export function SalesOrderFormModal({
       quantities,
       rates,
       tax_percs: taxPercs,
+      notes,
       overall_discount: overallDiscountAmount,
       delivery_charge: deliveryChargeAmount,
       delivery_tax_perc: deliveryChargeAmount ? Number(deliveryTaxPerc) || 0 : 0,
@@ -581,6 +588,18 @@ export function SalesOrderFormModal({
                   >
                     <XMarkIcon className="h-4 w-4" />
                   </button>
+
+                  {/* Under the row rather than as an eighth column: the
+                      table is already seven columns wide, and a remark
+                      wants more room than a squeezed cell would give it. */}
+                  <input
+                    type="text"
+                    placeholder="Note (optional)"
+                    value={item.note}
+                    onChange={(e) => updateLineItem(index, { note: e.target.value })}
+                    aria-label={`Line ${index + 1} note`}
+                    className={`${styles.formInput} ${styles.salesLineItemNote}`}
+                  />
                 </div>
               );
             })}

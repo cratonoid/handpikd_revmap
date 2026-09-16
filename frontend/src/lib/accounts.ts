@@ -8,7 +8,9 @@
 // up the one the admin is actually looking at.
 //
 // Every figure here is DERIVED server-side — there is no accounts collection
-// to write back to, which is why this module has fetchers but no savers.
+// to write back to, which is why this module has fetchers but no savers. The
+// one hand-entered input, the Expenses tab, has its own module
+// (lib/expenses.ts); its rows feed back into the overview's net profit.
 //
 // Money conventions, matching the backend:
 //   - "revenue"/"taxable value" are NET of tax and net of discount.
@@ -23,7 +25,9 @@ export type AccountsTrendPoint = {
   label: string; // "Jan 2026"
   revenue: number;
   cost: number;
-  profit: number;
+  profit: number; // Gross: revenue - cost.
+  expenses: number;
+  netProfit: number; // profit - expenses.
   invoiceCount: number;
 };
 
@@ -46,6 +50,11 @@ export type AccountsOverview = {
   costOfGoods: number;
   grossProfit: number;
   grossMarginPerc: number;
+  // Expenses-tab rows dated within the range, taken off gross profit.
+  expenses: number;
+  expenseCount: number;
+  netProfit: number;
+  netMarginPerc: number;
   invoiceCount: number;
   averageInvoiceValue: number;
   salesOrdersInRange: number;
@@ -134,6 +143,8 @@ type TrendPointResponse = {
   revenue: number;
   cost: number;
   profit: number;
+  expenses: number;
+  net_profit: number;
   invoice_count: number;
 };
 
@@ -154,6 +165,10 @@ type OverviewResponse = {
   cost_of_goods: number;
   gross_profit: number;
   gross_margin_perc: number;
+  expenses: number;
+  expense_count: number;
+  net_profit: number;
+  net_margin_perc: number;
   invoice_count: number;
   average_invoice_value: number;
   sales_orders_in_range: number;
@@ -245,6 +260,10 @@ export async function fetchAccountsOverview(startDate: string, endDate: string):
     costOfGoods: item.cost_of_goods,
     grossProfit: item.gross_profit,
     grossMarginPerc: item.gross_margin_perc,
+    expenses: item.expenses,
+    expenseCount: item.expense_count,
+    netProfit: item.net_profit,
+    netMarginPerc: item.net_margin_perc,
     invoiceCount: item.invoice_count,
     averageInvoiceValue: item.average_invoice_value,
     salesOrdersInRange: item.sales_orders_in_range,
@@ -255,6 +274,8 @@ export async function fetchAccountsOverview(startDate: string, endDate: string):
       revenue: point.revenue,
       cost: point.cost,
       profit: point.profit,
+      expenses: point.expenses,
+      netProfit: point.net_profit,
       invoiceCount: point.invoice_count,
     })),
     topClients: item.top_clients.map((client) => ({

@@ -46,7 +46,7 @@ export type ChartSeries = {
   key: string;
   label: string;
   // Maps onto a .accountsBar<Name> class in dashboard.module.css.
-  tone: "revenue" | "cost" | "profit" | "overdue";
+  tone: "revenue" | "cost" | "expenses" | "profit" | "overdue";
 };
 
 export type ChartGroup = {
@@ -184,7 +184,7 @@ export type BreakdownRow = {
   value: number;
   // Secondary figure shown after the amount, e.g. "3 invoices".
   caption?: string;
-  tone: "revenue" | "cost" | "profit" | "overdue";
+  tone: "revenue" | "cost" | "expenses" | "profit" | "overdue";
 };
 
 export function HorizontalBreakdown({

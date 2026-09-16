@@ -9,6 +9,8 @@ from app.models.customer_details import CustomerDetails
 from app.models.customer_id_counter import CustomerIdCounter
 from app.models.customer_poc_details import CustomerPocDetails
 from app.models.customer_poc_id_counter import CustomerPocIdCounter
+from app.models.expense_details import ExpenseDetails, ExpenseStatus
+from app.models.expense_id_counter import ExpenseIdCounter
 from app.models.inquiry_form_node import InquiryFormNode
 from app.models.inquiry_form_node_id_counter import InquiryFormNodeIdCounter
 from app.models.inquiry_form_submission import InquiryFormSubmission, SelectedInquiryFormNode

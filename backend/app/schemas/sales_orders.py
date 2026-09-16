@@ -15,6 +15,10 @@ class CreateNewSalesOrderRequest(BaseModel):
     quantities: list[int]
     rates: list[float]
     tax_percs: list[float]
+    # Optional per-line remark, parallel to the arrays above — see
+    # SalesSummary.note. A line without one sends ""; a client that omits
+    # the whole list gets "" on every line.
+    notes: list[str] | None = None
     # Flat discount off the order's whole net (pre-tax) amount — see
     # SalesOrders.overall_discount. Optional: an order without one submits 0.
     overall_discount: float = Field(default=0.0, ge=0)
@@ -35,8 +39,12 @@ class CreateNewSalesOrderRequest(BaseModel):
     @model_validator(mode="after")
     def _check_line_items_match(self) -> "CreateNewSalesOrderRequest":
         lengths = {len(self.product_ids), len(self.quantities), len(self.rates), len(self.tax_percs)}
+        if self.notes is not None:
+            lengths.add(len(self.notes))
         if len(lengths) != 1:
-            raise ValueError("product_ids, quantities, rates, and tax_percs must have the same number of entries")
+            raise ValueError(
+                "product_ids, quantities, rates, tax_percs, and notes must have the same number of entries"
+            )
         if len(self.product_ids) == 0:
             raise ValueError("at least one line item is required")
         return self
@@ -61,6 +69,8 @@ class SalesOrderDetailItem(BaseModel):
     quantities: list[int]
     rates: list[float]
     tax_percs: list[float]
+    # Per-line remark, "" where none was left — see SalesSummary.note.
+    notes: list[str]
     overall_discount: float
     delivery_charge: float
     delivery_tax_perc: float
@@ -95,6 +105,10 @@ class UpdateSalesOrderDetailsRequest(BaseModel):
     quantities: list[int]
     rates: list[float]
     tax_percs: list[float]
+    # Optional per-line remark, parallel to the arrays above — see
+    # SalesSummary.note. A line without one sends ""; a client that omits
+    # the whole list gets "" on every line.
+    notes: list[str] | None = None
     # Flat discount off the order's whole net (pre-tax) amount — see
     # SalesOrders.overall_discount. Optional: an order without one submits 0.
     overall_discount: float = Field(default=0.0, ge=0)
@@ -113,9 +127,12 @@ class UpdateSalesOrderDetailsRequest(BaseModel):
         lengths = {len(self.product_ids), len(self.quantities), len(self.rates), len(self.tax_percs)}
         if self.line_item_ids is not None:
             lengths.add(len(self.line_item_ids))
+        if self.notes is not None:
+            lengths.add(len(self.notes))
         if len(lengths) != 1:
             raise ValueError(
-                "line_item_ids, product_ids, quantities, rates, and tax_percs must have the same number of entries"
+                "line_item_ids, product_ids, quantities, rates, tax_percs, and notes "
+                "must have the same number of entries"
             )
         if len(self.product_ids) == 0:
             raise ValueError("at least one line item is required")
