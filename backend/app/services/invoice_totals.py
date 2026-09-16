@@ -4,7 +4,7 @@
 # A standard invoice has no line items of its own. It SNAPSHOTS its orders'
 # totals at the moment it is raised (see _sum_sales_order_totals in
 # routes/invoices.py), but its PDF prints those orders' #sales_summary rows
-# LIVE — and update_sales_order_details rewrites every one of those rows on
+# LIVE — and update_sales_order_details updates every one of those rows on
 # each save. So editing an order's amounts after an invoice exists used to
 # leave the invoice printing updated rows under an un-updated grand total: a
 # document that does not add up, and a figure on the invoices table, the

@@ -6,10 +6,10 @@
 // POST /admin/update_sales_order_costing (both in
 // backend/app/api/routes/sales_orders.py).
 //
-// One row per DISTINCT product on the order, not per line item: costing is
-// keyed by product id (see backend/app/models/sales_order_costing.py for
-// why), so an order listing the same product twice shows it once here with
-// the two lines' quantities summed.
+// One row per LINE ITEM on the order, keyed by its #sales_summary id (see
+// backend/app/models/sales_order_costing.py): an order listing the same
+// product twice — bought in two lots, sold at two rates — shows two rows
+// here, each costed on its own.
 //
 // Which fields live where:
 //   - Net Sales Rate / Sales Tax % ARE the line items' own
@@ -39,11 +39,13 @@ export type PrintingCost = {
 };
 
 export type CostingLine = {
+  // SalesSummary.id — what a save is matched back on.
+  lineItemId: number;
   productId: number;
   // ProductDetails.product_name, shown on the sheet as "Model Name".
   modelName: string;
-  // Summed across every line of this product on the order. Read-only here —
-  // quantities are edited on the order form itself.
+  // This line's own quantity. Read-only here — quantities are edited on the
+  // order form itself.
   quantity: number;
   netPurchaseRate: number;
   purchaseTaxPerc: number;
@@ -88,6 +90,7 @@ type PrintingCostItem = {
 };
 
 type SalesOrderCostingLineItem = {
+  line_item_id: number;
   product_id: number;
   model_name: string;
   quantity: number;
@@ -142,6 +145,7 @@ export async function fetchSalesOrderCosting(salesOrderId: number): Promise<Sale
     deliveryCharge: item.delivery_charge ?? 0,
     deliveryTaxPerc: item.delivery_tax_perc ?? 0,
     lines: item.lines.map((line) => ({
+      lineItemId: line.line_item_id,
       productId: line.product_id,
       modelName: line.model_name,
       quantity: line.quantity,
@@ -163,9 +167,9 @@ export async function fetchSalesOrderCosting(salesOrderId: number): Promise<Sale
   };
 }
 
-// Every product on the order must be submitted together — the backend
-// rejects a partial set, since saving one product's figures would leave the
-// order's recomputed totals wrong for the rest.
+// Every line on the order must be submitted together — the backend rejects
+// a partial set, since saving one line's figures would leave the order's
+// recomputed totals wrong for the rest.
 export async function saveSalesOrderCosting(salesOrderId: number, lines: CostingLine[]): Promise<void> {
   const response = await apiFetch("/admin/update_sales_order_costing", {
     method: "POST",
@@ -173,7 +177,7 @@ export async function saveSalesOrderCosting(salesOrderId: number, lines: Costing
     body: JSON.stringify({
       sales_order_id: salesOrderId,
       lines: lines.map((line) => ({
-        product_id: line.productId,
+        line_item_id: line.lineItemId,
         net_purchase_rate: line.netPurchaseRate,
         purchase_tax_perc: line.purchaseTaxPerc,
         printing_costs: line.printingCosts.map((printing) => ({

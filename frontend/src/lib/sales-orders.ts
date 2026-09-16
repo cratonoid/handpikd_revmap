@@ -11,9 +11,12 @@
 // sales_summary.py), linked back via its sales_order_id FK.
 // get_sales_order_details folds those rows back in as parallel
 // productIds/quantities/rates/taxPercs arrays, same convention as
-// lib/purchase-orders.ts. sales-order-form-modal.tsx submits/edits them the
-// same way, as parallel product_ids/quantities/rates/tax_percs arrays, to
-// create_new_sales_order/update_sales_order_details.
+// lib/purchase-orders.ts, plus lineItemIds (each row's #sales_summary id).
+// sales-order-form-modal.tsx submits/edits them the same way, as parallel
+// product_ids/quantities/rates/tax_percs arrays, to
+// create_new_sales_order/update_sales_order_details — and on edit sends the
+// ids back as line_item_ids so the rows are updated in place and the
+// costing keyed on them (see lib/sales-order-costing.ts) survives.
 //
 // order_no and order_status_id are backend-assigned on create (order_no via
 // OrderNoCounterMaster, order_status_id defaulted to the seeded "New"
@@ -27,6 +30,8 @@ export type SalesOrder = {
   orderStatusId: number;
   custId: number;
   date: string;
+  // Parallel to the four arrays below: each line's #sales_summary id.
+  lineItemIds: number[];
   productIds: number[];
   quantities: number[];
   rates: number[];
@@ -69,6 +74,7 @@ type SalesOrderDetailItem = {
   order_status_id: number;
   cust_id: number;
   date: string;
+  line_item_ids: number[];
   product_ids: number[];
   quantities: number[];
   rates: number[];
@@ -93,6 +99,7 @@ function toSalesOrder(item: SalesOrderDetailItem): SalesOrder {
     orderStatusId: item.order_status_id,
     custId: item.cust_id,
     date: item.date,
+    lineItemIds: item.line_item_ids,
     productIds: item.product_ids,
     quantities: item.quantities,
     rates: item.rates,

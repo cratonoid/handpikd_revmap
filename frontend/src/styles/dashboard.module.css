@@ -1122,6 +1122,81 @@
 }
 
 /* -----------------------------------------------------------------------
+   Column header controls (components/admin/sales-orders-tab.tsx)
+   -----------------------------------------------------------------------
+   The sort arrows beside "Order no." and the funnel + multiselect panel
+   beside "Customer". Both sit INSIDE the sticky .tableHeadCell so they stay
+   pinned with the labels, and both inherit the header's charcoal so they
+   read as part of it rather than as a separate toolbar. */
+.tableHeadControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+/* Negative vertical margin cancels the padding that makes this a comfortable
+   click target, so adding the button doesn't make the header row taller
+   than it was with plain text. */
+.tableHeadButton {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: -0.25rem 0;
+  border: none;
+  border-radius: 0.3rem;
+  background-color: transparent;
+  padding: 0.25rem;
+  color: inherit;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.tableHeadButton:hover,
+.tableHeadButton:focus-visible {
+  outline: none;
+  background-color: color-mix(in srgb, var(--color-charcoal) 10%, transparent);
+}
+
+/* The two chevrons are stacked and both drawn dim; whichever direction is
+   the active sort is brought up to full ink. With no sort set, both stay
+   dim — that is the "nothing applied" state. The negative margin tucks the
+   lower chevron up under the upper one so the pair reads as one glyph. */
+.sortChevron {
+  width: 0.75rem;
+  height: 0.75rem;
+  opacity: 0.3;
+  transition: opacity 0.15s;
+}
+
+.sortChevron + .sortChevron {
+  margin-top: -0.28rem;
+}
+
+.sortChevronActive {
+  opacity: 1;
+}
+
+.tableHeadFilterIcon {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+/* The funnel while a customer filter is applied — the accent red the app
+   reserves for small markers, so an active filter is noticeable at a
+   glance even when the box beside it has scrolled out of view. */
+.tableHeadButtonActive {
+  color: var(--color-red);
+}
+
+/* The "how many are ticked" figure beside a red funnel. */
+.tableHeadFilterCount {
+  margin-left: -0.2rem;
+  font-size: 0.7rem;
+  color: var(--color-red);
+}
+
+/* -----------------------------------------------------------------------
    Add/edit customer modal (components/admin/customer-form-modal.tsx)
    ----------------------------------------------------------------------- */
 
@@ -2110,6 +2185,47 @@ select.formInput:disabled {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* The multiselect panel a header funnel opens (components/admin/
+   column-filter-dropdown.tsx). Layered on .selectPanel above for the box,
+   list and checkbox styling, but fixed rather than absolute — see that file
+   for why — with its top/left set inline from the funnel's position. It
+   MUST come after .selectPanel in this file: the two share a specificity,
+   so whichever is later wins the position property, and with the order
+   flipped the panel silently goes back to being absolute inside the
+   header cell. It is portalled to <body>, so the font resets here are
+   restating the page defaults rather than undoing the header's — kept so
+   the panel looks the same whichever ancestor it ends up under. */
+.columnFilterPanel {
+  position: fixed;
+  right: auto;
+  z-index: 60;
+  font-weight: 500;
+  font-size: 0.8125rem;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: normal;
+  text-align: left;
+}
+
+.columnFilterClear {
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--color-border);
+  background-color: transparent;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-red);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.columnFilterClear:hover {
+  background-color: color-mix(in srgb, var(--color-border) 18%, transparent);
 }
 
 .selectSearchInput {

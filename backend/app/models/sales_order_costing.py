@@ -2,13 +2,19 @@
 # behind a sales order's line items, entered from the "Add details" page
 # (frontend/src/app/admin/orders/sales/[id]/details/page.tsx).
 #
-# One row per (sales_order_id, product_id) — NOT per #sales_summary row. A
-# sales order can legitimately list the same product on two lines, and
-# update_sales_order_details deletes and reinserts every #sales_summary row
-# on each save (new ids each time), so the product id is the only identifier
-# stable enough to hang costing off. The details page therefore shows one
-# costing row per distinct product, with the quantities of that product's
-# lines summed.
+# One row per #sales_summary LINE, keyed by sales_summary_id. A sales order
+# can legitimately list the same product on two lines at different rates
+# (bought in two lots, sold at two prices), and each of those lines has to
+# be costed on its own — so the product id alone is not enough to hang
+# costing off. update_sales_order_details keeps #sales_summary ids stable
+# across an edit (rows are updated in place, not deleted and reinserted)
+# precisely so this key survives.
+#
+# Rows written before this key existed have sales_summary_id = None and are
+# keyed by product_id alone ("legacy" rows below). They still read back — the
+# sheet shows them as the default for every line of that product — and the
+# first save of the sheet claims one for a specific line and inserts fresh
+# rows for the rest, so no migration is needed.
 #
 # Only INPUTS live here. Everything the details page displays alongside them
 # (gross rates, tax amounts, net final cost, profit) is derived on the fly —
@@ -39,6 +45,13 @@ class PrintingCost(BaseModel):
 class SalesOrderCosting(Document):
     id: int
     sales_order_id: int  # FK -> SalesOrders.id
+    # FK -> SalesSummary.id: the one line this row costs. None only on rows
+    # written before costing was keyed per line (see the header comment),
+    # which apply to every line of `product_id` until the sheet is re-saved.
+    sales_summary_id: int | None = None
+    # Kept alongside sales_summary_id (rather than looked up through it) so
+    # the accounts P&L can still cost a legacy row, and so a row is readable
+    # on its own.
     product_id: int  # FK -> ProductDetails.id
     # Defaulted from ProductDetails.vendor_rate the first time the details
     # page is opened, then editable and stored independently — a later change

@@ -165,12 +165,13 @@ def _allocate_line_discounts(
     quantities: list[int],
     rates: list[float],
 ) -> list[float]:
-    # The costing sheet holds ONE discount per product (see
+    # Legacy costing rows hold ONE discount per product (see
     # models/sales_order_costing.py), but #sales_summary is per line and a
     # product can legitimately appear on two lines of the same order. Split
     # that single discount across its lines in proportion to each line's own
     # value so the per-line tax stays sensible; a product whose lines are all
-    # worth zero splits it evenly instead of dividing by zero.
+    # worth zero splits it evenly instead of dividing by zero. Rows keyed per
+    # line never come through here — see _line_discounts_from_costings.
     if not discount_by_product:
         return [0.0] * len(product_ids)
 
@@ -237,15 +238,62 @@ def _reject_overall_discount_above_subtotal(
         )
 
 
-async def _stored_line_discounts(
-    sales_order_id: int, product_ids: list[int], quantities: list[int], rates: list[float]
+def _line_discounts_from_costings(
+    costings: list[SalesOrderCosting],
+    line_item_ids: list[int | None],
+    product_ids: list[int],
+    quantities: list[int],
+    rates: list[float],
 ) -> list[float]:
-    # Rows for products no longer on the order are simply not looked up
-    # rather than deleted — removing a product from an order and adding it
-    # back shouldn't silently lose the costing that was entered for it.
+    # Each line takes the discount of the costing row keyed on it (a line
+    # with no id yet — just added on the form — has none). A legacy row keyed
+    # by product only (see models/sales_order_costing.py) covers every line
+    # of that product that has no row of its own, split between them pro
+    # rata exactly as it always was.
+    discount_by_line = {
+        costing.sales_summary_id: costing.discount
+        for costing in costings
+        if costing.sales_summary_id is not None
+    }
+    legacy_by_product = {
+        costing.product_id: costing.discount
+        for costing in costings
+        if costing.sales_summary_id is None and costing.discount
+    }
+
+    discounts = [
+        discount_by_line.get(line_item_id, 0.0) if line_item_id is not None else 0.0
+        for line_item_id in line_item_ids
+    ]
+    legacy_indexes = [
+        index
+        for index, line_item_id in enumerate(line_item_ids)
+        if line_item_id is None or line_item_id not in discount_by_line
+    ]
+    legacy_discounts = _allocate_line_discounts(
+        legacy_by_product,
+        [product_ids[index] for index in legacy_indexes],
+        [quantities[index] for index in legacy_indexes],
+        [rates[index] for index in legacy_indexes],
+    )
+    for index, discount in zip(legacy_indexes, legacy_discounts):
+        discounts[index] = discount
+    return discounts
+
+
+async def _stored_line_discounts(
+    sales_order_id: int,
+    line_item_ids: list[int | None],
+    product_ids: list[int],
+    quantities: list[int],
+    rates: list[float],
+) -> list[float]:
+    # Legacy rows for products no longer on the order are simply not looked
+    # up rather than deleted — removing a product from an order and adding
+    # it back shouldn't silently lose the costing that was entered for it.
+    # (Per-line rows DO go with their line — see _write_sales_summary_rows.)
     costings = await SalesOrderCosting.find(SalesOrderCosting.sales_order_id == sales_order_id).to_list()
-    discount_by_product = {costing.product_id: costing.discount for costing in costings if costing.discount}
-    return _allocate_line_discounts(discount_by_product, product_ids, quantities, rates)
+    return _line_discounts_from_costings(costings, line_item_ids, product_ids, quantities, rates)
 
 
 def delivery_tax_amount(delivery_charge: float, delivery_tax_perc: float) -> float:
@@ -339,6 +387,109 @@ async def _insert_sales_summary_rows(
         ).insert()
 
 
+async def _sorted_line_items(sales_order_id: int) -> list[SalesSummary]:
+    # Always by id: rows are inserted in form order and keep their ids
+    # across edits, so id order IS the order the form shows them in.
+    line_items = await SalesSummary.find(SalesSummary.sales_order_id == sales_order_id).to_list()
+    return sorted(line_items, key=lambda line_item: line_item.id)
+
+
+def _resolve_line_item_ids(
+    existing: list[SalesSummary], payload: UpdateSalesOrderDetailsRequest
+) -> list[int | None]:
+    # Which existing #sales_summary row each submitted line is, so the edit
+    # can update it in place and keep its id (the "Add details" costing is
+    # keyed on it — see models/sales_order_costing.py). None means a fresh
+    # row.
+    #
+    # A line whose product was switched counts as a fresh row too: its
+    # costing was seeded from and entered for the OLD product, so carrying
+    # the row over would keep a purchase rate for something no longer on the
+    # line. The old row (and its costing) is dropped with the other
+    # unmatched ones.
+    existing_by_id = {row.id: row for row in existing}
+
+    if payload.line_item_ids is None:
+        # No ids sent (older client): match by position, which is form
+        # order, as long as the product still lines up.
+        return [
+            existing[index].id
+            if index < len(existing) and existing[index].product_id == product_id
+            else None
+            for index, product_id in enumerate(payload.product_ids)
+        ]
+
+    resolved: list[int | None] = []
+    for line_item_id, product_id in zip(payload.line_item_ids, payload.product_ids):
+        if line_item_id is None:
+            resolved.append(None)
+            continue
+        row = existing_by_id.get(line_item_id)
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"line item {line_item_id} is not on this sales order — "
+                    "the order may have changed in another tab; reload and try again"
+                ),
+            )
+        resolved.append(row.id if row.product_id == product_id else None)
+    return resolved
+
+
+async def _write_sales_summary_rows(
+    sales_order_id: int,
+    existing: list[SalesSummary],
+    line_item_ids: list[int | None],
+    product_ids: list[int],
+    quantities: list[int],
+    rates: list[float],
+    tax_percs: list[float],
+    tax_amounts: list[float],
+    line_subtotals: list[float],
+) -> None:
+    # The edit-time counterpart of _insert_sales_summary_rows: existing rows
+    # are updated in place so their ids survive, new lines are inserted, and
+    # rows the form no longer lists are deleted along with the costing that
+    # hung off them — a per-line costing row has nothing to describe once
+    # its line is gone.
+    existing_by_id = {row.id: row for row in existing}
+    kept_ids: set[int] = set()
+    for line_item_id, product_id, quantity, rate, tax_perc, tax_amount, line_subtotal in zip(
+        line_item_ids, product_ids, quantities, rates, tax_percs, tax_amounts, line_subtotals
+    ):
+        if line_item_id is None:
+            summary_id = await get_next_id(SalesSummaryIdCounter, "next_sales_summary_id", SalesSummary)
+            await SalesSummary(
+                id=summary_id,
+                sales_order_id=sales_order_id,
+                product_id=product_id,
+                quantity=quantity,
+                rate=rate,
+                tax_perc=tax_perc,
+                tax_amount=tax_amount,
+                total=line_subtotal + tax_amount,
+            ).insert()
+            continue
+        row = existing_by_id[line_item_id]
+        row.product_id = product_id
+        row.quantity = quantity
+        row.rate = rate
+        row.tax_perc = tax_perc
+        row.tax_amount = tax_amount
+        row.total = line_subtotal + tax_amount
+        await row.save()
+        kept_ids.add(line_item_id)
+
+    removed_ids = [row.id for row in existing if row.id not in kept_ids]
+    if removed_ids:
+        await SalesSummary.find(In(SalesSummary.id, removed_ids)).delete()
+        await SalesOrderCosting.find(
+            SalesOrderCosting.sales_order_id == sales_order_id,
+            In(SalesOrderCosting.sales_summary_id, removed_ids),
+        ).delete()
+
+
 @router.post("/create_new_sales_order", response_model=CreateNewSalesOrderResponse)
 async def create_new_sales_order(
     payload: CreateNewSalesOrderRequest,
@@ -423,7 +574,9 @@ async def get_sales_order_details(
 
     response = []
     for order in orders:
-        line_items = summaries_by_order_id.get(order.id, [])
+        # By id, so the form's line order matches the costing sheet's (see
+        # _sorted_line_items).
+        line_items = sorted(summaries_by_order_id.get(order.id, []), key=lambda line_item: line_item.id)
         response.append(
             SalesOrderDetailItem(
                 id=order.id,
@@ -431,6 +584,7 @@ async def get_sales_order_details(
                 order_status_id=order.order_status_id,
                 cust_id=order.cust_id,
                 date=order.date,
+                line_item_ids=[item.id for item in line_items],
                 product_ids=[item.product_id for item in line_items],
                 quantities=[item.quantity for item in line_items],
                 rates=[item.rate for item in line_items],
@@ -467,11 +621,16 @@ async def update_sales_order_details(
     await _validate_unbilled_purchase_orders_exist(payload.related_unbilled_purchase_order_ids)
     await _validate_order_status_exists(payload.order_status_id)
 
+    # Which existing rows the submitted lines are (see _resolve_line_item_ids)
+    # — settled first because the discounts below are keyed on them.
+    existing_line_items = await _sorted_line_items(sales_order.id)
+    line_item_ids = _resolve_line_item_ids(existing_line_items, payload)
+
     # Carries any discount already entered on this order's "Add details"
     # sheet through the edit — #sales_summary has no discount column, so
     # re-saving the order form would otherwise quietly undo it.
     discounts = await _stored_line_discounts(
-        sales_order.id, payload.product_ids, payload.quantities, payload.rates
+        sales_order.id, line_item_ids, payload.product_ids, payload.quantities, payload.rates
     )
     _reject_overall_discount_above_subtotal(
         payload.overall_discount, payload.quantities, payload.rates, discounts
@@ -522,9 +681,10 @@ async def update_sales_order_details(
     sales_order.po_updated_flag = False
     await sales_order.save()
 
-    await SalesSummary.find(SalesSummary.sales_order_id == sales_order.id).delete()
-    await _insert_sales_summary_rows(
+    await _write_sales_summary_rows(
         sales_order.id,
+        existing_line_items,
+        line_item_ids,
         payload.product_ids,
         payload.quantities,
         payload.rates,
@@ -542,7 +702,7 @@ async def update_sales_order_details(
 
     # Any invoice already raised against this order snapshotted the totals
     # that just changed, while its PDF prints the #sales_summary rows this
-    # very endpoint rewrote a few lines up. Left alone, the two disagree and
+    # very endpoint updated a few lines up. Left alone, the two disagree and
     # the invoice stops adding up — see services/invoice_totals.py.
     await refresh_invoice_totals_for_sales_orders([sales_order.id])
 
@@ -621,36 +781,26 @@ async def get_order_status_list(
 # ---------------------------------------------------------------------------
 # Sales order costing — the "Add details" sheet
 # ---------------------------------------------------------------------------
-# One row per DISTINCT product on the order rather than per #sales_summary
-# line (see models/sales_order_costing.py for why). Everything the sheet
-# displays beyond these inputs is derived client-side, as the admin types -
+# One row per #sales_summary line, keyed by its id (see
+# models/sales_order_costing.py) — the same product on two lines at two
+# rates is two rows, costed separately. Everything the sheet displays beyond
+# these inputs is derived client-side, as the admin types -
 # frontend/src/lib/sales-order-costing.ts holds those formulas.
 
 
-def _group_line_items_by_product(
-    line_items: list[SalesSummary],
-) -> tuple[list[int], dict[int, int], dict[int, float], dict[int, float]]:
-    # Sorted by id so the sheet's row order matches the order form's line
-    # order (#sales_summary rows are inserted in form order and never
-    # renumbered by the costing save).
-    ordered_product_ids: list[int] = []
-    quantity_by_product: dict[int, int] = {}
-    rate_by_product: dict[int, float] = {}
-    tax_perc_by_product: dict[int, float] = {}
-
-    for item in sorted(line_items, key=lambda line_item: line_item.id):
-        if item.product_id not in quantity_by_product:
-            ordered_product_ids.append(item.product_id)
-            quantity_by_product[item.product_id] = 0
-            # The sheet shows a product once, so two lines of the same
-            # product at different rates can only surface one of them — the
-            # first wins here, and saving the sheet then applies it to both
-            # (see update_sales_order_costing).
-            rate_by_product[item.product_id] = item.rate
-            tax_perc_by_product[item.product_id] = item.tax_perc
-        quantity_by_product[item.product_id] += item.quantity
-
-    return ordered_product_ids, quantity_by_product, rate_by_product, tax_perc_by_product
+def _costings_by_line_and_legacy(
+    costings: list[SalesOrderCosting],
+) -> tuple[dict[int, SalesOrderCosting], dict[int, SalesOrderCosting]]:
+    # Split an order's costing rows into those keyed on a line and the
+    # legacy product-keyed ones (sales_summary_id None). A legacy row stands
+    # in for every line of its product that has no row of its own.
+    by_line = {
+        costing.sales_summary_id: costing for costing in costings if costing.sales_summary_id is not None
+    }
+    legacy_by_product = {
+        costing.product_id: costing for costing in costings if costing.sales_summary_id is None
+    }
+    return by_line, legacy_by_product
 
 
 async def _get_active_sales_order(sales_order_id: int) -> SalesOrders:
@@ -667,29 +817,32 @@ async def get_sales_order_costing(
 ) -> SalesOrderCostingResponse:
     sales_order = await _get_active_sales_order(sales_order_id)
 
-    line_items = await SalesSummary.find(SalesSummary.sales_order_id == sales_order_id).to_list()
-    product_ids, quantities, rates, tax_percs = _group_line_items_by_product(line_items)
+    line_items = await _sorted_line_items(sales_order_id)
+    product_ids = list({item.product_id for item in line_items})
 
     products = await ProductDetails.find(In(ProductDetails.id, product_ids)).to_list()
     products_by_id = {product.id: product for product in products}
 
     costings = await SalesOrderCosting.find(SalesOrderCosting.sales_order_id == sales_order_id).to_list()
-    costings_by_product = {costing.product_id: costing for costing in costings}
+    costings_by_line, legacy_by_product = _costings_by_line_and_legacy(costings)
 
     customer = await CustomerDetails.get(sales_order.cust_id)
     order_status = await OrderStatusMaster.get(sales_order.order_status_id)
 
     lines = []
-    for product_id in product_ids:
-        product = products_by_id.get(product_id)
-        costing = costings_by_product.get(product_id)
+    for item in line_items:
+        product = products_by_id.get(item.product_id)
+        # A row saved before costing was per line shows as this line's
+        # figures too, until the sheet is next saved (which then splits it).
+        costing = costings_by_line.get(item.id) or legacy_by_product.get(item.product_id)
         lines.append(
             SalesOrderCostingLine(
-                product_id=product_id,
+                line_item_id=item.id,
+                product_id=item.product_id,
                 # A since-deleted product still has to render, hence the
                 # placeholder rather than a 404 on the whole sheet.
-                model_name=product.product_name if product else f"Product {product_id}",
-                quantity=quantities[product_id],
+                model_name=product.product_name if product else f"Product {item.product_id}",
+                quantity=item.quantity,
                 # First open: seed the cost side from the product master
                 # (vendor_rate for the purchase rate, gst_perc as the most
                 # likely purchase tax). Once saved, the stored figures win —
@@ -718,9 +871,9 @@ async def get_sales_order_costing(
                 # Sales side comes off the live line item, not the product
                 # master — the order form already defaulted it from
                 # discounted_price when the order was raised.
-                net_sales_rate=rates[product_id],
+                net_sales_rate=item.rate,
                 discount=costing.discount if costing else 0.0,
-                sales_tax_perc=tax_percs[product_id],
+                sales_tax_perc=item.tax_perc,
                 is_saved=costing is not None,
             )
         )
@@ -749,42 +902,41 @@ async def update_sales_order_costing(
 ) -> UpdateSalesOrderCostingResponse:
     sales_order = await _get_active_sales_order(payload.sales_order_id)
 
-    line_items = await SalesSummary.find(SalesSummary.sales_order_id == payload.sales_order_id).to_list()
-    if not line_items:
+    sorted_items = await _sorted_line_items(payload.sales_order_id)
+    if not sorted_items:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="sales order has no line items")
 
-    # All-or-nothing: the sheet always submits every product, so a mismatch
+    # All-or-nothing: the sheet always submits every line, so a mismatch
     # means the order's line items changed in another tab since it loaded,
     # and saving a partial set would leave the order's totals wrong.
-    order_product_ids = {item.product_id for item in line_items}
-    payload_product_ids = {line.product_id for line in payload.lines}
-    if payload_product_ids != order_product_ids:
+    order_line_ids = {item.id for item in sorted_items}
+    payload_line_ids = {line.line_item_id for line in payload.lines}
+    if payload_line_ids != order_line_ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "costing must cover exactly the order's products "
-                f"(expected {sorted(order_product_ids)}, got {sorted(payload_product_ids)}) — "
+                "costing must cover exactly the order's line items "
+                f"(expected {sorted(order_line_ids)}, got {sorted(payload_line_ids)}) — "
                 "the order's line items may have changed; reload and try again"
             ),
         )
 
-    lines_by_product = {line.product_id: line for line in payload.lines}
+    lines_by_id = {line.line_item_id: line for line in payload.lines}
 
     # --- sales side: written straight back onto the live line items --------
     # Net Sales Rate and Sales Tax % ARE SalesSummary.rate/tax_perc, so the
-    # order row's own totals move with the sheet. Updated in place rather
-    # than deleted and reinserted (as update_sales_order_details does) so the
-    # row ids — and therefore the sheet's row order — survive a save.
-    for item in line_items:
-        line = lines_by_product[item.product_id]
+    # order row's own totals move with the sheet.
+    for item in sorted_items:
+        line = lines_by_id[item.id]
         item.rate = line.net_sales_rate
         item.tax_perc = line.sales_tax_perc
 
     # --- cost side: upserted into #sales_order_costing ---------------------
     costings = await SalesOrderCosting.find(SalesOrderCosting.sales_order_id == payload.sales_order_id).to_list()
-    costings_by_product = {costing.product_id: costing for costing in costings}
+    costings_by_line, legacy_by_product = _costings_by_line_and_legacy(costings)
 
-    for line in payload.lines:
+    for item in sorted_items:
+        line = lines_by_id[item.id]
         printing_costs = [
             PrintingCost(
                 printing_type=printing.printing_type,
@@ -795,7 +947,14 @@ async def update_sales_order_costing(
             )
             for printing in line.printing_costs
         ]
-        costing = costings_by_product.get(line.product_id)
+        costing = costings_by_line.get(item.id)
+        if costing is None:
+            # A legacy product-keyed row (see models/sales_order_costing.py)
+            # is claimed by the first of its product's lines to save; the
+            # rest get rows of their own below. pop() so it is claimed once.
+            costing = legacy_by_product.pop(item.product_id, None)
+            if costing is not None:
+                costing.sales_summary_id = item.id
         if costing is None:
             costing_id = await get_next_id(
                 SalesOrderCostingIdCounter, "next_sales_order_costing_id", SalesOrderCosting
@@ -803,7 +962,8 @@ async def update_sales_order_costing(
             costing = SalesOrderCosting(
                 id=costing_id,
                 sales_order_id=payload.sales_order_id,
-                product_id=line.product_id,
+                sales_summary_id=item.id,
+                product_id=item.product_id,
                 net_purchase_rate=line.net_purchase_rate,
                 purchase_tax_perc=line.purchase_tax_perc,
                 printing_costs=printing_costs,
@@ -822,17 +982,11 @@ async def update_sales_order_costing(
             await costing.save()
 
     # --- re-derive the line items' tax/total and the order's headline totals
-    sorted_items = sorted(line_items, key=lambda line_item: line_item.id)
-    product_ids = [item.product_id for item in sorted_items]
     quantities = [item.quantity for item in sorted_items]
     rates = [item.rate for item in sorted_items]
     tax_percs = [item.tax_perc for item in sorted_items]
-    discounts = _allocate_line_discounts(
-        {line.product_id: line.discount for line in payload.lines if line.discount},
-        product_ids,
-        quantities,
-        rates,
-    )
+    # Discount is per line now, so no pro-rata split to do.
+    discounts = [lines_by_id[item.id].discount for item in sorted_items]
     # The order's overall discount isn't editable here, but it still has to
     # be carried into the recompute — leaving it out would silently drop it
     # from the order's totals the first time this sheet is saved.

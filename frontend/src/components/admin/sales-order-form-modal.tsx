@@ -69,6 +69,11 @@ type Status = "idle" | "saving";
 const DEFAULT_DELIVERY_TAX_PERC = 18;
 
 type LineItem = {
+  // The #sales_summary id this row came from; null for a row added on the
+  // form. Sent back on edit so the backend updates the row in place — the
+  // "Add details" costing is keyed on it, so the same product on two lines
+  // at different rates stays two separately costed lines.
+  lineItemId: number | null;
   productId: string | null;
   quantity: number;
   // Plain text, sanitized via sanitizeDecimalInput (see lib/decimal-input.ts)
@@ -79,7 +84,7 @@ type LineItem = {
 };
 
 function emptyLineItem(): LineItem {
-  return { productId: null, quantity: 1, rate: "", taxPerc: "" };
+  return { lineItemId: null, productId: null, quantity: 1, rate: "", taxPerc: "" };
 }
 
 // Reassembles an existing order's parallel productIds/quantities/rates/
@@ -88,6 +93,7 @@ function emptyLineItem(): LineItem {
 function lineItemsFromOrder(order: SalesOrder): LineItem[] {
   if (order.productIds.length === 0) return [emptyLineItem()];
   return order.productIds.map((productId, index) => ({
+    lineItemId: order.lineItemIds?.[index] ?? null,
     productId: String(productId),
     quantity: order.quantities[index] ?? 1,
     rate: String(order.rates[index] ?? ""),
@@ -323,7 +329,12 @@ export function SalesOrderFormModal({
 
     const payload = {
       ...(isEdit
-        ? { id: initialOrder?.id, order_status_id: Number(orderStatusId), is_deleted: initialOrder?.isDeleted ?? false }
+        ? {
+            id: initialOrder?.id,
+            order_status_id: Number(orderStatusId),
+            is_deleted: initialOrder?.isDeleted ?? false,
+            line_item_ids: lineItems.map((item) => item.lineItemId),
+          }
         : {}),
       cust_id: Number(custId),
       date: fromDatetimeLocalValue(date),

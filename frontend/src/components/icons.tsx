@@ -306,6 +306,35 @@ export function ChevronRightIcon(props: IconProps) {
   );
 }
 
+// The two halves of the sort control on a sortable column header
+// (components/admin/sales-orders-tab.tsx). Kept as separate icons rather
+// than one stacked glyph so the header can dim whichever direction is not
+// the active one.
+export function ChevronUpIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M5.5 15 12 8.5l6.5 6.5" />
+    </svg>
+  );
+}
+
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M5.5 9 12 15.5 18.5 9" />
+    </svg>
+  );
+}
+
+// The filter button on a column header (components/admin/sales-orders-tab.tsx).
+export function FunnelIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3.5 5h17l-6.5 8v5.5l-4 2V13z" />
+    </svg>
+  );
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>

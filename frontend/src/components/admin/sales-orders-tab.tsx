@@ -27,6 +27,11 @@
 // the order form does. Its own click is stopped from bubbling so it doesn't
 // also count towards the row's double-click-to-edit.
 //
+// The "Order no." header carries a sort toggle and the "Customer" header a
+// multiselect filter (components/admin/column-filter-dropdown.tsx) — see
+// the `orderNoSort` and `customerFilterIds` state below. Both work on the
+// already-fetched array, like every other list control here.
+//
 // get_customer_list is used (rather than the heavier, email-keyed
 // get_customer_details) because it's the only endpoint exposing a numeric
 // customer id — and it returns every customer, active and deleted, so the
@@ -35,6 +40,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/button";
+import { ChevronDownIcon, ChevronUpIcon } from "@/components/icons";
+import { ColumnFilterDropdown } from "@/components/admin/column-filter-dropdown";
 import { SalesOrderFormModal } from "@/components/admin/sales-order-form-modal";
 import { StatusSelect } from "@/components/admin/status-select";
 import { fetchSalesOrders, updateSalesOrderStatus, type SalesOrder } from "@/lib/sales-orders";
@@ -53,6 +60,10 @@ import { formatDate } from "@/lib/format-date";
 type ModalState = { mode: "add" } | { mode: "edit"; order: SalesOrder } | null;
 type LoadState = "loading" | "loaded";
 type StatusFilter = "all" | number;
+// The Order no. column's sort. `null` is the default newest-first order the
+// other list tables use (lib/row-order.ts); the arrows beside the header
+// cycle null -> asc -> desc -> null.
+type OrderNoSort = "asc" | "desc" | null;
 
 // Status name (lowercased) -> the color modifier for its Status cell. Keyed by
 // name rather than OrderStatusMaster id so the colors survive a reseed that
@@ -85,6 +96,10 @@ export function SalesOrdersTab() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [orderNoSort, setOrderNoSort] = useState<OrderNoSort>(null);
+  // Customer ids ticked in the dropdown beside the "Customer" header. Empty
+  // means no filter — every order is shown.
+  const [customerFilterIds, setCustomerFilterIds] = useState<number[]>([]);
   // The order whose status dropdown is mid-save, and the reason the last
   // attempt failed. Only one row can be saving at a time — the dropdown
   // disables itself while its own request is in flight.
@@ -100,11 +115,25 @@ export function SalesOrdersTab() {
     value: orderStatus.id,
     label: orderStatus.statusName,
   }));
-  const visibleOrders = (
-    statusFilter === "all" ? orders : orders.filter((order) => order.orderStatusId === statusFilter)
-  )
-    .slice()
-    .sort(byNewestFirst);
+  const customerName = (order: SalesOrder) => customersById.get(order.custId)?.name;
+  // Only customers who actually have an order, A-Z — a customer with nothing
+  // to filter to would just be a checkbox that empties the table.
+  const customerFilterOptions = [...new Set(orders.map((order) => order.custId))]
+    .map((custId) => ({ value: custId, label: customersById.get(custId)?.name ?? `Customer #${custId}` }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const customerFilterSet = new Set(customerFilterIds);
+  const visibleOrders = orders
+    .filter((order) => statusFilter === "all" || order.orderStatusId === statusFilter)
+    .filter((order) => customerFilterSet.size === 0 || customerFilterSet.has(order.custId))
+    .sort(
+      orderNoSort === null
+        ? byNewestFirst
+        : (a, b) => (orderNoSort === "asc" ? a.orderNo - b.orderNo : b.orderNo - a.orderNo),
+    );
+
+  function cycleOrderNoSort() {
+    setOrderNoSort((current) => (current === null ? "asc" : current === "asc" ? "desc" : null));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -244,16 +273,55 @@ export function SalesOrdersTab() {
         <table className={styles.table}>
           <thead>
             <tr>
-              <th className={styles.tableHeadCell}>S.No</th>
-              <th className={styles.tableHeadCell}>Order no.</th>
+              <th
+                className={styles.tableHeadCell}
+                aria-sort={
+                  orderNoSort === "asc" ? "ascending" : orderNoSort === "desc" ? "descending" : "none"
+                }
+              >
+                <span className={styles.tableHeadControls}>
+                  Order no.
+                  <button
+                    type="button"
+                    onClick={cycleOrderNoSort}
+                    className={styles.tableHeadButton}
+                    aria-label={
+                      orderNoSort === null
+                        ? "Sort by order number, ascending"
+                        : orderNoSort === "asc"
+                          ? "Sort by order number, descending"
+                          : "Clear order number sort"
+                    }
+                    title="Sort by order number"
+                  >
+                    <ChevronUpIcon
+                      className={`${styles.sortChevron} ${orderNoSort === "asc" ? styles.sortChevronActive : ""}`}
+                    />
+                    <ChevronDownIcon
+                      className={`${styles.sortChevron} ${orderNoSort === "desc" ? styles.sortChevronActive : ""}`}
+                    />
+                  </button>
+                </span>
+              </th>
+              <th className={styles.tableHeadCell}>Details</th>
               <th className={styles.tableHeadCell}>Date</th>
-              <th className={styles.tableHeadCell}>Customer</th>
+              <th className={styles.tableHeadCell}>
+                <span className={styles.tableHeadControls}>
+                  Customer
+                  <ColumnFilterDropdown
+                    label="Filter by customer"
+                    searchPlaceholder="Search customers…"
+                    emptyMessage="No customers match."
+                    options={customerFilterOptions}
+                    selectedValues={customerFilterIds}
+                    onChange={setCustomerFilterIds}
+                  />
+                </span>
+              </th>
               <th className={styles.tableHeadCell}>Status</th>
-              <th className={styles.tableHeadCell}>Discount</th>
               <th className={styles.tableHeadCell}>Before tax</th>
               <th className={styles.tableHeadCell}>After tax</th>
               <th className={styles.tableHeadCell}>Description</th>
-              <th className={styles.tableHeadCell}>Details</th>
             </tr>
           </thead>
           <tbody>
@@ -263,30 +331,10 @@ export function SalesOrdersTab() {
                 onDoubleClick={() => setModalState({ mode: "edit", order })}
                 className={styles.tableRow}
               >
-                <td className={styles.tableCell}>{visibleOrders.length - index}</td>
                 <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
                   {order.orderNo}
                   {order.poUpdatedFlag && <span className={styles.inactiveBadge}>PO updated</span>}
                 </td>
-                <td className={styles.tableCell}>{formatDate(order.date)}</td>
-                <td className={styles.tableCell}>{customersById.get(order.custId)?.name ?? "—"}</td>
-                <td className={statusCellClassName(statusesById.get(order.orderStatusId)?.statusName)}>
-                  <StatusSelect
-                    value={order.orderStatusId}
-                    options={statusOptions}
-                    label={`Status for order ${order.orderNo}`}
-                    disabled={statusSavingId === order.id}
-                    onChange={(nextStatusId) => void handleStatusChange(order, nextStatusId)}
-                  />
-                </td>
-                {/* Already deducted from the two totals beside it — shown
-                    so the figures can be read back against the order form. */}
-                <td className={styles.tableCell}>
-                  {order.overallDiscount ? `−₹${order.overallDiscount.toFixed(2)}` : "—"}
-                </td>
-                <td className={styles.tableCell}>₹{order.totalAmountBeforeTax.toFixed(2)}</td>
-                <td className={styles.tableCell}>₹{order.totalAmountAfterTax.toFixed(2)}</td>
-                <td className={styles.tableCell}>{order.description}</td>
                 <td className={styles.tableCell}>
                   <Link
                     href={`/admin/orders/sales/${order.id}/details`}
@@ -296,6 +344,20 @@ export function SalesOrdersTab() {
                     Add details
                   </Link>
                 </td>
+                <td className={styles.tableCell}>{formatDate(order.date)}</td>
+                <td className={styles.tableCell}>{customerName(order) ?? "—"}</td>
+                <td className={statusCellClassName(statusesById.get(order.orderStatusId)?.statusName)}>
+                  <StatusSelect
+                    value={order.orderStatusId}
+                    options={statusOptions}
+                    label={`Status for order ${order.orderNo}`}
+                    disabled={statusSavingId === order.id}
+                    onChange={(nextStatusId) => void handleStatusChange(order, nextStatusId)}
+                  />
+                </td>
+                <td className={styles.tableCell}>₹{order.totalAmountBeforeTax.toFixed(2)}</td>
+                <td className={styles.tableCell}>₹{order.totalAmountAfterTax.toFixed(2)}</td>
+                <td className={styles.tableCell}>{order.description}</td>
               </tr>
             ))}
           </tbody>
@@ -304,7 +366,7 @@ export function SalesOrdersTab() {
         {loadState === "loaded" && visibleOrders.length === 0 && (
           <p className={styles.pageSubtext}>
             No {statusFilter === "all" ? "" : `${statusesById.get(statusFilter)?.statusName.toLowerCase()} `}sales
-            orders.
+            orders{customerFilterIds.length > 0 ? " for the selected customers" : ""}.
           </p>
         )}
       </div>

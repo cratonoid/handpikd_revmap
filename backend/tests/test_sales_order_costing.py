@@ -12,6 +12,7 @@ from app.api.routes.sales_orders import (
     _allocate_line_discounts,
     _allocate_overall_discount,
     _compute_line_items_and_totals,
+    _line_discounts_from_costings,
     delivery_tax_amount,
 )
 from app.api.routes.invoices import delivery_charge_lines
@@ -58,6 +59,42 @@ def test_zero_value_lines_split_evenly_instead_of_dividing_by_zero():
         discount_by_product={7: 50.0}, product_ids=[7, 7], quantities=[0, 0], rates=[0.0, 0.0]
     )
     assert discounts == [25.0, 25.0]
+
+
+class _Costing:
+    # Just the fields _line_discounts_from_costings reads — a real
+    # SalesOrderCosting can't be built without an initialized collection.
+    def __init__(self, product_id: int, discount: float, sales_summary_id: int | None = None) -> None:
+        self.product_id = product_id
+        self.discount = discount
+        self.sales_summary_id = sales_summary_id
+
+
+def test_per_line_costing_rows_give_each_line_its_own_discount():
+    # The same product on two lines, costed separately: line 11 gets its own
+    # discount, line 12 its own, and nothing is split between them.
+    discounts = _line_discounts_from_costings(
+        costings=[_Costing(7, 30.0, sales_summary_id=11), _Costing(7, 5.0, sales_summary_id=12)],
+        line_item_ids=[11, 12],
+        product_ids=[7, 7],
+        quantities=[3, 1],
+        rates=[100.0, 100.0],
+    )
+    assert discounts == [30.0, 5.0]
+
+
+def test_legacy_product_row_still_splits_across_uncosted_lines_only():
+    # A pre-per-line row for product 7 covers the lines of 7 that have no
+    # row of their own (12 and the just-added None), pro rata; line 11 has
+    # its own row and keeps out of the split.
+    discounts = _line_discounts_from_costings(
+        costings=[_Costing(7, 30.0, sales_summary_id=11), _Costing(7, 200.0)],
+        line_item_ids=[11, 12, None],
+        product_ids=[7, 7, 7],
+        quantities=[3, 3, 1],
+        rates=[100.0, 100.0, 100.0],
+    )
+    assert discounts == [30.0, 150.0, 50.0]
 
 
 def test_empty_costing_short_circuits_to_zeroes():

@@ -52,6 +52,11 @@ class SalesOrderDetailItem(BaseModel):
     order_status_id: int
     cust_id: int
     date: datetime
+    # SalesSummary.id of each line, parallel to the arrays below. The edit
+    # form sends these back as line_item_ids so an edit updates the same rows
+    # in place — the "Add details" costing hangs off them (see
+    # models/sales_order_costing.py).
+    line_item_ids: list[int]
     product_ids: list[int]
     quantities: list[int]
     rates: list[float]
@@ -79,6 +84,13 @@ class UpdateSalesOrderDetailsRequest(BaseModel):
     is_deleted: bool = False
     cust_id: int
     date: datetime
+    # Parallel to product_ids: the SalesSummary.id each line came from (as
+    # returned by get_sales_order_details), or None for a line added on the
+    # form. Lets the edit update existing rows in place so their ids — and
+    # the costing keyed on them — survive; a row whose id is not sent back is
+    # deleted. Optional: a client that omits the whole list gets a
+    # best-effort positional match instead (see update_sales_order_details).
+    line_item_ids: list[int | None] | None = None
     product_ids: list[int]
     quantities: list[int]
     rates: list[float]
@@ -99,10 +111,18 @@ class UpdateSalesOrderDetailsRequest(BaseModel):
     @model_validator(mode="after")
     def _check_line_items_match(self) -> "UpdateSalesOrderDetailsRequest":
         lengths = {len(self.product_ids), len(self.quantities), len(self.rates), len(self.tax_percs)}
+        if self.line_item_ids is not None:
+            lengths.add(len(self.line_item_ids))
         if len(lengths) != 1:
-            raise ValueError("product_ids, quantities, rates, and tax_percs must have the same number of entries")
+            raise ValueError(
+                "line_item_ids, product_ids, quantities, rates, and tax_percs must have the same number of entries"
+            )
         if len(self.product_ids) == 0:
             raise ValueError("at least one line item is required")
+        if self.line_item_ids is not None:
+            sent_ids = [line_item_id for line_item_id in self.line_item_ids if line_item_id is not None]
+            if len(sent_ids) != len(set(sent_ids)):
+                raise ValueError("each line item id may only appear once")
         return self
 
 

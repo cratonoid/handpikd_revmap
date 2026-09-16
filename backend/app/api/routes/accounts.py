@@ -228,22 +228,29 @@ async def _cost_by_sales_order(sales_order_ids: set[int]) -> tuple[dict[int, flo
 
     order_id_list = list(sales_order_ids)
 
-    # Quantities are summed per (order, product) rather than read per line
-    # item, because costing is keyed by product id — an order listing the
-    # same product on two lines has ONE costing row covering both. See
-    # models/sales_order_costing.py.
     summaries = await SalesSummary.find(In(SalesSummary.sales_order_id, order_id_list)).to_list()
-    quantity_by_order_product: dict[tuple[int, int], int] = defaultdict(int)
-    for summary in summaries:
-        quantity_by_order_product[(summary.sales_order_id, summary.product_id)] += summary.quantity
-
     costings = await SalesOrderCosting.find(In(SalesOrderCosting.sales_order_id, order_id_list)).to_list()
+
+    # A costing row keyed on a line (see models/sales_order_costing.py) costs
+    # exactly that line's quantity. A legacy product-keyed row covers every
+    # line of its product that has no row of its own, so those quantities
+    # are summed per (order, product) — leaving out lines already costed on
+    # their own, or they would be counted twice.
+    quantity_by_line = {summary.id: summary.quantity for summary in summaries}
+    line_costed_ids = {costing.sales_summary_id for costing in costings if costing.sales_summary_id is not None}
+    legacy_quantity_by_order_product: dict[tuple[int, int], int] = defaultdict(int)
+    for summary in summaries:
+        if summary.id not in line_costed_ids:
+            legacy_quantity_by_order_product[(summary.sales_order_id, summary.product_id)] += summary.quantity
 
     cost_by_order: dict[int, float] = defaultdict(float)
     costed_order_ids: set[int] = set()
     for costing in costings:
         costed_order_ids.add(costing.sales_order_id)
-        quantity = quantity_by_order_product.get((costing.sales_order_id, costing.product_id), 0)
+        if costing.sales_summary_id is not None:
+            quantity = quantity_by_line.get(costing.sales_summary_id, 0)
+        else:
+            quantity = legacy_quantity_by_order_product.get((costing.sales_order_id, costing.product_id), 0)
         cost_by_order[costing.sales_order_id] += _net_final_cost(
             quantity=quantity,
             net_purchase_rate=costing.net_purchase_rate,

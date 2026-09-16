@@ -1,8 +1,8 @@
 # Request/response bodies for the sales order costing ("Add details") screen.
 #
-# One entry per DISTINCT product on the sales order, not per #sales_summary
-# row — see app/models/sales_order_costing.py for why costing hangs off the
-# product id rather than the line item id.
+# One entry per #sales_summary row (line item) on the sales order, keyed by
+# line_item_id — see app/models/sales_order_costing.py. The same product on
+# two lines gets two entries, each costed on its own.
 from datetime import datetime
 
 from pydantic import BaseModel, model_validator
@@ -17,10 +17,12 @@ class PrintingCostItem(BaseModel):
 
 
 class SalesOrderCostingLine(BaseModel):
+    # SalesSummary.id — the key a save is matched back on.
+    line_item_id: int
     product_id: int
     # ProductDetails.product_name, shown on the sheet as "Model Name".
     model_name: str
-    # Summed across every line of this product on the order.
+    # This line's own quantity (SalesSummary.quantity).
     quantity: int
     # --- cost side (from #sales_order_costing, defaulted on first open) ---
     net_purchase_rate: float
@@ -63,7 +65,7 @@ class SalesOrderCostingResponse(BaseModel):
 
 
 class UpdateSalesOrderCostingLine(BaseModel):
-    product_id: int
+    line_item_id: int
     net_purchase_rate: float
     purchase_tax_perc: float
     printing_costs: list[PrintingCostItem] = []
@@ -79,10 +81,10 @@ class UpdateSalesOrderCostingRequest(BaseModel):
     lines: list[UpdateSalesOrderCostingLine]
 
     @model_validator(mode="after")
-    def _check_products_unique(self) -> "UpdateSalesOrderCostingRequest":
-        product_ids = [line.product_id for line in self.lines]
-        if len(product_ids) != len(set(product_ids)):
-            raise ValueError("each product may only appear once — costing rows are keyed by product")
+    def _check_line_items_unique(self) -> "UpdateSalesOrderCostingRequest":
+        line_item_ids = [line.line_item_id for line in self.lines]
+        if len(line_item_ids) != len(set(line_item_ids)):
+            raise ValueError("each line item may only appear once — costing rows are keyed by line item")
         return self
 
 

@@ -3,10 +3,10 @@
 // ---------------------------------------------------------------------------
 // <SalesOrderCostingPageClient> — the "Add details" costing sheet
 // ---------------------------------------------------------------------------
-// Renders /admin/orders/sales/[id]/details. One card per DISTINCT product on
-// the order (an order listing the same product twice shows it once, with the
-// quantities summed — see lib/sales-order-costing.ts), each pairing the
-// admin's inputs with every figure derived from them.
+// Renders /admin/orders/sales/[id]/details. One card per LINE ITEM on the
+// order (the same product on two lines is two cards, costed separately — see
+// lib/sales-order-costing.ts), each pairing the admin's inputs with every
+// figure derived from them.
 //
 // Cards rather than one wide table: there are eight inputs and sixteen
 // derived figures per product, which no horizontally-scrolling table renders
@@ -42,7 +42,8 @@ type LoadState = "loading" | "loaded" | "error";
 type SaveState = "idle" | "saving" | "saved";
 
 // String-backed mirror of CostingLine (see the sanitizeDecimalInput note
-// above); productId/modelName/quantity stay typed since they're never edited.
+// above); lineItemId/productId/modelName/quantity stay typed since they're
+// never edited.
 type PrintingForm = {
   printingType: string;
   costPerUnit: string;
@@ -51,6 +52,7 @@ type PrintingForm = {
 };
 
 type LineForm = {
+  lineItemId: number;
   productId: number;
   modelName: string;
   quantity: number;
@@ -73,6 +75,7 @@ function toFormValue(value: number): string {
 
 function toLineForm(line: CostingLine): LineForm {
   return {
+    lineItemId: line.lineItemId,
     productId: line.productId,
     modelName: line.modelName,
     quantity: line.quantity,
@@ -94,6 +97,7 @@ function toLineForm(line: CostingLine): LineForm {
 
 function toCostingLine(form: LineForm): CostingLine {
   return {
+    lineItemId: form.lineItemId,
     productId: form.productId,
     modelName: form.modelName,
     quantity: form.quantity,
@@ -314,7 +318,7 @@ export function SalesOrderCostingPageClient({ salesOrderId }: { salesOrderId: nu
       {lines.map((line, lineIndex) => {
         const figures = figuresByLine[lineIndex];
         return (
-          <section key={line.productId} className={styles.costingCard}>
+          <section key={line.lineItemId} className={styles.costingCard}>
             <header className={styles.costingCardHeader}>
               <h2 className={styles.costingCardTitle}>{line.modelName}</h2>
               <span className={styles.costingQtyBadge}>Qty {line.quantity}</span>
