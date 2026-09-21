@@ -27,7 +27,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue } from "@/lib/datetime-input";
 import type { Invoice, InvoiceStatus, OnlineOrOffline } from "@/lib/invoices";
-import { createInvoice, updateInvoice } from "@/lib/invoices";
+import { createInvoice, printInvoicePdf, updateInvoice } from "@/lib/invoices";
 import type { SalesOrder } from "@/lib/sales-orders";
 import type { CustomerOption } from "@/lib/customers";
 import { MultiSelectDropdown, type MultiSelectOption } from "@/components/admin/multi-select-dropdown";
@@ -78,6 +78,7 @@ export function InvoiceFormModal({
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [printing, setPrinting] = useState(false);
 
   const isEdit = mode === "edit";
   const wasDeleted = initialInvoice?.isDeleted ?? false;
@@ -180,6 +181,21 @@ export function InvoiceFormModal({
   function handleDeleteOrRestore() {
     setConfirmingDelete(false);
     void submitPayload(!wasDeleted);
+  }
+
+  // Prints the invoice as it's saved on the server — unsaved edits in the
+  // form aren't on the PDF, which is why the button only exists in edit mode.
+  async function handlePrint() {
+    if (!initialInvoice) return;
+    setError(null);
+    setPrinting(true);
+    try {
+      await printInvoicePdf(initialInvoice.id);
+    } catch {
+      setError(`Couldn't generate the PDF for invoice ${initialInvoice.invoiceNoDisplay}.`);
+    } finally {
+      setPrinting(false);
+    }
   }
 
   return (
@@ -373,14 +389,24 @@ export function InvoiceFormModal({
           <div className={styles.modalActions}>
             <div className={styles.modalActionsLeft}>
               {isEdit && !confirmingDelete && (
-                <button
-                  type="button"
-                  onClick={() => setConfirmingDelete(true)}
-                  disabled={status === "saving"}
-                  className={`${styles.triggerButtonBase} ${wasDeleted ? styles.restoreTriggerButton : styles.deleteTriggerButton}`}
-                >
-                  {wasDeleted ? "Restore invoice" : "Void invoice"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(true)}
+                    disabled={status === "saving"}
+                    className={`${styles.triggerButtonBase} ${wasDeleted ? styles.restoreTriggerButton : styles.deleteTriggerButton}`}
+                  >
+                    {wasDeleted ? "Restore invoice" : "Void invoice"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handlePrint()}
+                    disabled={status === "saving" || printing}
+                    className={styles.triggerButtonBase}
+                  >
+                    {printing ? "Preparing…" : "Print invoice"}
+                  </button>
+                </>
               )}
 
               {isEdit && confirmingDelete && (

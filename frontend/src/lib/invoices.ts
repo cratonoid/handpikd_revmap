@@ -289,6 +289,54 @@ export async function downloadInvoicePdf(invoiceId: number, invoiceNoDisplay: st
   URL.revokeObjectURL(url);
 }
 
+// Sends the invoice PDF straight to the browser's print dialog instead of
+// saving it. Same bearer-header constraint as downloadInvoicePdf, so the
+// blob is loaded into a hidden <iframe> and printed from there — a plain
+// window.open + print() would fire before the PDF viewer had rendered, and
+// popup blockers tend to eat the new tab anyway. The iframe is left in the
+// DOM until printing is done (`afterprint` doesn't fire reliably for PDF
+// frames), so it's torn down on the next call instead.
+let printFrame: HTMLIFrameElement | null = null;
+
+export async function printInvoicePdf(invoiceId: number): Promise<void> {
+  const response = await apiFetch(`/admin/get_invoice_pdf?invoice_id=${invoiceId}`);
+  if (!response.ok) {
+    throw new Error("Failed to generate invoice PDF");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+
+  if (printFrame) {
+    if (printFrame.src) URL.revokeObjectURL(printFrame.src);
+    printFrame.remove();
+  }
+  const frame = document.createElement("iframe");
+  frame.style.position = "fixed";
+  frame.style.right = "0";
+  frame.style.bottom = "0";
+  frame.style.width = "0";
+  frame.style.height = "0";
+  frame.style.border = "0";
+  frame.setAttribute("aria-hidden", "true");
+  printFrame = frame;
+
+  await new Promise<void>((resolve, reject) => {
+    frame.onload = () => {
+      try {
+        frame.contentWindow?.focus();
+        frame.contentWindow?.print();
+        resolve();
+      } catch (err) {
+        reject(err);
+      }
+    };
+    frame.onerror = () => reject(new Error("Failed to load invoice PDF for printing"));
+    frame.src = url;
+    document.body.appendChild(frame);
+  });
+}
+
 // Bulk-downloads every standard invoice raised within [startDate, endDate]
 // (both "YYYY-MM-DD") as a single .zip of individual invoice PDFs — same
 // blob-and-throwaway-link approach as downloadInvoicePdf above, since this
