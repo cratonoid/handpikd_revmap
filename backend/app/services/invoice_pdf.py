@@ -138,7 +138,11 @@ async def generate_invoice_pdf(
     personal: dict[str, str],
     title_text: str = "TAX INVOICE",
     party_label: str = "Customer",
-    show_signature: bool = False,
+    # Sales invoices raised "online" print the "system generated, no
+    # signature required" note in the signature space; "offline" ones
+    # embed the company's scanned signature (personal["signature_image"])
+    # there instead, or leave the space blank when none is uploaded.
+    is_online: bool = False,
     tax_kind: TaxKind | None = None,
     place_of_supply_code: str = "",
 ) -> bytes:
@@ -180,7 +184,7 @@ async def generate_invoice_pdf(
     place_of_supply = _place_of_supply_text(place_of_supply_code)
 
     signature_data_uri = None
-    if show_signature:
+    if not is_online:
         signature_path = _resolve_media_path(personal.get("signature_image", ""))
         if signature_path is not None:
             signature_data_uri = _file_to_data_uri(signature_path)
@@ -234,6 +238,7 @@ async def generate_invoice_pdf(
         notes_lines=[line.strip() for line in notes.splitlines() if line.strip()],
         tnc_lines=[line.strip() for line in personal.get("invoice_tnc", "").splitlines() if line.strip()],
         signature_data_uri=signature_data_uri,
+        show_system_note=is_online,
     )
 
     return await render_html_to_pdf(

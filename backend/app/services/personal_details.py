@@ -30,7 +30,7 @@ ATTRIBUTE_IDS: dict[str, int] = {
     # "/media/signatures/<uuid>.<ext>" path (see services/storage.py's
     # upload_signature_image) of the company's own signature scan, embedded
     # on offline invoices — see routes/invoices.py's get_invoice_pdf and
-    # services/invoice_pdf.py's show_signature param.
+    # services/invoice_pdf.py's is_online param.
     "signature_image": 17,
     # Our own state, as a two-digit GST state code and its name — the
     # seller side of every intra/inter-state decision (see services/gst.py).

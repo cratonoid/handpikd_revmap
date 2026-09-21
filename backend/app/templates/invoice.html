@@ -398,10 +398,10 @@
           <tr><td class="for-company">For {{ company_name }}</td></tr>
           <tr>
             <td class="sign-space">
-              {% if signature_data_uri %}
-              <img class="sign-image" src="{{ signature_data_uri }}" alt="Signature" />
-              {% else %}
+              {% if show_system_note %}
               <p class="system-note">THIS IS A SYSTEM GENERATED INVOICE AND DOES NOT REQUIRE AN AUTHORISED SIGNATURE</p>
+              {% elif signature_data_uri %}
+              <img class="sign-image" src="{{ signature_data_uri }}" alt="Signature" />
               {% endif %}
             </td>
           </tr>

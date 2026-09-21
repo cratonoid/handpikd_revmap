@@ -308,7 +308,7 @@ async def create_new_invoice(
     total_igst, total_cgst, total_sgst = tax_context.totals(total_tax)
 
     # Standard invoices are numbered per financial year (H/26-27/12), so the
-    # invoice's own date — not today's — picks which year's series it comes
+    # invoice's own date â€” not today's â€” picks which year's series it comes
     # out of, and back-dating an invoice into the previous year lands it at
     # the end of that year's series rather than jumping this one's.
     fy_start_year = financial_year_start_year(payload.date)
@@ -727,7 +727,7 @@ async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict
         customer_gstin=customer_gstin,
         personal=personal,
         title_text="TAX INVOICE",
-        show_signature=invoice.online_or_offline == OnlineOrOffline.offline,
+        is_online=invoice.online_or_offline == OnlineOrOffline.online,
         # The heads this invoice was raised under, not whatever the two
         # GSTINs say today (None for pre-tax_kind invoices, which the
         # renderer still derives from the GSTINs).
