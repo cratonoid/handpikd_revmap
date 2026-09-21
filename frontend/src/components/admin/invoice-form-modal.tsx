@@ -398,14 +398,14 @@ export function InvoiceFormModal({
                   >
                     {wasDeleted ? "Restore invoice" : "Void invoice"}
                   </button>
-                  <button
+                  <Button
                     type="button"
+                    variant="tertiary"
                     onClick={() => void handlePrint()}
                     disabled={status === "saving" || printing}
-                    className={styles.triggerButtonBase}
                   >
                     {printing ? "Preparing…" : "Print invoice"}
-                  </button>
+                  </Button>
                 </>
               )}
 
