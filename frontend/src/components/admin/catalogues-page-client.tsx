@@ -24,9 +24,18 @@
 // next to the name rather than split into their own tab the way hidden
 // products are. Hiding is the only non-destructive way to take a catalogue
 // off the storefront, since a catalogue delete is permanent.
+//
+// The search box above the table is a client-side filter over the same
+// fetch (see visibleCatalogues) — the list is already whole in the browser,
+// so nothing is re-queried. It matches the four text columns: catalogue
+// name, vendor, type label and category names, via the shared matchesSearch
+// rules in table-search-input.tsx. Page count is deliberately left out: it
+// is the one numeric column, and including it would make a query like "10"
+// match every catalogue with ten pages alongside the name matches.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { CatalogueFormModal } from "@/components/admin/catalogue-form-modal";
+import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import { fetchCatalogues, type Catalogue } from "@/lib/catalogues";
 import { fetchCategories, type CategoryNode } from "@/lib/categories";
 import { fetchVendorsList, type VendorOption } from "@/lib/vendors";
@@ -48,6 +57,7 @@ export function CataloguesPageClient() {
   const [rootCategories, setRootCategories] = useState<CategoryNode[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
+  const [search, setSearch] = useState("");
 
   // Neither add/update/delete_catalogue_details returns the saved/deleted
   // record, so every mutation just re-runs this full refetch rather than
@@ -76,6 +86,19 @@ export function CataloguesPageClient() {
     label: category.name,
   }));
 
+  // Built from the same id->name maps the table renders from, so what you
+  // can search for is exactly what you can see in a row — searching
+  // "Drinkware" or a vendor's name works even though the catalogue itself
+  // only stores ids.
+  const visibleCatalogues = catalogues.filter((catalogue) =>
+    matchesSearch(search, [
+      catalogue.catalogueName,
+      vendorsById.get(String(catalogue.catalogueVendorId)),
+      CATALOGUE_TYPE_LABELS[catalogue.catalogueType] ?? catalogue.catalogueType,
+      ...catalogue.categoryIds.map((id) => categoriesById.get(id)),
+    ]),
+  );
+
   function handleSaved() {
     void loadAll();
     setModalState(null);
@@ -97,6 +120,15 @@ export function CataloguesPageClient() {
         </Button>
       </div>
 
+      <div className={styles.filterToggleRow}>
+        <TableSearchInput
+          value={search}
+          onChange={setSearch}
+          label="Search catalogues"
+          placeholder="Search catalogue, vendor or category…"
+        />
+      </div>
+
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
@@ -110,7 +142,7 @@ export function CataloguesPageClient() {
             </tr>
           </thead>
           <tbody>
-            {catalogues.map((catalogue, index) => (
+            {visibleCatalogues.map((catalogue, index) => (
               <tr
                 key={catalogue.id}
                 onDoubleClick={() => setModalState({ mode: "edit", catalogue })}
@@ -147,8 +179,10 @@ export function CataloguesPageClient() {
             Failed to load catalogues.
           </p>
         )}
-        {loadState === "loaded" && catalogues.length === 0 && (
-          <p className={styles.pageSubtext}>No catalogues yet.</p>
+        {loadState === "loaded" && visibleCatalogues.length === 0 && (
+          <p className={styles.pageSubtext}>
+            {search.trim() !== "" ? "No catalogues match your search." : "No catalogues yet."}
+          </p>
         )}
       </div>
 
