@@ -18,7 +18,6 @@ const staticRoutes: MetadataRoute.Sitemap = [
   { url: baseUrl, changeFrequency: "weekly", priority: 1 },
   { url: `${baseUrl}/products`, changeFrequency: "weekly", priority: 0.9 },
   { url: `${baseUrl}/catalogue`, changeFrequency: "weekly", priority: 0.8 },
-  { url: `${baseUrl}/brand-catalogues`, changeFrequency: "monthly", priority: 0.7 },
   { url: `${baseUrl}/blogs`, changeFrequency: "weekly", priority: 0.7 },
   { url: `${baseUrl}/hamper-inquiry-form`, changeFrequency: "monthly", priority: 0.6 },
 ];

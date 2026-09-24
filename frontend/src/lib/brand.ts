@@ -84,7 +84,6 @@ export const siteConfig = {
     { label: "About", href: "/#who-we-are" },
     { label: "Products", href: "/products" },
     { label: "Catalogue", href: "/catalogue" },
-    { label: "Brand Catalogues", href: "/brand-catalogues" },
     { label: "Blogs", href: "/blogs" },
     { label: "Contact", href: "/#connect" },
   ],

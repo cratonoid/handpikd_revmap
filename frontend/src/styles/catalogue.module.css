@@ -2,62 +2,20 @@
    /catalogue page styles (src/app/catalogue/page.tsx,
    src/components/catalogue/*)
    =============================================================================
-   Same CSS Module approach as home-page.module.css / products.module.css —
-   see the big comment at the top of home-page.module.css for how this works
-   and why colors reference `var(--color-*)` / `color-mix(...)` instead of
-   hex values.
+   See the big comment at the top of home-page.module.css for how CSS Modules
+   work here and why colors reference `var(--color-*)` / `color-mix(...)`
+   instead of hex values.
+
+   This file used to style the old static gallery (icon tiles built from
+   lib/catalogue-data.ts). That page is gone — its catalogues are now real
+   admin-managed rows served by /api/v1/catalogues/get_public_catalogues —
+   so what remains is the tabbed, data-driven page that used to live at
+   /brand-catalogues, plus the CTA band and the shared lightbox.
    ============================================================================= */
 
-/* -----------------------------------------------------------------------
-   Banner (catalogue-page-client.tsx's server-rendered wrapper in page.tsx)
-   ----------------------------------------------------------------------- */
-
-.banner {
-  background-color: var(--color-charcoal);
-  padding-block: 3.5rem;
-  text-align: center;
-}
-
-@media (min-width: 640px) {
-  .banner {
-    padding-block: 4.5rem;
-  }
-}
-
-.bannerInner {
-  margin-inline: auto;
-  max-width: 46rem;
-  padding-inline: 1.25rem;
-}
-
-@media (min-width: 640px) {
-  .bannerInner {
-    padding-inline: 2rem;
-  }
-}
-
-.bannerHeading {
-  font-family: var(--font-display);
-  font-size: 1.875rem;
-  font-weight: 600;
-  color: var(--color-cream);
-}
-
-@media (min-width: 640px) {
-  .bannerHeading {
-    font-size: 2.5rem;
-  }
-}
-
-.bannerParagraph {
-  margin-top: 1rem;
-  font-size: 1rem;
-  line-height: 1.6;
-  color: color-mix(in srgb, var(--color-cream) 75%, transparent);
-}
 
 /* -----------------------------------------------------------------------
-   Category sections (catalogue-page-client.tsx)
+   Page shell + tab bar
    ----------------------------------------------------------------------- */
 
 .pageInner {
@@ -73,57 +31,77 @@
   }
 }
 
+.tabBar {
+  display: flex;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tabButton {
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  padding-block: 0.875rem;
+  padding-inline: 0.25rem;
+  margin-right: 1.5rem;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+
+@media (min-width: 640px) {
+  .tabButton {
+    font-size: 1.125rem;
+  }
+}
+
+.tabButton:hover {
+  color: var(--color-charcoal);
+}
+
+.tabButtonActive {
+  border-bottom-color: var(--color-charcoal);
+  color: var(--color-charcoal);
+}
+
+/* -----------------------------------------------------------------------
+   Category subheader groups within the active tab
+   ----------------------------------------------------------------------- */
+
 .categoryBlock {
-  margin-top: 3.5rem;
+  margin-top: 2.75rem;
 }
 
 .categoryBlock:first-child {
-  margin-top: 0;
-}
-
-.categoryHeader {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.875rem;
-  max-width: 42rem;
-}
-
-.categoryHeaderIconWrap {
-  display: flex;
-  flex-shrink: 0;
-  height: 2.75rem;
-  width: 2.75rem;
-  align-items: center;
-  justify-content: center;
-  border-radius: 9999px;
-  background-color: var(--color-cream-deep);
-  color: var(--color-charcoal);
+  margin-top: 2.5rem;
 }
 
 .categoryTitle {
   font-family: var(--font-display);
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 600;
   color: var(--color-charcoal);
 }
 
-@media (min-width: 640px) {
-  .categoryTitle {
-    font-size: 1.75rem;
-  }
-}
+/* Card size is set by the column count, not by the card: the tiles fill the
+   track they're given, so more columns is what makes them smaller. Was
+   2/3/4 — one column more at each of the two larger widths, which takes a
+   desktop card from roughly a quarter of the row to a fifth.
 
-.categoryDescription {
-  margin-top: 0.5rem;
-  color: var(--color-ink);
-}
-
+   Phones stay at two. A third column there would put each cover under
+   ~100px wide, which is too small to tell two catalogues apart by their
+   cover — and the cover is the only thing distinguishing them at a glance.
+   That's also why this uses explicit counts rather than
+   auto-fill/minmax(): a minimum track width big enough to be worth having
+   on desktop collapses a 375px phone to a single column. */
 .categoryGrid {
-  margin-top: 1.75rem;
+  margin-top: 1.5rem;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  column-gap: 1rem;
-  row-gap: 1.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
 }
 
 @media (min-width: 640px) {
@@ -134,12 +112,17 @@
 
 @media (min-width: 1024px) {
   .categoryGrid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 
+.emptyState {
+  margin-top: 2.5rem;
+  color: var(--color-ink);
+}
+
 /* -----------------------------------------------------------------------
-   Catalogue card (catalogue-card.tsx)
+   Catalogue card (brand-catalogue-card.tsx)
    ----------------------------------------------------------------------- */
 
 .card {
@@ -148,67 +131,59 @@
   flex-direction: column;
   text-align: left;
   cursor: pointer;
-  transition: transform 0.25s ease-out;
-}
-
-.card:hover {
-  transform: translateY(-4px);
-}
-
-.cardIconWrap {
-  position: relative;
-  display: flex;
-  aspect-ratio: 1 / 1;
-  align-items: center;
-  justify-content: center;
+  border-radius: 0.75rem;
   overflow: hidden;
-  border-radius: 1rem;
   border: 1px solid color-mix(in srgb, var(--color-charcoal) 12%, transparent);
-  border-top: 3px solid var(--color-charcoal);
   background-color: var(--color-cream-deep);
   box-shadow: 0 4px 6px -2px color-mix(in srgb, var(--color-charcoal) 10%, transparent);
   transition:
-    box-shadow 0.3s,
-    border-color 0.3s;
+    transform 0.25s ease-out,
+    box-shadow 0.3s;
 }
 
-.card:hover .cardIconWrap {
-  border-left-color: color-mix(in srgb, var(--color-charcoal) 22%, transparent);
-  border-right-color: color-mix(in srgb, var(--color-charcoal) 22%, transparent);
-  border-bottom-color: color-mix(in srgb, var(--color-charcoal) 22%, transparent);
+.card:hover {
+  transform: translateY(-3px);
   box-shadow: 0 8px 16px -4px color-mix(in srgb, var(--color-charcoal) 22%, transparent);
 }
 
-.cardIcon {
-  height: 2rem;
-  width: 2rem;
-  color: var(--color-charcoal);
-  transition: transform 0.3s ease-out;
+.cardThumbWrap {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  width: 100%;
+  overflow: hidden;
+  background-color: var(--color-cream);
 }
 
-@media (min-width: 640px) {
-  .cardIcon {
-    height: 2.5rem;
-    width: 2.5rem;
-  }
+.cardThumbImage {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
 }
 
-.card:hover .cardIcon {
-  transform: scale(1.08);
+.cardThumbPlaceholder {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--color-ink) 45%, transparent);
+  font-size: 0.6875rem;
+  text-align: center;
 }
 
 .cardBody {
-  margin-top: 0.5rem;
+  padding: 0.625rem 0.75rem 0.75rem;
 }
 
 .cardTitle {
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   font-weight: 600;
+  line-height: 1.35;
   color: var(--color-charcoal);
 }
 
 .cardViewGallery {
-  margin-top: 0.25rem;
+  margin-top: 0.375rem;
   display: flex;
   align-items: center;
   gap: 0.25rem;

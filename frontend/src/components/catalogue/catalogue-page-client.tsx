@@ -3,58 +3,114 @@
 // ---------------------------------------------------------------------------
 // <CataloguePageClient> — the interactive body of the /catalogue page
 // ---------------------------------------------------------------------------
-// Renders every category from catalogue-data.ts as its own section of
-// <CatalogueCard> tiles, and owns the one piece of state the whole page
-// needs: which folder's gallery (if any) is currently open in the
-// <GalleryLightbox> modal. Rendered by src/app/catalogue/page.tsx (a Server
-// Component), which wraps this with the Header, banner, CTA, and Footer.
-import { useState } from "react";
-import { catalogueCategories, getGalleryImages } from "@/lib/catalogue-data";
-import { CatalogueCard, catalogueIconComponents } from "@/components/catalogue/catalogue-card";
+// Fetches GET /catalogues/get_public_catalogues (lib/catalogues.ts's
+// fetchPublicCatalogueSections), which comes back already grouped by
+// catalogue_type and then by root category. This component just turns that
+// into: one tab per catalogue_type ("regular" -> Category Wise Catalogs,
+// "brand" -> Brand Catalogs), and within the active tab, one subheading per
+// category with that category's catalogues as cards. Clicking a card opens
+// that catalogue's pages in <GalleryLightbox>.
+//
+// This page used to be served at /brand-catalogues, alongside a separate
+// static /catalogue gallery whose images were committed under
+// public/catalogs. Those galleries are now admin-managed catalogues like any
+// other, so the static page is gone and this one answers /catalogue;
+// /brand-catalogues 308-redirects here (see next.config.ts).
+//
+// Tab ORDER is the backend's, not this component's — the sections arrive in
+// display order (see _SECTION_ORDER in the backend's routes/catalogues.py)
+// and are rendered as they come, with the first one open on load. Only the
+// labels live here.
+import { useEffect, useState } from "react";
+import { resolveMediaUrl } from "@/lib/api";
+import { fetchPublicCatalogueSections, type PublicCatalogueItem, type PublicCatalogueSection } from "@/lib/catalogues";
+import { CatalogueCard } from "@/components/catalogue/catalogue-card";
 import { GalleryLightbox } from "@/components/catalogue/gallery-lightbox";
 import styles from "@/styles/catalogue.module.css";
 
+type LoadState = "loading" | "loaded" | "error";
+
+// Listed in the order the backend returns them, purely so this reads the
+// way the page does — the object's own order decides nothing.
+const SECTION_TITLES: Record<string, string> = {
+  regular: "Category Wise Catalogs",
+  brand: "Brand Catalogs",
+};
+
+function sectionTitle(catalogueType: string): string {
+  return SECTION_TITLES[catalogueType] ?? catalogueType;
+}
+
 export function CataloguePageClient() {
-  // Which item's gallery is open right now — `null` means the lightbox is
-  // closed. Storing the whole { title, folder } pair (rather than just a
-  // folder string) means the lightbox's title is available without having
-  // to look it back up from catalogueCategories.
-  const [active, setActive] = useState<{ title: string; folder: string } | null>(null);
+  const [sections, setSections] = useState<PublicCatalogueSection[]>([]);
+  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [activeType, setActiveType] = useState<string | null>(null);
+  const [activeCatalogue, setActiveCatalogue] = useState<PublicCatalogueItem | null>(null);
+
+  useEffect(() => {
+    fetchPublicCatalogueSections()
+      .then((data) => {
+        setSections(data);
+        // First section wins: the backend returns them in display order.
+        setActiveType(data[0]?.catalogueType ?? null);
+        setLoadState("loaded");
+      })
+      .catch(() => setLoadState("error"));
+  }, []);
+
+  const activeSection = sections.find((section) => section.catalogueType === activeType) ?? null;
 
   return (
     <div className={styles.pageInner}>
-      {catalogueCategories.map((category) => {
-        const CategoryIcon = catalogueIconComponents[category.icon];
-        return (
-          <section key={category.title} className={styles.categoryBlock}>
-            <div className={styles.categoryHeader}>
-              <span aria-hidden="true" className={styles.categoryHeaderIconWrap}>
-                <CategoryIcon className="h-5 w-5" />
-              </span>
-              <div>
-                <h2 className={styles.categoryTitle}>{category.title}</h2>
-                <p className={styles.categoryDescription}>{category.description}</p>
-              </div>
-            </div>
-            <div className={styles.categoryGrid}>
-              {category.items.map((item) => (
-                <CatalogueCard
-                  key={item.folder}
-                  title={item.title}
-                  icon={item.icon}
-                  onOpen={() => setActive({ title: item.title, folder: item.folder })}
-                />
-              ))}
-            </div>
-          </section>
-        );
-      })}
+      {loadState === "loading" && <p className={styles.emptyState}>Loading catalogues…</p>}
+      {loadState === "error" && <p className={styles.emptyState}>Failed to load catalogues.</p>}
 
-      {active && (
+      {loadState === "loaded" && sections.length === 0 && (
+        <p className={styles.emptyState}>No catalogues are available yet.</p>
+      )}
+
+      {loadState === "loaded" && sections.length > 0 && (
+        <>
+          <div className={styles.tabBar} role="tablist" aria-label="Catalogue sections">
+            {sections.map((section) => (
+              <button
+                key={section.catalogueType}
+                type="button"
+                role="tab"
+                aria-selected={section.catalogueType === activeType}
+                onClick={() => setActiveType(section.catalogueType)}
+                className={`${styles.tabButton} ${
+                  section.catalogueType === activeType ? styles.tabButtonActive : ""
+                }`}
+              >
+                {sectionTitle(section.catalogueType)}
+              </button>
+            ))}
+          </div>
+
+          {activeSection?.categories.map((category) => (
+            <section key={category.categoryId} className={styles.categoryBlock}>
+              <h2 className={styles.categoryTitle}>{category.categoryName}</h2>
+              <div className={styles.categoryGrid}>
+                {category.catalogues.map((catalogue) => (
+                  <CatalogueCard
+                    key={catalogue.id}
+                    catalogueName={catalogue.catalogueName}
+                    coverImagePath={catalogue.imagePaths[0]}
+                    onOpen={() => setActiveCatalogue(catalogue)}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </>
+      )}
+
+      {activeCatalogue && (
         <GalleryLightbox
-          title={active.title}
-          images={getGalleryImages(active.folder)}
-          onClose={() => setActive(null)}
+          title={activeCatalogue.catalogueName}
+          images={activeCatalogue.imagePaths.map(resolveMediaUrl)}
+          onClose={() => setActiveCatalogue(null)}
         />
       )}
     </div>

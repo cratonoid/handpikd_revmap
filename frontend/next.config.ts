@@ -9,6 +9,19 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(__dirname),
   },
+  // /brand-catalogues was a separate page until its catalogues and the old
+  // static /catalogue gallery were merged onto /catalogue. Permanent (308)
+  // rather than temporary, so search engines transfer the old URL's ranking
+  // instead of keeping both, and any existing inbound link still lands.
+  async redirects() {
+    return [
+      {
+        source: "/brand-catalogues",
+        destination: "/catalogue",
+        permanent: true,
+      },
+    ];
+  },
   images: {
     // Placeholder CDN source for section imagery until real asset hosting is chosen.
     remotePatterns: [

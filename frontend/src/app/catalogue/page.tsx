@@ -1,9 +1,15 @@
 // Route: "/catalogue" (this file sits in an `app/catalogue/` folder).
 //
-// A Server Component: the banner and CTA band below are static text, so
-// they're rendered here directly. Only the actual grid + lightbox gallery
-// (which needs click state) lives in the separate Client Component
-// <CataloguePageClient> — see that file for the interactive half.
+// A Server Component whose only job is the page shell — the tabbed,
+// data-fetching part (sections, category subheaders, catalogue cards, and the
+// page-viewer lightbox) lives in the separate Client Component
+// <CataloguePageClient>, backed by real admin-managed catalogues (see
+// backend/app/api/routes/catalogues.py's get_public_catalogues).
+//
+// This page used to be a static gallery whose photos were committed under
+// public/catalogs, with the admin-managed version living separately at
+// /brand-catalogues. Both are now one page on this URL, and
+// /brand-catalogues 308-redirects here (see next.config.ts).
 import type { Metadata } from "next";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
@@ -23,6 +29,14 @@ export default function CataloguePage() {
     <>
       <Header />
       <main className={sharedStyles.pageMain}>
+        {/* No visible banner here on purpose — the page goes straight from
+            the header into the section tabs, the same way /products goes
+            straight into its filters. `sr-only` keeps a real <h1> in the
+            document (hidden visually, but read by screen readers and search
+            engines) so the page still has a proper heading for
+            accessibility/SEO even without a visible title band. */}
+        <h1 className="sr-only">Corporate Gift Catalogue</h1>
+
         <CataloguePageClient />
 
         <div className={styles.ctaWrap}>

@@ -377,14 +377,12 @@ export function ArrowUpTrayIcon(props: IconProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Catalogue category icons (components/catalogue/catalogue-card.tsx)
+// Product/category icons
 // ---------------------------------------------------------------------------
-// One icon per catalogue category — used instead of a photo on each card,
-// since the real photos in public/catalogs are scanned catalogue PAGES
-// (either a generic branded cover slide or a dense multi-item grid), not
-// individual product shots, so none of them make a clean square thumbnail.
-// The actual photos still appear once a card is clicked, inside the
-// lightbox gallery (see gallery-lightbox.tsx).
+// Used by the admin dashboard nav (dashboard-shell.tsx), the admin catalogue
+// table, and the inquiry-form tree. These once also backed the static
+// /catalogue page's icon tiles; that page now shows real catalogue covers,
+// so only the icons with a remaining caller are kept here.
 
 export function GiftBoxIcon(props: IconProps) {
   return (
@@ -397,14 +395,6 @@ export function GiftBoxIcon(props: IconProps) {
   );
 }
 
-export function BottleIcon(props: IconProps) {
-  return (
-    <svg {...base} {...props}>
-      <path d="M10 3h4v3.4c0 .45.17.88.48 1.2l.9 1c.4.44.62 1 .62 1.6V19a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-8.8c0-.6.22-1.16.62-1.6l.9-1c.31-.32.48-.75.48-1.2V3Z" />
-      <path d="M9.25 13.5h5.5M9 6.5h6" />
-    </svg>
-  );
-}
 
 export function DiaryIcon(props: IconProps) {
   return (
@@ -418,14 +408,6 @@ export function DiaryIcon(props: IconProps) {
 // Distinct from DiaryIcon (a spiral binding along the left edge, vs. a
 // bookmark ribbon) so "Diaries" and "Notebooks" don't look identical next
 // to each other in the /catalogue grid.
-export function NotebookIcon(props: IconProps) {
-  return (
-    <svg {...base} {...props}>
-      <rect x="7.5" y="4" width="12" height="16" rx="1.5" />
-      <path d="M4.5 6.5H7M4.5 10H7M4.5 13.5H7M4.5 17H7" />
-    </svg>
-  );
-}
 
 export function IdCardIcon(props: IconProps) {
   return (
@@ -440,25 +422,7 @@ export function IdCardIcon(props: IconProps) {
 
 // A split-ring with a tag hanging from it (rather than a ring + diagonal
 // line, which reads as a magnifying glass instead of a keychain).
-export function KeychainIcon(props: IconProps) {
-  return (
-    <svg {...base} {...props}>
-      <circle cx="12" cy="6.5" r="2.75" />
-      <path d="M12 9.25V13" />
-      <rect x="8" y="13" width="8" height="7" rx="2" />
-    </svg>
-  );
-}
 
-export function MugIcon(props: IconProps) {
-  return (
-    <svg {...base} {...props}>
-      <path d="M5 6h11v9a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V6Z" />
-      <path d="M16 8.5h1.25a2.5 2.5 0 1 1 0 5H16" />
-      <path d="M8 3.5c0 .9-1 1.1-1 2" />
-    </svg>
-  );
-}
 
 export function PenIcon(props: IconProps) {
   return (
@@ -469,13 +433,3 @@ export function PenIcon(props: IconProps) {
   );
 }
 
-export function TrophyIcon(props: IconProps) {
-  return (
-    <svg {...base} {...props}>
-      <path d="M8 4h8v4.5a4 4 0 0 1-8 0V4Z" />
-      <path d="M8 5.25H5.75A1.25 1.25 0 0 0 4.5 6.5c0 2 1.6 3.75 4 3.75" />
-      <path d="M16 5.25h2.25A1.25 1.25 0 0 1 19.5 6.5c0 2-1.6 3.75-4 3.75" />
-      <path d="M12 12.5v3M9 20h6M9.25 20c0-1.9 1.05-3 2.75-3s2.75 1.1 2.75 3" />
-    </svg>
-  );
-}
