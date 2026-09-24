@@ -23,12 +23,13 @@ const clients: { name: string; src: string }[] = [
   { name: "IMA Bangalore Chapter", src: "/client-logos/ima-bangalore-chapter.png" },
   { name: "Wall St Society", src: "/client-logos/wall-street-society.png" },
   { name: "Shree Vedic Enterprises", src: "/client-logos/shree-vedic-enterprises.png" },
+  { name: "Tusk Support Partners", src: "/client-logos/tusk-support-partners.png" },
 ];
 
-// Renders one full pass of all 8 logos. Used TWICE in <ClientMarquee> below
+// Renders one full pass of all 9 logos. Used TWICE in <ClientMarquee> below
 // (see the big comment there for why) — `ariaHidden` lets the second,
 // duplicate copy be hidden from screen readers so they don't announce the
-// same 8 company names twice.
+// same 9 company names twice.
 function ClientRow({ ariaHidden = false }: { ariaHidden?: boolean }) {
   return (
     <ul className={styles.marqueeRow} aria-hidden={ariaHidden || undefined}>
