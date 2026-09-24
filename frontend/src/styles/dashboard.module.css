@@ -960,11 +960,62 @@
   }
 }
 
+/* First row of a new group in a table whose rows come in groups (the sales
+   order Costing view: one row per product, grouped by order). Drawn as an
+   inset shadow on each cell rather than a border-top: under border-collapse a
+   border belongs to the table grid and straddles the row edge, while the
+   pinned .tableStickyCol has to draw its share as a shadow (see below) — mixing
+   the two left that column's segment sitting a pixel lower than the rest. */
+.tableRowGroupStart > td {
+  box-shadow: inset 0 1.5px 0 var(--color-charcoal);
+}
+
 .tableCell {
   padding: 0.9rem 1.25rem;
   font-size: 0.875rem;
   color: var(--color-ink);
   white-space: nowrap;
+}
+
+/* A first column pinned to the left edge while .tableWrap scrolls sideways
+   (the sales order Costing view's Order no.). Declared after .tableCell so it
+   wins on equal specificity. The cell needs an OPAQUE background or the
+   columns scrolling under it show through — so each row state's fill (cream,
+   the even-row tint, the hover charcoal) is repeated here pre-mixed onto the
+   cream page. The right-edge shadow marks where the pinned column ends. */
+.tableStickyCol {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background-color: var(--color-cream);
+  box-shadow: inset -1px 0 0 var(--color-border);
+}
+
+/* The header cell is sticky both ways, so it sits above both the other header
+   cells and the pinned body cells, and keeps the header's underline. */
+.tableHeadCell.tableStickyCol {
+  z-index: 2;
+  box-shadow:
+    inset 0 -2px 0 var(--color-charcoal),
+    inset -1px 0 0 var(--color-border);
+}
+
+.tableRow:nth-child(even) .tableStickyCol {
+  background-color: color-mix(in srgb, var(--color-cream-deep) 20%, var(--color-cream));
+}
+
+@media (hover: hover) {
+  .tableRow:hover .tableStickyCol {
+    background-color: var(--color-charcoal);
+  }
+}
+
+/* The pinned cell's own right-edge shadow would otherwise replace
+   .tableRowGroupStart's divider shadow, so the two are combined here. */
+.tableRowGroupStart > .tableStickyCol {
+  box-shadow:
+    inset 0 1.5px 0 var(--color-charcoal),
+    inset -1px 0 0 var(--color-border);
 }
 
 .tableCellPrimary {

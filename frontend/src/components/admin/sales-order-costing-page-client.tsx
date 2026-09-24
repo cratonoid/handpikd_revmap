@@ -103,12 +103,16 @@ function toCostingLine(form: LineForm): CostingLine {
     quantity: form.quantity,
     netPurchaseRate: Number(form.netPurchaseRate) || 0,
     purchaseTaxPerc: Number(form.purchaseTaxPerc) || 0,
-    printingCosts: form.printingCosts.map((printing) => ({
-      printingType: printing.printingType,
-      costPerUnit: Number(printing.costPerUnit) || 0,
-      isTaxable: printing.isTaxable,
-      taxPerc: Number(printing.taxPerc) || 0,
-    })),
+    printingCosts: form.printingCosts
+      // A row added with "Add printing type" and left untouched (no type, no
+      // cost) is dropped rather than saved as a blank printing entry.
+      .filter((printing) => printing.printingType || Number(printing.costPerUnit))
+      .map((printing) => ({
+        printingType: printing.printingType,
+        costPerUnit: Number(printing.costPerUnit) || 0,
+        isTaxable: printing.isTaxable,
+        taxPerc: Number(printing.taxPerc) || 0,
+      })),
     delivery: Number(form.delivery) || 0,
     miscellaneous: Number(form.miscellaneous) || 0,
     netSalesRate: Number(form.netSalesRate) || 0,

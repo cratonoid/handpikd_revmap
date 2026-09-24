@@ -107,3 +107,15 @@ def test_different_products_and_orders_get_separate_rows():
     )
 
     assert [(row.sales_order_id, row.product_name) for row in rows] == [(1, "Mug"), (1, "Pen"), (2, "Mug")]
+
+
+def test_blank_printing_entry_is_ignored():
+    # "Add printing type" clicked and saved untouched: no type, no cost.
+    rows = _build_costing_report_rows(
+        [_order()],
+        [_line(1)],
+        [_costing(1, printing_costs=[PrintingCost(printing_type="", cost_per_unit=0.0)])],
+        PRODUCTS,
+    )
+
+    assert rows[0].printing_costs == []

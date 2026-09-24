@@ -114,7 +114,7 @@ export function SalesOrderCostingTable({
         <thead>
           <tr>
             <th
-              className={styles.tableHeadCell}
+              className={`${styles.tableHeadCell} ${styles.tableStickyCol}`}
               aria-sort={orderNoSort === "asc" ? "ascending" : orderNoSort === "desc" ? "descending" : "none"}
             >
               <span className={styles.tableHeadControls}>
@@ -171,12 +171,19 @@ export function SalesOrderCostingTable({
           </tr>
         </thead>
         <tbody>
-          {visibleRows.map((row) => {
+          {visibleRows.map((row, index) => {
             const printingByKey = new Map(row.printingCosts.map((p) => [printingKey(p.printingType), p]));
             const printingTax = row.printingCosts.reduce((sum, printing) => sum + printing.tax, 0);
+            // A rule above the first row of each order (bar the very first),
+            // so one order's products read as a block. Rows of one order are
+            // always adjacent: every sort here keys on order-level fields.
+            const startsNewOrder = index > 0 && visibleRows[index - 1].salesOrderId !== row.salesOrderId;
             return (
-              <tr key={`${row.salesOrderId}-${row.productId}`} className={styles.tableRow}>
-                <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
+              <tr
+                key={`${row.salesOrderId}-${row.productId}`}
+                className={`${styles.tableRow} ${startsNewOrder ? styles.tableRowGroupStart : ""}`}
+              >
+                <td className={`${styles.tableCell} ${styles.tableCellPrimary} ${styles.tableStickyCol}`}>
                   <Link href={`/admin/orders/sales/${row.salesOrderId}/details`} title="Open costing sheet">
                     {row.orderNo}
                   </Link>

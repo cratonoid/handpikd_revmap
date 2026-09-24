@@ -1082,6 +1082,10 @@ class _CostAccumulator:
         self.purchase_tax += purchase_cost * purchase_tax_perc / 100
         for printing in printing_costs:
             name = printing.printing_type.strip()
+            # A row added on the sheet and saved untouched — no type, no
+            # cost. It adds nothing and would only open an empty column.
+            if not name and not printing.cost_per_unit:
+                continue
             entry = self.printing.setdefault(name.lower(), [name, 0.0, 0.0])
             cost = quantity * printing.cost_per_unit
             entry[1] += cost
