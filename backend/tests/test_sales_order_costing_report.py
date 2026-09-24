@@ -14,7 +14,7 @@ from app.models.sales_order_costing import PrintingCost
 
 def _order(id=1):
     return SalesOrders.model_construct(
-        id=id, order_no=100 + id, order_status_id=1, cust_id=5, date=datetime(2026, 9, 1)
+        id=id, order_no=100 + id, order_status_id=1, cust_id=5, date=datetime(2026, 9, 1), delivery_charge=400.0
     )
 
 
@@ -70,6 +70,8 @@ def test_two_lines_of_one_product_merge_into_one_row():
     assert [(p.printing_type, p.cost, p.tax) for p in row.printing_costs] == [("UV", 70.0, pytest.approx(9.0))]
     assert (row.delivery, row.miscellaneous) == (30.0, 20.0)
     assert row.total_cost == pytest.approx(700 + 70 + 30 + 20)
+    # Billed to the customer: carried alongside, never added to the cost.
+    assert row.order_delivery_charge == 400.0
     assert row.is_costed is True
 
 

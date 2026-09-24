@@ -93,7 +93,7 @@ class UpdateSalesOrderCostingResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Costing report — the "Costing" view on the Sales orders tab
+# Costing report — the "Detail" view on the Sales orders tab
 # ---------------------------------------------------------------------------
 # One row per PRODUCT per order: every line of the same product on an order
 # is summed into one row (unlike the "Add details" sheet, which costs each
@@ -123,11 +123,17 @@ class SalesOrderCostingReportRow(BaseModel):
     purchase_cost: float
     purchase_tax: float
     printing_costs: list[CostingReportPrinting]
+    # What delivery COST us on this product (SalesOrderCosting.delivery) —
+    # never billed to the customer.
     delivery: float
     miscellaneous: float
     # purchase + printing + delivery + misc, taxes EXCLUDED — the same "net
     # final cost" the sheet and the accounts P&L use.
     total_cost: float
+    # The delivery billed to the customer (SalesOrders.delivery_charge,
+    # before tax). An ORDER-level figure, repeated on each of the order's
+    # rows; the view shows it once per order. Income, so not in total_cost.
+    order_delivery_charge: float
     # False when any line in the row has no saved costing: its figures are
     # then the product master's defaults (vendor_rate, gst_perc), exactly
     # what the sheet pre-fills on first open.

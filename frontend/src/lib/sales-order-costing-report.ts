@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Sales order costing report — the "Costing" view on the Sales orders tab
+// Sales order costing report — the "Detail" view on the Sales orders tab
 // ---------------------------------------------------------------------------
 // One row per product per order, cost side only, from
 // GET /admin/get_sales_order_costing_report (backend/app/api/routes/
@@ -33,6 +33,9 @@ export type CostingReportRow = {
   // False when a line in the row has no saved "Add details" costing and is
   // shown at the product master's default rates.
   isCosted: boolean;
+  // The delivery billed to the customer on this row's ORDER (before tax) —
+  // the same figure on every row of the order; income, so not in totalCost.
+  orderDeliveryCharge: number;
 };
 
 type CostingReportRowResponse = {
@@ -51,6 +54,7 @@ type CostingReportRowResponse = {
   miscellaneous: number;
   total_cost: number;
   is_costed: boolean;
+  order_delivery_charge: number;
 };
 
 export async function fetchSalesOrderCostingReport(): Promise<CostingReportRow[]> {
@@ -80,5 +84,6 @@ export async function fetchSalesOrderCostingReport(): Promise<CostingReportRow[]
     miscellaneous: row.miscellaneous,
     totalCost: row.total_cost,
     isCosted: row.is_costed,
+    orderDeliveryCharge: row.order_delivery_charge ?? 0,
   }));
 }

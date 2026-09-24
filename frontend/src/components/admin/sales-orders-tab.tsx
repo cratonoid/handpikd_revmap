@@ -38,7 +38,7 @@
 // table can still resolve a name for orders placed against a since-deleted
 // customer (see lib/customers.ts).
 //
-// The Orders / Costing toggle swaps the table for the per-product cost
+// The Brief / Detail toggle swaps the table for the per-product cost
 // breakdown (components/admin/sales-order-costing-table.tsx). The status
 // pills, customer filter and order-no sort live here and apply to both
 // views, so switching keeps the same orders on screen.
@@ -70,11 +70,11 @@ type StatusFilter = "all" | number;
 // other list tables use (lib/row-order.ts); the arrows beside the header
 // cycle null -> asc -> desc -> null.
 type OrderNoSort = "asc" | "desc" | null;
-type View = "orders" | "costing";
+type View = "brief" | "detail";
 
 const VIEWS: { value: View; label: string }[] = [
-  { value: "orders", label: "Orders" },
-  { value: "costing", label: "Costing" },
+  { value: "brief", label: "Brief" },
+  { value: "detail", label: "Detail" },
 ];
 
 // Status name (lowercased) -> the color modifier for its Status cell. Keyed by
@@ -107,7 +107,7 @@ export function SalesOrdersTab() {
   const [orderStatuses, setOrderStatuses] = useState<OrderStatus[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
-  const [view, setView] = useState<View>("orders");
+  const [view, setView] = useState<View>("brief");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [orderNoSort, setOrderNoSort] = useState<OrderNoSort>(null);
   // Customer ids ticked in the dropdown beside the "Customer" header. Empty
@@ -298,7 +298,7 @@ export function SalesOrdersTab() {
         </p>
       )}
 
-      {view === "costing" ? (
+      {view === "detail" ? (
         <SalesOrderCostingTable
           statusFilter={statusFilter}
           customerFilterIds={customerFilterIds}

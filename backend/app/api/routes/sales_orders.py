@@ -1045,7 +1045,7 @@ async def update_sales_order_costing(
 
 
 # ---------------------------------------------------------------------------
-# Costing report — the "Costing" view on the Sales orders tab
+# Costing report — the "Detail" view on the Sales orders tab
 # ---------------------------------------------------------------------------
 # Every active order's cost side, one row per product per order (see
 # SalesOrderCostingReportRow). Only the cost inputs are read here; the sales
@@ -1192,6 +1192,7 @@ def _build_costing_report_rows(
                         + accumulator.miscellaneous
                     ),
                     is_costed=accumulator.is_costed,
+                    order_delivery_charge=order.delivery_charge,
                 )
             )
 

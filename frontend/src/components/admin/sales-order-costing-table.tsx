@@ -1,7 +1,7 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// <SalesOrderCostingTable> — the "Costing" view on the Sales orders tab
+// <SalesOrderCostingTable> — the "Detail" view on the Sales orders tab
 // ---------------------------------------------------------------------------
 // The cost side of every active sales order, one row per product per order:
 // lines of the same product on one order are summed into a single row. The
@@ -14,8 +14,17 @@
 // them. Total cost excludes both taxes, matching the "Add details" sheet's
 // Net final cost.
 //
+// Delivery comes in two kinds, in two columns. "Uncharged" is what delivery
+// cost us on a product, entered on the Add details sheet and never billed.
+// "Charged" is the delivery billed to the customer, entered on the order
+// form and invoiced as its own line — ONE figure for the whole order, so it
+// shows on the order's first row only (and in its total row), and being
+// income it stays out of Total cost.
+//
+// Every order's rows end in a total row summing its columns.
+//
 // It shares the status pills, customer filter and order-no sort with the
-// Orders view (sales-orders-tab.tsx owns that state), so switching views
+// Brief view (sales-orders-tab.tsx owns that state), so switching views
 // keeps the same slice of orders on screen. Re-fetched every time the view
 // is opened, so edits made on a costing sheet show up straight away.
 //
@@ -42,7 +51,7 @@ type Props = {
   customerName: (custId: number) => string | undefined;
   orderNoSort: OrderNoSort;
   onCycleOrderNoSort: () => void;
-  // The "No ... sales orders" wording, shared with the Orders view.
+  // The "No ... sales orders" wording, shared with the Brief view.
   emptyMessage: string;
 };
 
@@ -54,6 +63,18 @@ function formatAmount(value: number) {
 // a row; a blank type still needs a header.
 function printingKey(printingType: string) {
   return printingType.trim().toLowerCase();
+}
+
+function sumOf(rows: CostingReportRow[], pick: (row: CostingReportRow) => number) {
+  return rows.reduce((sum, row) => sum + pick(row), 0);
+}
+
+function printingTaxOf(row: CostingReportRow) {
+  return row.printingCosts.reduce((sum, printing) => sum + printing.tax, 0);
+}
+
+function printingCostOf(row: CostingReportRow, key: string) {
+  return row.printingCosts.find((printing) => printingKey(printing.printingType) === key)?.cost;
 }
 
 export function SalesOrderCostingTable({
@@ -107,6 +128,15 @@ export function SalesOrderCostingTable({
     }
   }
   const printingColumnList = [...printingColumns].sort((a, b) => a[1].localeCompare(b[1]));
+
+  // visibleRows split into one run per order. Rows of one order are always
+  // adjacent: every sort above keys on order-level fields.
+  const orderGroups: CostingReportRow[][] = [];
+  for (const row of visibleRows) {
+    const current = orderGroups[orderGroups.length - 1];
+    if (current && current[0].salesOrderId === row.salesOrderId) current.push(row);
+    else orderGroups.push([row]);
+  }
 
   return (
     <div className={styles.tableWrap}>
@@ -165,52 +195,75 @@ export function SalesOrderCostingTable({
               </th>
             ))}
             <th className={styles.tableHeadCell}>Printing tax</th>
-            <th className={styles.tableHeadCell}>Delivery</th>
+            <th className={styles.tableHeadCell}>Delivery (uncharged)</th>
+            <th className={styles.tableHeadCell}>Delivery (charged)</th>
             <th className={styles.tableHeadCell}>Misc</th>
             <th className={styles.tableHeadCell}>Total cost</th>
           </tr>
         </thead>
         <tbody>
-          {visibleRows.map((row, index) => {
-            const printingByKey = new Map(row.printingCosts.map((p) => [printingKey(p.printingType), p]));
-            const printingTax = row.printingCosts.reduce((sum, printing) => sum + printing.tax, 0);
-            // A rule above the first row of each order (bar the very first),
-            // so one order's products read as a block. Rows of one order are
-            // always adjacent: every sort here keys on order-level fields.
-            const startsNewOrder = index > 0 && visibleRows[index - 1].salesOrderId !== row.salesOrderId;
-            return (
-              <tr
-                key={`${row.salesOrderId}-${row.productId}`}
-                className={`${styles.tableRow} ${startsNewOrder ? styles.tableRowGroupStart : ""}`}
-              >
-                <td className={`${styles.tableCell} ${styles.tableCellPrimary} ${styles.tableStickyCol}`}>
-                  <Link href={`/admin/orders/sales/${row.salesOrderId}/details`} title="Open costing sheet">
-                    {row.orderNo}
-                  </Link>
-                </td>
-                <td className={styles.tableCell}>{formatDate(row.date)}</td>
-                <td className={styles.tableCell}>{customerName(row.custId) ?? "—"}</td>
-                <td className={styles.tableCell}>
-                  {row.productName}
-                  {!row.isCosted && <span className={styles.inactiveBadge}>Not costed</span>}
-                </td>
-                <td className={styles.tableCell}>{row.quantity}</td>
-                <td className={styles.tableCell}>{formatAmount(row.purchaseCost)}</td>
-                <td className={styles.tableCell}>{formatAmount(row.purchaseTax)}</td>
+          {orderGroups.map((group, groupIndex) => {
+            const first = group[0];
+            return [
+              ...group.map((row, rowIndex) => (
+                <tr
+                  key={`${row.salesOrderId}-${row.productId}`}
+                  // A rule above each order (bar the very first), so one
+                  // order's products and total read as a block.
+                  className={`${styles.tableRow} ${groupIndex > 0 && rowIndex === 0 ? styles.tableRowGroupStart : ""}`}
+                >
+                  <td className={`${styles.tableCell} ${styles.tableCellPrimary} ${styles.tableStickyCol}`}>
+                    <Link href={`/admin/orders/sales/${row.salesOrderId}/details`} title="Open costing sheet">
+                      {row.orderNo}
+                    </Link>
+                  </td>
+                  <td className={styles.tableCell}>{formatDate(row.date)}</td>
+                  <td className={styles.tableCell}>{customerName(row.custId) ?? "—"}</td>
+                  <td className={styles.tableCell}>
+                    {row.productName}
+                    {!row.isCosted && <span className={styles.inactiveBadge}>Not costed</span>}
+                  </td>
+                  <td className={styles.tableCell}>{row.quantity}</td>
+                  <td className={styles.tableCell}>{formatAmount(row.purchaseCost)}</td>
+                  <td className={styles.tableCell}>{formatAmount(row.purchaseTax)}</td>
+                  {printingColumnList.map(([key]) => {
+                    const cost = printingCostOf(row, key);
+                    return (
+                      <td key={key} className={styles.tableCell}>
+                        {cost === undefined ? "—" : formatAmount(cost)}
+                      </td>
+                    );
+                  })}
+                  <td className={styles.tableCell}>{formatAmount(printingTaxOf(row))}</td>
+                  <td className={styles.tableCell}>{formatAmount(row.delivery)}</td>
+                  <td className={styles.tableCell}>{rowIndex === 0 ? formatAmount(row.orderDeliveryCharge) : "—"}</td>
+                  <td className={styles.tableCell}>{formatAmount(row.miscellaneous)}</td>
+                  <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{formatAmount(row.totalCost)}</td>
+                </tr>
+              )),
+              <tr key={`${first.salesOrderId}-total`} className={styles.tableSubtotalRow}>
+                <td className={`${styles.tableCell} ${styles.tableStickyCol}`}>Total</td>
+                <td className={styles.tableCell} />
+                <td className={styles.tableCell} />
+                <td className={styles.tableCell} />
+                <td className={styles.tableCell}>{sumOf(group, (row) => row.quantity)}</td>
+                <td className={styles.tableCell}>{formatAmount(sumOf(group, (row) => row.purchaseCost))}</td>
+                <td className={styles.tableCell}>{formatAmount(sumOf(group, (row) => row.purchaseTax))}</td>
                 {printingColumnList.map(([key]) => {
-                  const printing = printingByKey.get(key);
+                  const costs = group.map((row) => printingCostOf(row, key)).filter((cost) => cost !== undefined);
                   return (
                     <td key={key} className={styles.tableCell}>
-                      {printing ? formatAmount(printing.cost) : "—"}
+                      {costs.length === 0 ? "—" : formatAmount(costs.reduce((sum, cost) => sum + cost, 0))}
                     </td>
                   );
                 })}
-                <td className={styles.tableCell}>{formatAmount(printingTax)}</td>
-                <td className={styles.tableCell}>{formatAmount(row.delivery)}</td>
-                <td className={styles.tableCell}>{formatAmount(row.miscellaneous)}</td>
-                <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{formatAmount(row.totalCost)}</td>
-              </tr>
-            );
+                <td className={styles.tableCell}>{formatAmount(sumOf(group, printingTaxOf))}</td>
+                <td className={styles.tableCell}>{formatAmount(sumOf(group, (row) => row.delivery))}</td>
+                <td className={styles.tableCell}>{formatAmount(first.orderDeliveryCharge)}</td>
+                <td className={styles.tableCell}>{formatAmount(sumOf(group, (row) => row.miscellaneous))}</td>
+                <td className={styles.tableCell}>{formatAmount(sumOf(group, (row) => row.totalCost))}</td>
+              </tr>,
+            ];
           })}
         </tbody>
       </table>

@@ -777,7 +777,7 @@
 }
 
 /* Keeps a trailing pill toggle and button together at the far end of the row
-   (sales orders: Orders / Costing beside "+ New sales order"). Two separate
+   (sales orders: Brief / Detail beside "+ New sales order"). Two separate
    margin-left: auto items would split the free space between them instead. */
 .filterToggleRowEndGroup {
   margin-left: auto;
@@ -961,7 +961,7 @@
 }
 
 /* First row of a new group in a table whose rows come in groups (the sales
-   order Costing view: one row per product, grouped by order). Drawn as an
+   order Detail view: one row per product, grouped by order). Drawn as an
    inset shadow on each cell rather than a border-top: under border-collapse a
    border belongs to the table grid and straddles the row edge, while the
    pinned .tableStickyCol has to draw its share as a shadow (see below) — mixing
@@ -978,7 +978,7 @@
 }
 
 /* A first column pinned to the left edge while .tableWrap scrolls sideways
-   (the sales order Costing view's Order no.). Declared after .tableCell so it
+   (the sales order Detail view's Order no.). Declared after .tableCell so it
    wins on equal specificity. The cell needs an OPAQUE background or the
    columns scrolling under it show through — so each row state's fill (cream,
    the even-row tint, the hover charcoal) is repeated here pre-mixed onto the
@@ -1008,6 +1008,17 @@
   .tableRow:hover .tableStickyCol {
     background-color: var(--color-charcoal);
   }
+}
+
+/* A per-group total row (the sales order Detail view's per-order totals).
+   Not a .tableRow, so it neither stripes nor inverts on hover. The fill is
+   opaque (pre-mixed onto the cream page) so it also covers a pinned
+   .tableStickyCol cell, and is set on the cells so it outranks that class's
+   own background. */
+.tableSubtotalRow > td {
+  background-color: color-mix(in srgb, var(--color-cream-deep) 45%, var(--color-cream));
+  font-weight: 700;
+  color: var(--color-charcoal);
 }
 
 /* The pinned cell's own right-edge shadow would otherwise replace
