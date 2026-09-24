@@ -410,6 +410,14 @@
   padding: 2rem 1.25rem 4rem;
 }
 
+/* A page that needs the full pane width rather than the 72rem measure — the
+   Orders page, whose Detail view carries a wide cost breakdown. The page opts
+   in by rendering an element with .widePage anywhere inside; the pane keeps
+   its padding. */
+.contentInner:has(.widePage) {
+  max-width: none;
+}
+
 /* Column flex capped at the pane height. max-height (rather than height) means
    a short page still sizes to its content — nothing stretches to fill. Once
    the content would outgrow one screen, flex shrinking kicks in, and .tableWrap
@@ -978,23 +986,47 @@
 }
 
 /* A first column pinned to the left edge while .tableWrap scrolls sideways
-   (the sales order Detail view's Order no.). Declared after .tableCell so it
+   (the sales order Detail view's Order no. and Product). Declared after .tableCell so it
    wins on equal specificity. The cell needs an OPAQUE background or the
    columns scrolling under it show through — so each row state's fill (cream,
    the even-row tint, the hover charcoal) is repeated here pre-mixed onto the
-   cream page. The right-edge shadow marks where the pinned column ends. */
+   cream page. */
 .tableStickyCol {
   position: sticky;
   left: 0;
   z-index: 1;
   background-color: var(--color-cream);
-  box-shadow: inset -1px 0 0 var(--color-border);
+}
+
+/* Two pinned columns side by side (Detail view: Order no. then Product). The
+   second is pinned at the first's right edge, so the first needs a FIXED
+   width for that offset to be known — hence the two 9.5rem figures, which
+   must stay equal. Wide enough for the "ORDER NO." header and its sort
+   button. */
+.tableStickyColFirst {
+  width: 9.5rem;
+  min-width: 9.5rem;
+}
+
+.tableStickyColSecond {
+  left: 9.5rem;
 }
 
 /* The header cell is sticky both ways, so it sits above both the other header
-   cells and the pinned body cells, and keeps the header's underline. */
+   cells and the pinned body cells. */
 .tableHeadCell.tableStickyCol {
   z-index: 2;
+}
+
+/* A rule down the right edge of the LAST pinned column only, marking where the
+   pinned block ends — pinned columns side by side read as one block, with no
+   line between them. Shadows don't stack across rules, so the header's
+   underline and .tableRowGroupStart's divider are repeated alongside it. */
+.tableStickyColEdge {
+  box-shadow: inset -1px 0 0 var(--color-border);
+}
+
+.tableHeadCell.tableStickyColEdge {
   box-shadow:
     inset 0 -2px 0 var(--color-charcoal),
     inset -1px 0 0 var(--color-border);
@@ -1021,9 +1053,8 @@
   color: var(--color-charcoal);
 }
 
-/* The pinned cell's own right-edge shadow would otherwise replace
-   .tableRowGroupStart's divider shadow, so the two are combined here. */
-.tableRowGroupStart > .tableStickyCol {
+/* See .tableStickyColEdge. */
+.tableRowGroupStart > .tableStickyColEdge {
   box-shadow:
     inset 0 1.5px 0 var(--color-charcoal),
     inset -1px 0 0 var(--color-border);

@@ -25,7 +25,9 @@ export function OrdersPageClient() {
 
   return (
     <>
-      <div className={styles.pageHeaderWithTabs}>
+      {/* .widePage lifts the pane's 72rem cap for this page, so the sales
+          orders Detail view's wide cost breakdown gets the whole width. */}
+      <div className={`${styles.pageHeaderWithTabs} ${styles.widePage}`}>
         <h1 className={styles.pageHeading}>Orders</h1>
         <div className={styles.viewToggle} role="tablist" aria-label="Orders section">
           <button

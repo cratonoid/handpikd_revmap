@@ -11,8 +11,9 @@
 //
 // Printing gets one column PER TYPE (Laser, UV, …) — whichever types appear
 // in the rows currently shown — with their tax in a single column after
-// them. Total cost excludes both taxes, matching the "Add details" sheet's
-// Net final cost.
+// them. Total cost excludes both taxes, as the "Add details" sheet's Net
+// final cost does (the order total row matches that figure; a product row
+// also leaves out delivery — see below).
 //
 // Delivery comes in two kinds, in two columns. "Uncharged" is what delivery
 // cost us on a product, entered on the Add details sheet and never billed.
@@ -21,7 +22,11 @@
 // shows on the order's first row only (and in its total row), and being
 // income it stays out of Total cost.
 //
-// Every order's rows end in a total row summing its columns.
+// A product row's Total cost leaves out its uncharged delivery; that is
+// counted only in the order's total row, which sums every column.
+//
+// Order no. and Product are both pinned, so they stay put while the cost
+// columns scroll sideways.
 //
 // It shares the status pills, customer filter and order-no sort with the
 // Brief view (sales-orders-tab.tsx owns that state), so switching views
@@ -144,7 +149,7 @@ export function SalesOrderCostingTable({
         <thead>
           <tr>
             <th
-              className={`${styles.tableHeadCell} ${styles.tableStickyCol}`}
+              className={`${styles.tableHeadCell} ${styles.tableStickyCol} ${styles.tableStickyColFirst}`}
               aria-sort={orderNoSort === "asc" ? "ascending" : orderNoSort === "desc" ? "descending" : "none"}
             >
               <span className={styles.tableHeadControls}>
@@ -171,6 +176,9 @@ export function SalesOrderCostingTable({
                 </button>
               </span>
             </th>
+            <th className={`${styles.tableHeadCell} ${styles.tableStickyCol} ${styles.tableStickyColSecond} ${styles.tableStickyColEdge}`}>
+              Product
+            </th>
             <th className={styles.tableHeadCell}>Date</th>
             <th className={styles.tableHeadCell}>
               <span className={styles.tableHeadControls}>
@@ -185,7 +193,6 @@ export function SalesOrderCostingTable({
                 />
               </span>
             </th>
-            <th className={styles.tableHeadCell}>Product</th>
             <th className={styles.tableHeadCell}>Qty</th>
             <th className={styles.tableHeadCell}>Purchase cost</th>
             <th className={styles.tableHeadCell}>Purchase tax</th>
@@ -212,17 +219,19 @@ export function SalesOrderCostingTable({
                   // order's products and total read as a block.
                   className={`${styles.tableRow} ${groupIndex > 0 && rowIndex === 0 ? styles.tableRowGroupStart : ""}`}
                 >
-                  <td className={`${styles.tableCell} ${styles.tableCellPrimary} ${styles.tableStickyCol}`}>
+                  <td
+                    className={`${styles.tableCell} ${styles.tableCellPrimary} ${styles.tableStickyCol} ${styles.tableStickyColFirst}`}
+                  >
                     <Link href={`/admin/orders/sales/${row.salesOrderId}/details`} title="Open costing sheet">
                       {row.orderNo}
                     </Link>
                   </td>
-                  <td className={styles.tableCell}>{formatDate(row.date)}</td>
-                  <td className={styles.tableCell}>{customerName(row.custId) ?? "—"}</td>
-                  <td className={styles.tableCell}>
+                  <td className={`${styles.tableCell} ${styles.tableStickyCol} ${styles.tableStickyColSecond} ${styles.tableStickyColEdge}`}>
                     {row.productName}
                     {!row.isCosted && <span className={styles.inactiveBadge}>Not costed</span>}
                   </td>
+                  <td className={styles.tableCell}>{formatDate(row.date)}</td>
+                  <td className={styles.tableCell}>{customerName(row.custId) ?? "—"}</td>
                   <td className={styles.tableCell}>{row.quantity}</td>
                   <td className={styles.tableCell}>{formatAmount(row.purchaseCost)}</td>
                   <td className={styles.tableCell}>{formatAmount(row.purchaseTax)}</td>
@@ -238,12 +247,14 @@ export function SalesOrderCostingTable({
                   <td className={styles.tableCell}>{formatAmount(row.delivery)}</td>
                   <td className={styles.tableCell}>{rowIndex === 0 ? formatAmount(row.orderDeliveryCharge) : "—"}</td>
                   <td className={styles.tableCell}>{formatAmount(row.miscellaneous)}</td>
-                  <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{formatAmount(row.totalCost)}</td>
+                  <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
+                    {formatAmount(row.totalCost - row.delivery)}
+                  </td>
                 </tr>
               )),
               <tr key={`${first.salesOrderId}-total`} className={styles.tableSubtotalRow}>
-                <td className={`${styles.tableCell} ${styles.tableStickyCol}`}>Total</td>
-                <td className={styles.tableCell} />
+                <td className={`${styles.tableCell} ${styles.tableStickyCol} ${styles.tableStickyColFirst}`}>Total</td>
+                <td className={`${styles.tableCell} ${styles.tableStickyCol} ${styles.tableStickyColSecond} ${styles.tableStickyColEdge}`} />
                 <td className={styles.tableCell} />
                 <td className={styles.tableCell} />
                 <td className={styles.tableCell}>{sumOf(group, (row) => row.quantity)}</td>
@@ -261,6 +272,8 @@ export function SalesOrderCostingTable({
                 <td className={styles.tableCell}>{formatAmount(sumOf(group, (row) => row.delivery))}</td>
                 <td className={styles.tableCell}>{formatAmount(first.orderDeliveryCharge)}</td>
                 <td className={styles.tableCell}>{formatAmount(sumOf(group, (row) => row.miscellaneous))}</td>
+                {/* The backend's totalCost includes each row's uncharged
+                    delivery, so this sum is the whole order's cost. */}
                 <td className={styles.tableCell}>{formatAmount(sumOf(group, (row) => row.totalCost))}</td>
               </tr>,
             ];
