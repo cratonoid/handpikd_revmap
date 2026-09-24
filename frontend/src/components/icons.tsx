@@ -433,3 +433,15 @@ export function PenIcon(props: IconProps) {
   );
 }
 
+
+// A stacked cylinder — the usual "database" glyph — for the admin's
+// Database page (clients, leads and vendors address book).
+export function DatabaseIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <ellipse cx="12" cy="6" rx="7" ry="2.75" />
+      <path d="M5 6v6c0 1.52 3.13 2.75 7 2.75s7-1.23 7-2.75V6" />
+      <path d="M5 12v6c0 1.52 3.13 2.75 7 2.75s7-1.23 7-2.75v-6" />
+    </svg>
+  );
+}

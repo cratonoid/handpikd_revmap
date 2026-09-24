@@ -19,6 +19,8 @@ from app.models import (
     CustomerIdCounter,
     CustomerPocDetails,
     CustomerPocIdCounter,
+    DatabaseContact,
+    DatabaseContactIdCounter,
     ExpenseDetails,
     ExpenseIdCounter,
     InquiryFormNode,
@@ -433,6 +435,8 @@ async def connect_to_mongo() -> None:
             QuotationSummaryIdCounter,
             ExpenseDetails,
             ExpenseIdCounter,
+            DatabaseContact,
+            DatabaseContactIdCounter,
         ],
     )
     await _seed_order_statuses()

@@ -37,11 +37,17 @@
 // customer id — and it returns every customer, active and deleted, so the
 // table can still resolve a name for orders placed against a since-deleted
 // customer (see lib/customers.ts).
+//
+// The Orders / Costing toggle swaps the table for the per-product cost
+// breakdown (components/admin/sales-order-costing-table.tsx). The status
+// pills, customer filter and order-no sort live here and apply to both
+// views, so switching keeps the same orders on screen.
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/button";
 import { ChevronDownIcon, ChevronUpIcon } from "@/components/icons";
 import { ColumnFilterDropdown } from "@/components/admin/column-filter-dropdown";
+import { SalesOrderCostingTable } from "@/components/admin/sales-order-costing-table";
 import { SalesOrderFormModal } from "@/components/admin/sales-order-form-modal";
 import { StatusSelect } from "@/components/admin/status-select";
 import { fetchSalesOrders, updateSalesOrderStatus, type SalesOrder } from "@/lib/sales-orders";
@@ -64,6 +70,12 @@ type StatusFilter = "all" | number;
 // other list tables use (lib/row-order.ts); the arrows beside the header
 // cycle null -> asc -> desc -> null.
 type OrderNoSort = "asc" | "desc" | null;
+type View = "orders" | "costing";
+
+const VIEWS: { value: View; label: string }[] = [
+  { value: "orders", label: "Orders" },
+  { value: "costing", label: "Costing" },
+];
 
 // Status name (lowercased) -> the color modifier for its Status cell. Keyed by
 // name rather than OrderStatusMaster id so the colors survive a reseed that
@@ -95,6 +107,7 @@ export function SalesOrdersTab() {
   const [orderStatuses, setOrderStatuses] = useState<OrderStatus[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
+  const [view, setView] = useState<View>("orders");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [orderNoSort, setOrderNoSort] = useState<OrderNoSort>(null);
   // Customer ids ticked in the dropdown beside the "Customer" header. Empty
@@ -130,6 +143,10 @@ export function SalesOrdersTab() {
         ? byNewestFirst
         : (a, b) => (orderNoSort === "asc" ? a.orderNo - b.orderNo : b.orderNo - a.orderNo),
     );
+
+  const emptyMessage = `No ${
+    statusFilter === "all" ? "" : `${statusesById.get(statusFilter)?.statusName.toLowerCase()} `
+  }sales orders${customerFilterIds.length > 0 ? " for the selected customers" : ""}.`;
 
   function cycleOrderNoSort() {
     setOrderNoSort((current) => (current === null ? "asc" : current === "asc" ? "desc" : null));
@@ -253,14 +270,26 @@ export function SalesOrdersTab() {
           ))}
         </div>
 
-        <Button
-          type="button"
-          variant="primary"
-          className={styles.filterToggleRowAction}
-          onClick={() => setModalState({ mode: "add" })}
-        >
-          + New sales order
-        </Button>
+        <div className={styles.filterToggleRowEndGroup}>
+          <div className={styles.viewToggle} role="tablist" aria-label="Sales orders view">
+            {VIEWS.map(({ value, label }) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={view === value}
+                onClick={() => setView(value)}
+                className={`${styles.viewToggleButton} ${view === value ? styles.viewToggleButtonActive : ""}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
+            + New sales order
+          </Button>
+        </div>
       </div>
 
       {statusError && (
@@ -269,107 +298,117 @@ export function SalesOrdersTab() {
         </p>
       )}
 
-      <div className={styles.tableWrap}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th
-                className={styles.tableHeadCell}
-                aria-sort={
-                  orderNoSort === "asc" ? "ascending" : orderNoSort === "desc" ? "descending" : "none"
-                }
-              >
-                <span className={styles.tableHeadControls}>
-                  Order no.
-                  <button
-                    type="button"
-                    onClick={cycleOrderNoSort}
-                    className={styles.tableHeadButton}
-                    aria-label={
-                      orderNoSort === null
-                        ? "Sort by order number, ascending"
-                        : orderNoSort === "asc"
-                          ? "Sort by order number, descending"
-                          : "Clear order number sort"
-                    }
-                    title="Sort by order number"
-                  >
-                    <ChevronUpIcon
-                      className={`${styles.sortChevron} ${orderNoSort === "asc" ? styles.sortChevronActive : ""}`}
+      {view === "costing" ? (
+        <SalesOrderCostingTable
+          statusFilter={statusFilter}
+          customerFilterIds={customerFilterIds}
+          onCustomerFilterChange={setCustomerFilterIds}
+          customerFilterOptions={customerFilterOptions}
+          customerName={(custId) => customersById.get(custId)?.name}
+          orderNoSort={orderNoSort}
+          onCycleOrderNoSort={cycleOrderNoSort}
+          emptyMessage={emptyMessage}
+        />
+      ) : (
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th
+                  className={styles.tableHeadCell}
+                  aria-sort={
+                    orderNoSort === "asc" ? "ascending" : orderNoSort === "desc" ? "descending" : "none"
+                  }
+                >
+                  <span className={styles.tableHeadControls}>
+                    Order no.
+                    <button
+                      type="button"
+                      onClick={cycleOrderNoSort}
+                      className={styles.tableHeadButton}
+                      aria-label={
+                        orderNoSort === null
+                          ? "Sort by order number, ascending"
+                          : orderNoSort === "asc"
+                            ? "Sort by order number, descending"
+                            : "Clear order number sort"
+                      }
+                      title="Sort by order number"
+                    >
+                      <ChevronUpIcon
+                        className={`${styles.sortChevron} ${orderNoSort === "asc" ? styles.sortChevronActive : ""}`}
+                      />
+                      <ChevronDownIcon
+                        className={`${styles.sortChevron} ${orderNoSort === "desc" ? styles.sortChevronActive : ""}`}
+                      />
+                    </button>
+                  </span>
+                </th>
+                <th className={styles.tableHeadCell}>Details</th>
+                <th className={styles.tableHeadCell}>Date</th>
+                <th className={styles.tableHeadCell}>
+                  <span className={styles.tableHeadControls}>
+                    Customer
+                    <ColumnFilterDropdown
+                      label="Filter by customer"
+                      searchPlaceholder="Search customers…"
+                      emptyMessage="No customers match."
+                      options={customerFilterOptions}
+                      selectedValues={customerFilterIds}
+                      onChange={setCustomerFilterIds}
                     />
-                    <ChevronDownIcon
-                      className={`${styles.sortChevron} ${orderNoSort === "desc" ? styles.sortChevronActive : ""}`}
-                    />
-                  </button>
-                </span>
-              </th>
-              <th className={styles.tableHeadCell}>Details</th>
-              <th className={styles.tableHeadCell}>Date</th>
-              <th className={styles.tableHeadCell}>
-                <span className={styles.tableHeadControls}>
-                  Customer
-                  <ColumnFilterDropdown
-                    label="Filter by customer"
-                    searchPlaceholder="Search customers…"
-                    emptyMessage="No customers match."
-                    options={customerFilterOptions}
-                    selectedValues={customerFilterIds}
-                    onChange={setCustomerFilterIds}
-                  />
-                </span>
-              </th>
-              <th className={styles.tableHeadCell}>Status</th>
-              <th className={styles.tableHeadCell}>Before tax</th>
-              <th className={styles.tableHeadCell}>After tax</th>
-              <th className={styles.tableHeadCell}>Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleOrders.map((order, index) => (
-              <tr
-                key={order.id || `${order.orderNo}-${index}`}
-                onDoubleClick={() => setModalState({ mode: "edit", order })}
-                className={styles.tableRow}
-              >
-                <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
-                  {order.orderNo}
-                  {order.poUpdatedFlag && <span className={styles.inactiveBadge}>PO updated</span>}
-                </td>
-                <td className={styles.tableCell}>
-                  <Link
-                    href={`/admin/orders/sales/${order.id}/details`}
-                    onClick={(event) => event.stopPropagation()}
-                    className={styles.tableActionButton}
-                  >
-                    Add details
-                  </Link>
-                </td>
-                <td className={styles.tableCell}>{formatDate(order.date)}</td>
-                <td className={styles.tableCell}>{customerName(order) ?? "—"}</td>
-                <td className={statusCellClassName(statusesById.get(order.orderStatusId)?.statusName)}>
-                  <StatusSelect
-                    value={order.orderStatusId}
-                    options={statusOptions}
-                    label={`Status for order ${order.orderNo}`}
-                    disabled={statusSavingId === order.id}
-                    onChange={(nextStatusId) => void handleStatusChange(order, nextStatusId)}
-                  />
-                </td>
-                <td className={styles.tableCell}>₹{order.totalAmountBeforeTax.toFixed(2)}</td>
-                <td className={styles.tableCell}>₹{order.totalAmountAfterTax.toFixed(2)}</td>
-                <td className={styles.tableCell}>{order.description}</td>
+                  </span>
+                </th>
+                <th className={styles.tableHeadCell}>Status</th>
+                <th className={styles.tableHeadCell}>Before tax</th>
+                <th className={styles.tableHeadCell}>After tax</th>
+                <th className={styles.tableHeadCell}>Description</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {loadState === "loading" && <p className={styles.pageSubtext}>Loading sales orders…</p>}
-        {loadState === "loaded" && visibleOrders.length === 0 && (
-          <p className={styles.pageSubtext}>
-            No {statusFilter === "all" ? "" : `${statusesById.get(statusFilter)?.statusName.toLowerCase()} `}sales
-            orders{customerFilterIds.length > 0 ? " for the selected customers" : ""}.
-          </p>
-        )}
-      </div>
+            </thead>
+            <tbody>
+              {visibleOrders.map((order, index) => (
+                <tr
+                  key={order.id || `${order.orderNo}-${index}`}
+                  onDoubleClick={() => setModalState({ mode: "edit", order })}
+                  className={styles.tableRow}
+                >
+                  <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
+                    {order.orderNo}
+                    {order.poUpdatedFlag && <span className={styles.inactiveBadge}>PO updated</span>}
+                  </td>
+                  <td className={styles.tableCell}>
+                    <Link
+                      href={`/admin/orders/sales/${order.id}/details`}
+                      onClick={(event) => event.stopPropagation()}
+                      className={styles.tableActionButton}
+                    >
+                      Add details
+                    </Link>
+                  </td>
+                  <td className={styles.tableCell}>{formatDate(order.date)}</td>
+                  <td className={styles.tableCell}>{customerName(order) ?? "—"}</td>
+                  <td className={statusCellClassName(statusesById.get(order.orderStatusId)?.statusName)}>
+                    <StatusSelect
+                      value={order.orderStatusId}
+                      options={statusOptions}
+                      label={`Status for order ${order.orderNo}`}
+                      disabled={statusSavingId === order.id}
+                      onChange={(nextStatusId) => void handleStatusChange(order, nextStatusId)}
+                    />
+                  </td>
+                  <td className={styles.tableCell}>₹{order.totalAmountBeforeTax.toFixed(2)}</td>
+                  <td className={styles.tableCell}>₹{order.totalAmountAfterTax.toFixed(2)}</td>
+                  <td className={styles.tableCell}>{order.description}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {loadState === "loading" && <p className={styles.pageSubtext}>Loading sales orders…</p>}
+          {loadState === "loaded" && visibleOrders.length === 0 && (
+            <p className={styles.pageSubtext}>{emptyMessage}</p>
+          )}
+        </div>
+      )}
 
       {modalState && (
         <SalesOrderFormModal

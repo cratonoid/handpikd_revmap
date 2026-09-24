@@ -776,6 +776,17 @@
   margin-left: auto;
 }
 
+/* Keeps a trailing pill toggle and button together at the far end of the row
+   (sales orders: Orders / Costing beside "+ New sales order"). Two separate
+   margin-left: auto items would split the free space between them instead. */
+.filterToggleRowEndGroup {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 /* Width cage for a dropdown sharing the row with pill toggles. The select
    would otherwise stretch across whatever the pills leave behind. */
 .filterToggleRowSelect {

@@ -22,8 +22,10 @@ from app.models import (
     User,
 )
 from app.schemas.sales_order_costing import (
+    CostingReportPrinting,
     PrintingCostItem,
     SalesOrderCostingLine,
+    SalesOrderCostingReportRow,
     SalesOrderCostingResponse,
     UpdateSalesOrderCostingRequest,
     UpdateSalesOrderCostingResponse,
@@ -1040,3 +1042,171 @@ async def update_sales_order_costing(
     # Quantities are read-only on this sheet, so nothing here can move stock
     # — no #inventory work to do, unlike update_sales_order_details.
     return UpdateSalesOrderCostingResponse(message="sales order details saved successfully")
+
+
+# ---------------------------------------------------------------------------
+# Costing report — the "Costing" view on the Sales orders tab
+# ---------------------------------------------------------------------------
+# Every active order's cost side, one row per product per order (see
+# SalesOrderCostingReportRow). Only the cost inputs are read here; the sales
+# side stays on the orders table and the "Add details" sheet.
+
+
+class _CostAccumulator:
+    # Running cost-side sums for one (order, product) row.
+    def __init__(self) -> None:
+        self.quantity = 0
+        self.purchase_cost = 0.0
+        self.purchase_tax = 0.0
+        # Lowercased type -> [display name, cost, tax]; the first spelling
+        # seen is the one shown.
+        self.printing: dict[str, list] = {}
+        self.delivery = 0.0
+        self.miscellaneous = 0.0
+        self.is_costed = True
+
+    def add(
+        self,
+        quantity: int,
+        net_purchase_rate: float,
+        purchase_tax_perc: float,
+        printing_costs: list[PrintingCost],
+        delivery: float,
+        miscellaneous: float,
+    ) -> None:
+        # Same conventions as computeCostingFigures in
+        # frontend/src/lib/sales-order-costing.ts: purchase and printing are
+        # per piece, delivery and miscellaneous are flat per costing row.
+        purchase_cost = quantity * net_purchase_rate
+        self.purchase_cost += purchase_cost
+        self.purchase_tax += purchase_cost * purchase_tax_perc / 100
+        for printing in printing_costs:
+            name = printing.printing_type.strip()
+            entry = self.printing.setdefault(name.lower(), [name, 0.0, 0.0])
+            cost = quantity * printing.cost_per_unit
+            entry[1] += cost
+            if printing.is_taxable:
+                entry[2] += cost * printing.tax_perc / 100
+        self.delivery += delivery
+        self.miscellaneous += miscellaneous
+
+
+def _build_costing_report_rows(
+    orders: list[SalesOrders],
+    summaries: list[SalesSummary],
+    costings: list[SalesOrderCosting],
+    products_by_id: dict[int, ProductDetails],
+) -> list[SalesOrderCostingReportRow]:
+    """One report row per (order, product), summing every line of that product.
+
+    A line costed on its own contributes its own row's figures. Lines with no
+    row of their own but a legacy product-keyed row (see
+    models/sales_order_costing.py) are costed by that row ONCE, over their
+    summed quantity — so its flat delivery/misc counts once, the same way the
+    accounts P&L (_cost_by_sales_order) counts it. Lines with neither fall
+    back to the product master's defaults, as the sheet does on first open,
+    and mark the row not costed.
+    """
+    summaries_by_order: dict[int, list[SalesSummary]] = {}
+    for summary in summaries:
+        summaries_by_order.setdefault(summary.sales_order_id, []).append(summary)
+    costings_by_order: dict[int, list[SalesOrderCosting]] = {}
+    for costing in costings:
+        costings_by_order.setdefault(costing.sales_order_id, []).append(costing)
+
+    rows: list[SalesOrderCostingReportRow] = []
+    for order in sorted(orders, key=lambda order: order.id):
+        by_line, legacy_by_product = _costings_by_line_and_legacy(costings_by_order.get(order.id, []))
+
+        # Dicts keep insertion order, so products appear in line order.
+        accumulators: dict[int, _CostAccumulator] = {}
+        legacy_quantity: dict[int, int] = {}
+        for item in sorted(summaries_by_order.get(order.id, []), key=lambda line_item: line_item.id):
+            accumulator = accumulators.setdefault(item.product_id, _CostAccumulator())
+            accumulator.quantity += item.quantity
+            costing = by_line.get(item.id)
+            if costing is not None:
+                accumulator.add(
+                    item.quantity,
+                    costing.net_purchase_rate,
+                    costing.purchase_tax_perc,
+                    costing.printing_costs,
+                    costing.delivery,
+                    costing.miscellaneous,
+                )
+            elif item.product_id in legacy_by_product:
+                legacy_quantity[item.product_id] = legacy_quantity.get(item.product_id, 0) + item.quantity
+            else:
+                product = products_by_id.get(item.product_id)
+                accumulator.add(
+                    item.quantity,
+                    product.vendor_rate if product else 0.0,
+                    product.gst_perc if product else 0.0,
+                    [],
+                    0.0,
+                    0.0,
+                )
+                accumulator.is_costed = False
+
+        for product_id, quantity in legacy_quantity.items():
+            legacy = legacy_by_product[product_id]
+            accumulators[product_id].add(
+                quantity,
+                legacy.net_purchase_rate,
+                legacy.purchase_tax_perc,
+                legacy.printing_costs,
+                legacy.delivery,
+                legacy.miscellaneous,
+            )
+
+        for product_id, accumulator in accumulators.items():
+            product = products_by_id.get(product_id)
+            printing_costs = [
+                CostingReportPrinting(printing_type=name, cost=cost, tax=tax)
+                for name, cost, tax in accumulator.printing.values()
+            ]
+            rows.append(
+                SalesOrderCostingReportRow(
+                    sales_order_id=order.id,
+                    order_no=order.order_no,
+                    order_status_id=order.order_status_id,
+                    cust_id=order.cust_id,
+                    date=order.date,
+                    product_id=product_id,
+                    product_name=product.product_name if product else f"Product {product_id}",
+                    quantity=accumulator.quantity,
+                    purchase_cost=accumulator.purchase_cost,
+                    purchase_tax=accumulator.purchase_tax,
+                    printing_costs=printing_costs,
+                    delivery=accumulator.delivery,
+                    miscellaneous=accumulator.miscellaneous,
+                    # Taxes excluded — reclaimable input credit, not cost.
+                    total_cost=(
+                        accumulator.purchase_cost
+                        + sum(printing.cost for printing in printing_costs)
+                        + accumulator.delivery
+                        + accumulator.miscellaneous
+                    ),
+                    is_costed=accumulator.is_costed,
+                )
+            )
+
+    return rows
+
+
+@router.get("/get_sales_order_costing_report", response_model=list[SalesOrderCostingReportRow])
+async def get_sales_order_costing_report(
+    _: User | None = Depends(require_admin),
+) -> list[SalesOrderCostingReportRow]:
+    # Soft-deleted orders are left out, as on get_sales_order_details.
+    orders = await SalesOrders.find(SalesOrders.is_deleted == False).to_list()
+    if not orders:
+        return []
+
+    order_ids = [order.id for order in orders]
+    summaries = await SalesSummary.find(In(SalesSummary.sales_order_id, order_ids)).to_list()
+    costings = await SalesOrderCosting.find(In(SalesOrderCosting.sales_order_id, order_ids)).to_list()
+    product_ids = list({summary.product_id for summary in summaries})
+    products = await ProductDetails.find(In(ProductDetails.id, product_ids)).to_list()
+
+    return _build_costing_report_rows(orders, summaries, costings, {product.id: product for product in products})

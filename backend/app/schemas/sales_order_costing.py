@@ -90,3 +90,45 @@ class UpdateSalesOrderCostingRequest(BaseModel):
 
 class UpdateSalesOrderCostingResponse(BaseModel):
     message: str
+
+
+# ---------------------------------------------------------------------------
+# Costing report — the "Costing" view on the Sales orders tab
+# ---------------------------------------------------------------------------
+# One row per PRODUCT per order: every line of the same product on an order
+# is summed into one row (unlike the "Add details" sheet, which costs each
+# line on its own). Only cost-side figures — the sales side lives on the
+# orders table and the sheet.
+
+
+class CostingReportPrinting(BaseModel):
+    # Trimmed, and merged case-insensitively within the row, so "UV" and
+    # "uv " on two lines of one product land in one entry.
+    printing_type: str
+    # cost_per_unit x quantity, summed over the row's lines.
+    cost: float
+    # Zero for an untaxed printing type.
+    tax: float
+
+
+class SalesOrderCostingReportRow(BaseModel):
+    sales_order_id: int
+    order_no: int
+    order_status_id: int
+    cust_id: int
+    date: datetime
+    product_id: int
+    product_name: str
+    quantity: int
+    purchase_cost: float
+    purchase_tax: float
+    printing_costs: list[CostingReportPrinting]
+    delivery: float
+    miscellaneous: float
+    # purchase + printing + delivery + misc, taxes EXCLUDED — the same "net
+    # final cost" the sheet and the accounts P&L use.
+    total_cost: float
+    # False when any line in the row has no saved costing: its figures are
+    # then the product master's defaults (vendor_rate, gst_perc), exactly
+    # what the sheet pre-fills on first open.
+    is_costed: bool
