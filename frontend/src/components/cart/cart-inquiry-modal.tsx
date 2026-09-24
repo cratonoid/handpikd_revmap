@@ -158,9 +158,9 @@ export function CartInquiryModal({
             </div>
             <div>
               <label htmlFor="cartPhone" className={homeStyles.formLabel}>
-                Phone <span className={homeStyles.formOptionalText}>(optional)</span>
+                WhatsApp number
               </label>
-              <input id="cartPhone" name="phone" type="tel" autoComplete="tel" className={homeStyles.formInput} />
+              <input id="cartPhone" name="phone" type="tel" autoComplete="tel" inputMode="tel" placeholder="+91 98765 43210" required className={homeStyles.formInput} />
             </div>
             <div className={homeStyles.formFieldFull}>
               <label htmlFor="cartMessage" className={homeStyles.formLabel}>

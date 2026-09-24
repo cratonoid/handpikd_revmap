@@ -37,9 +37,9 @@ export default function Home() {
           column`.) */}
       <main className={styles.pageMain}>
         <Hero />
-        <WhoWeAre />
         <ClientMarquee />
         <WhatWeOffer />
+        <WhoWeAre />
         <Testimonials />
         <Connect />
       </main>

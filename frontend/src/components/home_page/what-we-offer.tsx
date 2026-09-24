@@ -18,30 +18,6 @@ import styles from "@/styles/home-page.module.css";
 const offers = [
   {
     index: "01",
-    title: "Custom Gift Curation",
-    blurb:
-      "Personalized corporate gift selections tailored to your brand identity and recipient preferences.",
-    image: "/site/service-curation.jpg",
-    alt: "Custom corporate gift curation and personalized business gifts",
-  },
-  {
-    index: "02",
-    title: "Luxury Corporate Hampers",
-    blurb:
-      "Exquisite gift hampers featuring premium products, perfect for festive seasons and client appreciation.",
-    image: "/site/service-hampers.jpg",
-    alt: "Luxury corporate gift hamper with premium products",
-  },
-  {
-    index: "03",
-    title: "Branded Merchandise",
-    blurb:
-      "Custom-branded corporate gifts and promotional merchandise that showcase your company's identity.",
-    image: "/site/service-merchandise.jpg",
-    alt: "Custom branded corporate merchandise and business gifts",
-  },
-  {
-    index: "04",
     title: "Corporate Event Gifting",
     blurb:
       "Comprehensive gifting for conferences, seminars, and business occasions — bulk orders and customization available.",
@@ -49,7 +25,7 @@ const offers = [
     alt: "Corporate event gifting solutions and conference gifts",
   },
   {
-    index: "05",
+    index: "02",
     title: "Employee Recognition Gifts",
     blurb:
       "Thoughtful gifts to celebrate milestones, achievements, and work anniversaries that boost employee morale.",
@@ -57,7 +33,7 @@ const offers = [
     alt: "Employee recognition awards and appreciation gifts",
   },
   {
-    index: "06",
+    index: "03",
     title: "Guest Felicitation",
     blurb:
       "Elegant, thoughtful gifts to honor distinguished guests, dignitaries, and VIP business partners.",

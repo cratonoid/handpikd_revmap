@@ -216,9 +216,29 @@
    ----------------------------------------------------------------------- */
 
 .whoSection {
+  position: relative;
   display: flex;
   flex-direction: column;
   background-color: var(--color-cream-deep);
+}
+
+/* A rule between What We Offer and this section, which share one background
+   and would otherwise run together. Drawn as an absolutely placed pseudo-
+   element rather than a border-top so it spans the content measure (72rem,
+   inset by the same 1.25rem gutter as .whoInner) instead of the full bleed —
+   and so the section's centred flex column doesn't carry it down with the
+   content. */
+.whoSection::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: min(72rem, 100%);
+  padding-inline: 1.25rem;
+  transform: translateX(-50%);
+  height: 1px;
+  background-color: color-mix(in srgb, var(--color-charcoal) 20%, transparent);
+  background-clip: content-box;
 }
 
 @media (min-width: 1024px) {

@@ -166,9 +166,9 @@ export function GetItNowModal({ productName, onClose }: { productName: string; o
               </div>
               <div>
                 <label htmlFor="getItNowPhone" className={homeStyles.formLabel}>
-                  Phone <span className={homeStyles.formOptionalText}>(optional)</span>
+                  WhatsApp number
                 </label>
-                <input id="getItNowPhone" name="phone" type="tel" autoComplete="tel" className={homeStyles.formInput} />
+                <input id="getItNowPhone" name="phone" type="tel" autoComplete="tel" inputMode="tel" placeholder="+91 98765 43210" required className={homeStyles.formInput} />
               </div>
               <div className={homeStyles.formFieldFull}>
                 <label htmlFor="getItNowMessage" className={homeStyles.formLabel}>

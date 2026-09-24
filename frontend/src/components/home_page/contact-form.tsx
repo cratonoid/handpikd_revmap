@@ -136,10 +136,9 @@ export function ContactForm() {
         </div>
         <div>
           <label htmlFor="phone" className={styles.formLabel}>
-            Phone <span className={styles.formOptionalText}>(optional)</span>
+            WhatsApp number
           </label>
-          {/* No `required` here — phone is the one optional field. */}
-          <input id="phone" name="phone" type="tel" autoComplete="tel" className={styles.formInput} />
+          <input id="phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" placeholder="+91 98765 43210" required className={styles.formInput} />
         </div>
         <div className={styles.formFieldFull}>
           <label htmlFor="message" className={styles.formLabel}>

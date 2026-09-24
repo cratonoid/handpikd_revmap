@@ -23,9 +23,9 @@ import styles from "@/styles/home-page.module.css";
 // scrolled into view (see counter.tsx). Update these numbers as the business
 // grows.
 const stats = [
-  { value: 50, suffix: "+", label: "Happy Clients" },
-  { value: 500, suffix: "+", label: "Gifts Delivered" },
-  { value: 100, suffix: "%", label: "Satisfaction Rate" },
+  { value: 5000, suffix: "+", label: "Gifts Delivered" },
+  { value: 30, suffix: "+", label: "Happy Clients" },
+  { value: 100, suffix: "%", label: "Client Retention" },
 ];
 
 export function WhoWeAre() {
