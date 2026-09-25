@@ -4,8 +4,8 @@
 // Backed by /admin/database/* (backend/app/api/routes/database_contacts.py).
 // One list for all three tabs on /admin/database, told apart by `type`.
 // Name and phone are required; email is optional; vendors also carry a
-// type, description and location, all optional; leads carry a status that
-// defaults to "new". Optional fields come back
+// type, description and location, all optional; leads carry an optional
+// contact person and a status that defaults to "new". Optional fields come back
 // as "" rather than null so they drop straight into form inputs.
 import { apiFetch } from "@/lib/api";
 
@@ -27,6 +27,8 @@ export type Contact = {
   vendorType: string;
   description: string;
   location: string;
+  // Lead-only; "" on client and vendor rows.
+  contactPerson: string;
   // Always "new" on client and vendor rows, where it isn't shown.
   leadStatus: LeadStatus;
   createdAt: string;
@@ -39,6 +41,7 @@ export type ContactFields = {
   vendorType: string;
   description: string;
   location: string;
+  contactPerson: string;
   leadStatus: LeadStatus;
 };
 
@@ -52,6 +55,7 @@ type ContactItemResponse = {
   vendor_type: string | null;
   description: string | null;
   location: string | null;
+  contact_person: string | null;
   lead_status: LeadStatus | null;
   created_at: string;
 };
@@ -66,6 +70,7 @@ function toContact(item: ContactItemResponse): Contact {
     vendorType: item.vendor_type ?? "",
     description: item.description ?? "",
     location: item.location ?? "",
+    contactPerson: item.contact_person ?? "",
     leadStatus: item.lead_status ?? "new",
     createdAt: item.created_at,
   };
@@ -80,6 +85,7 @@ function toRequestFields(fields: ContactFields) {
     vendor_type: fields.vendorType,
     description: fields.description,
     location: fields.location,
+    contact_person: fields.contactPerson,
     lead_status: fields.leadStatus,
   };
 }
@@ -126,6 +132,19 @@ export async function updateContact(id: number, fields: ContactFields): Promise<
   }
   const body: { contact: ContactItemResponse } = await response.json();
   return toContact(body.contact);
+}
+
+// Just the status, for the dropdown in the Leads table's Status column.
+// Throws an Error with a user-facing message on failure.
+export async function updateLeadStatus(id: number, status: LeadStatus): Promise<void> {
+  const response = await apiFetch("/admin/database/update_contact", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contact_id: id, lead_status: status }),
+  });
+  if (!response.ok) {
+    throw new Error(await detailOr(response, "Couldn't update the status. Please try again."));
+  }
 }
 
 // Throws an Error with a user-facing message on failure.

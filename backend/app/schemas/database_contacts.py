@@ -16,13 +16,14 @@ class ContactItem(BaseModel):
     vendor_type: str | None
     description: str | None
     location: str | None
+    contact_person: str | None
     lead_status: LeadStatus | None
     created_at: datetime
 
 
 # Email and the three vendor fields are optional; the vendor fields are
-# ignored on client and lead rows. `lead_status` is ignored on anything but
-# a lead and defaults to "new".
+# ignored on client and lead rows. `contact_person` and `lead_status` are
+# ignored on anything but a lead; the status defaults to "new".
 class AddContactRequest(BaseModel):
     contact_type: ContactType
     name: str = Field(min_length=1)
@@ -31,6 +32,7 @@ class AddContactRequest(BaseModel):
     vendor_type: str | None = None
     description: str | None = None
     location: str | None = None
+    contact_person: str | None = None
     lead_status: LeadStatus | None = None
 
 
@@ -49,6 +51,7 @@ class UpdateContactRequest(BaseModel):
     vendor_type: str | None = None
     description: str | None = None
     location: str | None = None
+    contact_person: str | None = None
     lead_status: LeadStatus | None = None
     delete: bool = False
 

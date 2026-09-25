@@ -34,6 +34,9 @@ class DatabaseContact(Document):
     vendor_type: str | None = None
     description: str | None = None
     location: str | None = None
+    # Lead-only, like lead_status: the person to talk to at the company in
+    # `name`. Optional.
+    contact_person: str | None = None
     # Lead-only; always None on client and vendor rows. Leads saved before
     # this field existed have no value stored and read back as "new" (see
     # _to_item in routes/database_contacts.py).

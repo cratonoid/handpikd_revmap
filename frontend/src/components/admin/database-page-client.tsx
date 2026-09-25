@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 // <DatabasePageClient> — the interactive half of /admin/database
 // ---------------------------------------------------------------------------
-// A plain address book in three tabs: Clients, Leads and Vendors. Every row
+// A plain address book in three tabs: Leads, Clients and Vendors. Every row
 // is a name, phone and optional email; vendors also have a type, description
 // and location. Backed by /admin/database/* via lib/database-contacts.ts.
 //
@@ -17,13 +17,16 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { ContactFormModal } from "@/components/admin/contact-form-modal";
+import { StatusSelect } from "@/components/admin/status-select";
 import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import {
   deleteContact,
   fetchContacts,
   LEAD_STATUS_OPTIONS,
+  updateLeadStatus,
   type Contact,
   type ContactType,
+  type LeadStatus,
 } from "@/lib/database-contacts";
 import styles from "@/styles/dashboard.module.css";
 
@@ -31,8 +34,8 @@ type LoadState = "loading" | "loaded" | "error";
 type ModalState = { mode: "add" } | { mode: "edit"; contact: Contact } | null;
 
 const TABS: { key: ContactType; label: string; singular: string }[] = [
-  { key: "client", label: "Clients", singular: "client" },
   { key: "lead", label: "Leads", singular: "lead" },
+  { key: "client", label: "Clients", singular: "client" },
   { key: "vendor", label: "Vendors", singular: "vendor" },
 ];
 
@@ -41,13 +44,14 @@ export function DatabasePageClient() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<ContactType>("client");
+  const [tab, setTab] = useState<ContactType>("lead");
   const [search, setSearch] = useState("");
   const [modalState, setModalState] = useState<ModalState>(null);
 
   const [rowError, setRowError] = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [statusSavingId, setStatusSavingId] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +81,7 @@ export function DatabasePageClient() {
     .filter((contact) =>
       matchesSearch(search, [
         contact.name,
+        contact.contactPerson,
         contact.email,
         contact.phone,
         contact.vendorType,
@@ -101,6 +106,30 @@ export function DatabasePageClient() {
       return next;
     });
     setModalState(null);
+  }
+
+  // Applied straight away and rolled back if the backend refuses, the same
+  // as the expenses table's status dropdown.
+  async function handleStatusChange(contact: Contact, nextStatus: LeadStatus) {
+    if (nextStatus === contact.leadStatus) return;
+
+    const previousStatus = contact.leadStatus;
+    const applyStatus = (value: LeadStatus) =>
+      setContacts((current) =>
+        current.map((row) => (row.id === contact.id ? { ...row, leadStatus: value } : row)),
+      );
+
+    setRowError(null);
+    setStatusSavingId(contact.id);
+    applyStatus(nextStatus);
+    try {
+      await updateLeadStatus(contact.id, nextStatus);
+    } catch (caught) {
+      applyStatus(previousStatus);
+      setRowError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
+    } finally {
+      setStatusSavingId(null);
+    }
   }
 
   async function handleDelete(contact: Contact) {
@@ -164,6 +193,7 @@ export function DatabasePageClient() {
             <tr>
               <th className={styles.tableHeadCell}>S.No</th>
               <th className={styles.tableHeadCell}>{nameLabel}</th>
+              {isLead && <th className={styles.tableHeadCell}>Contact person</th>}
               <th className={styles.tableHeadCell}>Phone no.</th>
               <th className={styles.tableHeadCell}>Email</th>
               {isLead && <th className={styles.tableHeadCell}>Status</th>}
@@ -184,11 +214,18 @@ export function DatabasePageClient() {
               <tr key={contact.id} className={styles.tableRow}>
                 <td className={styles.tableCell}>{index + 1}</td>
                 <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{contact.name}</td>
+                {isLead && <td className={styles.tableCell}>{contact.contactPerson || "—"}</td>}
                 <td className={styles.tableCell}>{contact.phone}</td>
                 <td className={styles.tableCell}>{contact.email || "—"}</td>
                 {isLead && (
                   <td className={styles.tableCell}>
-                    {LEAD_STATUS_OPTIONS.find((option) => option.value === contact.leadStatus)?.label}
+                    <StatusSelect
+                      value={contact.leadStatus}
+                      options={LEAD_STATUS_OPTIONS}
+                      label={`Status for ${contact.name}`}
+                      disabled={statusSavingId === contact.id}
+                      onChange={(nextStatus) => void handleStatusChange(contact, nextStatus)}
+                    />
                   </td>
                 )}
                 {isVendor && (

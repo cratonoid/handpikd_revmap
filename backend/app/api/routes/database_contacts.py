@@ -1,8 +1,8 @@
 # Database module: endpoints for the admin's /admin/database address book
 # (frontend components/admin/database-page-client.tsx) — three tabs of
 # clients, leads and vendors, each a name, phone and optional email, with
-# vendors also carrying a type, description and location, and leads a
-# status (new / sent). Restricted to
+# vendors also carrying a type, description and location, and leads an
+# optional contact person and a status (new / sent). Restricted to
 # admins (bypassed entirely when settings.auth_enabled is False, matching
 # require_admin in routes/admin.py).
 #
@@ -35,6 +35,7 @@ def _to_item(contact: DatabaseContact) -> ContactItem:
         vendor_type=contact.vendor_type,
         description=contact.description,
         location=contact.location,
+        contact_person=contact.contact_person,
         lead_status=(contact.lead_status or LeadStatus.new) if contact.contact_type == ContactType.lead else None,
         created_at=contact.created_at,
     )
@@ -82,6 +83,7 @@ async def add_contact(
     _: User | None = Depends(require_admin),
 ) -> AddContactResponse:
     is_vendor = payload.contact_type == ContactType.vendor
+    is_lead = payload.contact_type == ContactType.lead
     contact = DatabaseContact(
         id=0,
         contact_type=payload.contact_type,
@@ -91,7 +93,8 @@ async def add_contact(
         vendor_type=_optional(payload.vendor_type) if is_vendor else None,
         description=_optional(payload.description) if is_vendor else None,
         location=_optional(payload.location) if is_vendor else None,
-        lead_status=(payload.lead_status or LeadStatus.new) if payload.contact_type == ContactType.lead else None,
+        contact_person=_optional(payload.contact_person) if is_lead else None,
+        lead_status=(payload.lead_status or LeadStatus.new) if is_lead else None,
     )
     # Id taken only once the payload has validated, so a rejected request
     # doesn't burn a number.
@@ -130,9 +133,13 @@ async def update_contact(
             if value is not None:
                 setattr(contact, field, _optional(value))
                 changed = True
-    if contact.contact_type == ContactType.lead and payload.lead_status is not None:
-        contact.lead_status = payload.lead_status
-        changed = True
+    if contact.contact_type == ContactType.lead:
+        if payload.contact_person is not None:
+            contact.contact_person = _optional(payload.contact_person)
+            changed = True
+        if payload.lead_status is not None:
+            contact.lead_status = payload.lead_status
+            changed = True
 
     if not changed:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no changes specified")
