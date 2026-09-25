@@ -2169,9 +2169,14 @@ select.formInput:disabled {
    (components/admin/products-page-client.tsx)
    ----------------------------------------------------------------------- */
 
+/* max-width: none overrides the global img { max-width: 100% } reset: inside
+   an auto-layout table cell that percentage lets the image's min-content
+   width fall to zero, so once the table overflows .tableWrap and columns
+   shrink to min-content, the thumbnail collapses to a sliver of border. */
 .tableThumb {
   height: 2.25rem;
   width: 2.25rem;
+  max-width: none;
   border-radius: 0.5rem;
   border: 1px solid var(--color-border);
   object-fit: cover;

@@ -5,11 +5,13 @@
 // interactive piece, the "Add to Cart" button/quantity stepper, is broken
 // out into its own small Client Component (see add-to-cart-button.tsx) so
 // this file and the grid around it don't need "use client" just because of
-// one button.
+// one button. The image is the same: clicking it opens the full photo, and
+// that lives in product-photo-button.tsx.
 //
 // Styling lives in src/styles/products.module.css.
 import { formatInr, type Product } from "@/lib/public-products";
 import { AddToCartButton } from "@/components/products/add-to-cart-button";
+import { ProductPhotoButton } from "@/components/products/product-photo-button";
 import styles from "@/styles/products.module.css";
 
 export function ProductCard({ product }: { product: Product }) {
@@ -32,8 +34,7 @@ export function ProductCard({ product }: { product: Product }) {
             whitelist that could cover them all. next/image throws an
             uncaught, page-crashing error for any host not listed in
             next.config.js's images.remotePatterns. */}
-        {/* eslint-disable-next-line @next/next/no-img-element -- arbitrary/dynamic URL, not an optimizable local/remote asset */}
-        <img src={product.image} alt={product.alt} loading="lazy" className={styles.cardImage} />
+        <ProductPhotoButton src={product.image} alt={product.alt} name={product.name} />
         {/* Only render the discount badge if there actually IS a
             discount — `discountPct > 0 && (...)` renders nothing at all
             when the condition is false. */}
