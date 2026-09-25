@@ -63,6 +63,7 @@ export function DatabasePageClient() {
 
   const activeTab = TABS.find((option) => option.key === tab) ?? TABS[0];
   const isVendor = tab === "vendor";
+  const nameLabel = tab === "lead" ? "Company name" : "Name";
 
   const visibleContacts = contacts
     .filter((contact) => contact.type === tab)
@@ -140,7 +141,7 @@ export function DatabasePageClient() {
           value={search}
           onChange={setSearch}
           label={`Search ${activeTab.label.toLowerCase()}`}
-          placeholder={isVendor ? "Search name, phone, type, location…" : "Search name, email or phone…"}
+          placeholder={isVendor ? "Search name, phone, type, location…" : `Search ${nameLabel.toLowerCase()}, email or phone…`}
         />
       </div>
 
@@ -155,7 +156,7 @@ export function DatabasePageClient() {
           <thead>
             <tr>
               <th className={styles.tableHeadCell}>S.No</th>
-              <th className={styles.tableHeadCell}>Name</th>
+              <th className={styles.tableHeadCell}>{nameLabel}</th>
               <th className={styles.tableHeadCell}>Phone no.</th>
               <th className={styles.tableHeadCell}>Email</th>
               {isVendor && (

@@ -51,6 +51,7 @@ export function ContactFormModal({
 }) {
   const isEdit = initialContact !== undefined;
   const isVendor = type === "vendor";
+  const nameLabel = type === "lead" ? "Company name" : "Name";
 
   const [fields, setFields] = useState<ContactFields>(() =>
     initialContact
@@ -82,7 +83,7 @@ export function ContactFormModal({
       location: isVendor ? fields.location.trim() : "",
     };
     if (!trimmed.name) {
-      setError("Enter a name.");
+      setError(`Enter a ${nameLabel.toLowerCase()}.`);
       return;
     }
     if (!trimmed.phone) {
@@ -129,7 +130,7 @@ export function ContactFormModal({
           <div className={styles.formGrid}>
             <div className={styles.formGridFullSpan}>
               <label htmlFor="contactName" className={styles.formLabel}>
-                Name<span className={styles.requiredMark}>*</span>
+                {nameLabel}<span className={styles.requiredMark}>*</span>
               </label>
               <input
                 id="contactName"
