@@ -6,7 +6,8 @@
 // One form for clients, leads and vendors (components/admin/
 // database-page-client.tsx): name and phone are required, email is
 // optional, and vendors get three more optional fields — type, description
-// and location. "add" mode starts blank; "edit" mode is pre-filled from the
+// and location, while leads get a status dropdown (New / Sent, defaulting to
+// New). "add" mode starts blank; "edit" mode is pre-filled from the
 // row. Saving goes through lib/database-contacts.ts and any backend error is
 // shown here instead of closing the modal.
 import { useState, type FormEvent } from "react";
@@ -14,10 +15,12 @@ import { Button } from "@/components/button";
 import { XMarkIcon } from "@/components/icons";
 import {
   addContact,
+  LEAD_STATUS_OPTIONS,
   updateContact,
   type Contact,
   type ContactFields,
   type ContactType,
+  type LeadStatus,
 } from "@/lib/database-contacts";
 import styles from "@/styles/dashboard.module.css";
 
@@ -28,6 +31,7 @@ const EMPTY_FIELDS: ContactFields = {
   vendorType: "",
   description: "",
   location: "",
+  leadStatus: "new",
 };
 
 // Loose on purpose: only catches obvious typos. The backend applies the same
@@ -51,6 +55,7 @@ export function ContactFormModal({
 }) {
   const isEdit = initialContact !== undefined;
   const isVendor = type === "vendor";
+  const isLead = type === "lead";
   const nameLabel = type === "lead" ? "Company name" : "Name";
 
   const [fields, setFields] = useState<ContactFields>(() =>
@@ -62,13 +67,14 @@ export function ContactFormModal({
           vendorType: initialContact.vendorType,
           description: initialContact.description,
           location: initialContact.location,
+          leadStatus: initialContact.leadStatus,
         }
       : EMPTY_FIELDS,
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function setField(key: keyof ContactFields, value: string) {
+  function setField(key: Exclude<keyof ContactFields, "leadStatus">, value: string) {
     setFields((current) => ({ ...current, [key]: value }));
   }
 
@@ -81,6 +87,7 @@ export function ContactFormModal({
       vendorType: isVendor ? fields.vendorType.trim() : "",
       description: isVendor ? fields.description.trim() : "",
       location: isVendor ? fields.location.trim() : "",
+      leadStatus: fields.leadStatus,
     };
     if (!trimmed.name) {
       setError(`Enter a ${nameLabel.toLowerCase()}.`);
@@ -171,6 +178,29 @@ export function ContactFormModal({
                 disabled={saving}
               />
             </div>
+
+            {isLead && (
+              <div>
+                <label htmlFor="contactLeadStatus" className={styles.formLabel}>
+                  Status
+                </label>
+                <select
+                  id="contactLeadStatus"
+                  value={fields.leadStatus}
+                  onChange={(event) =>
+                    setFields((current) => ({ ...current, leadStatus: event.target.value as LeadStatus }))
+                  }
+                  className={styles.formInput}
+                  disabled={saving}
+                >
+                  {LEAD_STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {isVendor && (
               <>

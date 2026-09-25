@@ -1,7 +1,8 @@
 # Database module: endpoints for the admin's /admin/database address book
 # (frontend components/admin/database-page-client.tsx) — three tabs of
 # clients, leads and vendors, each a name, phone and optional email, with
-# vendors also carrying a type, description and location. Restricted to
+# vendors also carrying a type, description and location, and leads a
+# status (new / sent). Restricted to
 # admins (bypassed entirely when settings.auth_enabled is False, matching
 # require_admin in routes/admin.py).
 #
@@ -9,7 +10,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.routes.admin import require_admin
-from app.models import ContactType, DatabaseContact, DatabaseContactIdCounter, User
+from app.models import ContactType, DatabaseContact, DatabaseContactIdCounter, LeadStatus, User
 from app.schemas.database_contacts import (
     AddContactRequest,
     AddContactResponse,
@@ -34,6 +35,7 @@ def _to_item(contact: DatabaseContact) -> ContactItem:
         vendor_type=contact.vendor_type,
         description=contact.description,
         location=contact.location,
+        lead_status=(contact.lead_status or LeadStatus.new) if contact.contact_type == ContactType.lead else None,
         created_at=contact.created_at,
     )
 
@@ -89,6 +91,7 @@ async def add_contact(
         vendor_type=_optional(payload.vendor_type) if is_vendor else None,
         description=_optional(payload.description) if is_vendor else None,
         location=_optional(payload.location) if is_vendor else None,
+        lead_status=(payload.lead_status or LeadStatus.new) if payload.contact_type == ContactType.lead else None,
     )
     # Id taken only once the payload has validated, so a rejected request
     # doesn't burn a number.
@@ -127,6 +130,9 @@ async def update_contact(
             if value is not None:
                 setattr(contact, field, _optional(value))
                 changed = True
+    if contact.contact_type == ContactType.lead and payload.lead_status is not None:
+        contact.lead_status = payload.lead_status
+        changed = True
 
     if not changed:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no changes specified")

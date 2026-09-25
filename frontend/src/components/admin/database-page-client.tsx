@@ -18,7 +18,13 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { ContactFormModal } from "@/components/admin/contact-form-modal";
 import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
-import { deleteContact, fetchContacts, type Contact, type ContactType } from "@/lib/database-contacts";
+import {
+  deleteContact,
+  fetchContacts,
+  LEAD_STATUS_OPTIONS,
+  type Contact,
+  type ContactType,
+} from "@/lib/database-contacts";
 import styles from "@/styles/dashboard.module.css";
 
 type LoadState = "loading" | "loaded" | "error";
@@ -63,6 +69,7 @@ export function DatabasePageClient() {
 
   const activeTab = TABS.find((option) => option.key === tab) ?? TABS[0];
   const isVendor = tab === "vendor";
+  const isLead = tab === "lead";
   const nameLabel = tab === "lead" ? "Company name" : "Name";
 
   const visibleContacts = contacts
@@ -159,6 +166,7 @@ export function DatabasePageClient() {
               <th className={styles.tableHeadCell}>{nameLabel}</th>
               <th className={styles.tableHeadCell}>Phone no.</th>
               <th className={styles.tableHeadCell}>Email</th>
+              {isLead && <th className={styles.tableHeadCell}>Status</th>}
               {isVendor && (
                 <>
                   <th className={styles.tableHeadCell}>Type</th>
@@ -178,6 +186,11 @@ export function DatabasePageClient() {
                 <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{contact.name}</td>
                 <td className={styles.tableCell}>{contact.phone}</td>
                 <td className={styles.tableCell}>{contact.email || "—"}</td>
+                {isLead && (
+                  <td className={styles.tableCell}>
+                    {LEAD_STATUS_OPTIONS.find((option) => option.value === contact.leadStatus)?.label}
+                  </td>
+                )}
                 {isVendor && (
                   <>
                     <td className={styles.tableCell}>{contact.vendorType || "—"}</td>

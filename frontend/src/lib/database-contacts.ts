@@ -4,11 +4,19 @@
 // Backed by /admin/database/* (backend/app/api/routes/database_contacts.py).
 // One list for all three tabs on /admin/database, told apart by `type`.
 // Name and phone are required; email is optional; vendors also carry a
-// type, description and location, all optional. Optional fields come back
+// type, description and location, all optional; leads carry a status that
+// defaults to "new". Optional fields come back
 // as "" rather than null so they drop straight into form inputs.
 import { apiFetch } from "@/lib/api";
 
 export type ContactType = "client" | "lead" | "vendor";
+
+export type LeadStatus = "new" | "sent";
+
+export const LEAD_STATUS_OPTIONS: { value: LeadStatus; label: string }[] = [
+  { value: "new", label: "New" },
+  { value: "sent", label: "Sent" },
+];
 
 export type Contact = {
   id: number;
@@ -19,6 +27,8 @@ export type Contact = {
   vendorType: string;
   description: string;
   location: string;
+  // Always "new" on client and vendor rows, where it isn't shown.
+  leadStatus: LeadStatus;
   createdAt: string;
 };
 
@@ -29,6 +39,7 @@ export type ContactFields = {
   vendorType: string;
   description: string;
   location: string;
+  leadStatus: LeadStatus;
 };
 
 // Shape returned by the backend's ContactItem schema.
@@ -41,6 +52,7 @@ type ContactItemResponse = {
   vendor_type: string | null;
   description: string | null;
   location: string | null;
+  lead_status: LeadStatus | null;
   created_at: string;
 };
 
@@ -54,6 +66,7 @@ function toContact(item: ContactItemResponse): Contact {
     vendorType: item.vendor_type ?? "",
     description: item.description ?? "",
     location: item.location ?? "",
+    leadStatus: item.lead_status ?? "new",
     createdAt: item.created_at,
   };
 }
@@ -67,6 +80,7 @@ function toRequestFields(fields: ContactFields) {
     vendor_type: fields.vendorType,
     description: fields.description,
     location: fields.location,
+    lead_status: fields.leadStatus,
   };
 }
 

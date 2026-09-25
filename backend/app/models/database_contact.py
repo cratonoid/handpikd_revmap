@@ -17,6 +17,11 @@ class ContactType(str, Enum):
     vendor = "vendor"
 
 
+class LeadStatus(str, Enum):
+    new = "new"
+    sent = "sent"
+
+
 class DatabaseContact(Document):
     id: int
     contact_type: ContactType
@@ -29,6 +34,10 @@ class DatabaseContact(Document):
     vendor_type: str | None = None
     description: str | None = None
     location: str | None = None
+    # Lead-only; always None on client and vendor rows. Leads saved before
+    # this field existed have no value stored and read back as "new" (see
+    # _to_item in routes/database_contacts.py).
+    lead_status: LeadStatus | None = None
     # Stamped server-side on insert.
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
