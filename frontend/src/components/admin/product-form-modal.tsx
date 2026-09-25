@@ -651,7 +651,8 @@ export function ProductFormModal({
                     </div>
                   )}
                   <input
-                    type="url"
+                    type="text"
+                    inputMode="url"
                     placeholder="Upload a file, or paste an image URL"
                     value={path}
                     onChange={(e) => updateImagePath(index, e.target.value)}

@@ -188,23 +188,23 @@ export function DatabasePageClient() {
       )}
 
       <div className={styles.tableWrap}>
-        <table className={styles.table}>
+        <table className={`${styles.table} ${styles.databaseTable}`}>
           <thead>
             <tr>
-              <th className={styles.tableHeadCell}>S.No</th>
-              <th className={styles.tableHeadCell}>{nameLabel}</th>
-              {isLead && <th className={styles.tableHeadCell}>Contact person</th>}
-              <th className={styles.tableHeadCell}>Phone no.</th>
-              <th className={styles.tableHeadCell}>Email</th>
-              {isLead && <th className={styles.tableHeadCell}>Status</th>}
+              <th className={`${styles.tableHeadCell} ${styles.databaseColSerial}`}>S.No</th>
+              <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>{nameLabel}</th>
+              {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Contact person</th>}
+              <th className={`${styles.tableHeadCell} ${styles.databaseColPhone}`}>Phone no.</th>
+              <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Email</th>
+              {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>Status</th>}
               {isVendor && (
                 <>
-                  <th className={styles.tableHeadCell}>Type</th>
-                  <th className={styles.tableHeadCell}>Location</th>
-                  <th className={styles.tableHeadCell}>Description</th>
+                  <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Type</th>
+                  <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Location</th>
+                  <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Description</th>
                 </>
               )}
-              <th className={styles.tableHeadCell}>
+              <th className={`${styles.tableHeadCell} ${styles.databaseColActions}`}>
                 <span className="sr-only">Actions</span>
               </th>
             </tr>
@@ -213,10 +213,20 @@ export function DatabasePageClient() {
             {visibleContacts.map((contact, index) => (
               <tr key={contact.id} className={styles.tableRow}>
                 <td className={styles.tableCell}>{index + 1}</td>
-                <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{contact.name}</td>
-                {isLead && <td className={styles.tableCell}>{contact.contactPerson || "—"}</td>}
-                <td className={styles.tableCell}>{contact.phone}</td>
-                <td className={styles.tableCell}>{contact.email || "—"}</td>
+                <td className={`${styles.tableCell} ${styles.tableCellPrimary} ${styles.databaseCellClip}`} title={contact.name}>
+                  {contact.name}
+                </td>
+                {isLead && (
+                  <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.contactPerson}>
+                    {contact.contactPerson || "—"}
+                  </td>
+                )}
+                <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.phone}>
+                  {contact.phone}
+                </td>
+                <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.email}>
+                  {contact.email || "—"}
+                </td>
                 {isLead && (
                   <td className={styles.tableCell}>
                     <StatusSelect
@@ -230,17 +240,20 @@ export function DatabasePageClient() {
                 )}
                 {isVendor && (
                   <>
-                    <td className={styles.tableCell}>{contact.vendorType || "—"}</td>
-                    <td className={styles.tableCell}>{contact.location || "—"}</td>
-                    <td className={styles.tableCell} title={contact.description}>
-                      <span className={styles.tableCellTruncate}>{contact.description || "—"}</span>
+                    <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.vendorType}>
+                      {contact.vendorType || "—"}
+                    </td>
+                    <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.location}>
+                      {contact.location || "—"}
+                    </td>
+                    <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.description}>
+                      {contact.description || "—"}
                     </td>
                   </>
                 )}
                 <td className={styles.tableCell}>
                   {confirmingDeleteId === contact.id ? (
                     <div className={styles.deleteConfirmRow}>
-                      <span className={styles.deleteConfirmText}>Delete?</span>
                       <button
                         type="button"
                         onClick={() => setConfirmingDeleteId(null)}

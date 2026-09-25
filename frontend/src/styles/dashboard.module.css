@@ -1721,6 +1721,48 @@ select.formInput:disabled {
   color: var(--color-charcoal);
 }
 
+/* The /admin/database table (components/admin/database-page-client.tsx).
+   Fixed layout so it always fits .tableWrap, with no horizontal scrollbar:
+   the short columns (S.No, phone, status, actions) get set widths and the
+   free-text ones share the rest, clipping long values with an ellipsis (the
+   cell's `title` shows the full text). The min-width only matters on a phone,
+   where squeezing the text columns any further would leave nothing readable. */
+.databaseTable {
+  table-layout: fixed;
+  min-width: 44rem;
+}
+
+.databaseTable .tableHeadCell,
+.databaseTable .tableCell {
+  padding: 0.65rem 0.75rem;
+}
+
+.databaseCellClip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.databaseColSerial {
+  width: 4.25rem;
+}
+
+.databaseColPhone {
+  width: 9rem;
+}
+
+.databaseColStatus {
+  width: 6.5rem;
+}
+
+.databaseColActions {
+  width: 9.5rem;
+}
+
+/* Edit / Delete (and Cancel / Yes, delete) stay on one line. */
+.databaseTable .deleteConfirmRow {
+  flex-wrap: nowrap;
+}
+
 /* Checkbox form field with a label and an explanatory line under it — the
    product form's "Visible" toggle (components/admin/product-form-modal.tsx).
    The whole thing is one <label>, so the hint text is part of the hit area
