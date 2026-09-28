@@ -608,11 +608,11 @@
   gap: 0.75rem 1rem;
 }
 
-/* margin-left: auto rather than justify-content: space-between so the pill
-   still sits flush right if a third control is ever added to the row. */
+/* Left-aligned: the page heading this pill used to sit opposite is hidden
+   (see "Page headings" in the phone layout section), so pushing it right
+   would leave it floating alone at the far edge. */
 .pageHeaderWithTabs .viewToggle {
   margin-top: 0;
-  margin-left: auto;
 }
 
 /* The orders tabs' pill + button row, pulled up to .invoicesToolbar's
@@ -4346,6 +4346,14 @@ select.formInput:disabled {
     padding: 0.95rem 1rem;
   }
 
+  /* The Database table's desktop min-width and fixed layout exist to keep
+     its columns from crushing each other; as cards they'd just push the
+     cards off the right edge. */
+  .table[data-cards].databaseTable {
+    min-width: 0;
+    table-layout: auto;
+  }
+
   /* :nth-child(n) only lifts specificity above the striped-row and pinned-
      column fills, which would otherwise paint blocks inside the card. */
   .table[data-cards] tr:nth-child(n) td {
@@ -4428,5 +4436,91 @@ select.formInput:disabled {
     z-index: 2;
     background-color: var(--color-cream);
     padding-top: calc(1.25rem + env(safe-area-inset-top));
+  }
+}
+
+/* -----------------------------------------------------------------------
+   Page headings: hidden in the dashboards, at every width
+   -----------------------------------------------------------------------
+   The highlighted sidebar link (desktop) or tab / drawer entry (phone)
+   already says which section is open, so a heading repeating its name only
+   pushes the page's controls down. Visually hidden rather than removed: it
+   stays the page's <h1> for screen readers and the document outline.
+   Scoped to .contentInner, so the public cart page sharing .pageHeading
+   keeps its own. A heading that says more than the section name (a single
+   order's "Order #34 details") opts back in with .pageHeadingKeep.
+   ----------------------------------------------------------------------- */
+
+/* Most pages wrap the heading in its own <div> inside .pageHeaderRow. With
+   the heading hidden that div would be an empty flex item still claiming a
+   gap's worth of space above the "+ Add new …" button, so it is flattened
+   away. Only when the heading is its only child: a wrapper that also holds
+   a subtitle keeps its box. */
+.contentInner .pageHeaderRow > div:has(> .pageHeading:not(.pageHeadingKeep):only-child) {
+  display: contents;
+}
+
+/* A header's actions group sat opposite the heading via margin-left: auto
+   (the Quotation page's "Company details" + "New quotation"). With the
+   heading gone it would float alone at the right edge; start it at the left
+   like every other page's "+ Add new …" button. */
+.contentInner .pageHeaderRow > .modalActionsRight {
+  margin-left: 0;
+}
+
+.contentInner .pageHeading:not(.pageHeadingKeep) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* -----------------------------------------------------------------------
+   Toolbars on phones
+   ----------------------------------------------------------------------- */
+
+@media (max-width: 639px) {
+  /* Trailing toolbar controls (the Orders page's Brief/Detail + "New sales
+     order" group, the vendors' Active/Deleted pill) push themselves to the
+     far right with margin-left: auto. Once one has wrapped onto its own line
+     that just strands it at the right edge, out of line with everything
+     above, so on a phone they start at the left like the rest. */
+  .viewToggleEnd,
+  .filterToggleRowAction,
+  .filterToggleRowEndGroup {
+    margin-left: 0;
+  }
+
+  /* Invoice date range: From and To share one full-width line, each input
+     taking whatever the label leaves. At width: auto, Chrome on Android
+     (which shows no dd-mm-yyyy placeholder in an empty date input) shrinks
+     them to blank stubs. */
+  .invoicesToolbarFilters {
+    width: 100%;
+  }
+
+  /* 40% basis: two fields fill the line, so "Download all" (same row in the
+     markup) wraps under them instead of squeezing them. */
+  .invoicesFilterField {
+    min-width: 0;
+    flex: 1 1 40%;
+  }
+
+  .invoicesFilterRow .invoicesFilterField .formInput {
+    width: 100%;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+}
+
+/* A bare .triggerButtonBase (the invoice PDF "Download") has no fill of its
+   own. In a table row that reads fine; alone in a card its padding just
+   looks like stray indentation, so it gets an outline to read as a button. */
+@media (max-width: 767px) {
+  .table[data-cards] td .triggerButtonBase {
+    border: 1px solid var(--color-border);
   }
 }

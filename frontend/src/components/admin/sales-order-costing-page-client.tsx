@@ -289,7 +289,7 @@ export function SalesOrderCostingPageClient({ salesOrderId }: { salesOrderId: nu
 
       <div className={styles.pageHeaderRow}>
         <div>
-          <h1 className={styles.pageHeading}>Order #{order.orderNo} details</h1>
+          <h1 className={`${styles.pageHeading} ${styles.pageHeadingKeep}`}>Order #{order.orderNo} details</h1>
           <p className={styles.pageSubtext}>
             {order.customerName} · {formatDate(order.date)} · {order.orderStatusName}
           </p>
