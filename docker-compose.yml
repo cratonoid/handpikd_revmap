@@ -5,6 +5,13 @@ services:
     env_file:
       - ./backend/.env
     environment:
+      # Pinned here rather than left to the server's .env: `environment:`
+      # overrides `env_file:`, so a dev-style AUTH_ENABLED=False copied into
+      # the server's .env can't silently switch off require_admin (see
+      # backend/app/api/deps.py) and leave every /admin endpoint public.
+      # Local dev runs uvicorn directly, not through compose, so its bypass
+      # is unaffected.
+      AUTH_ENABLED: "true"
       MEDIA_ROOT: /media
       PURCHASE_INVOICE_ROOT: /purchase_invoices
     volumes:
