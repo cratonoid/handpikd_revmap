@@ -25,7 +25,12 @@
 // Both live in backend/app/api/routes/invoices.py.
 import { useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
-import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue } from "@/lib/datetime-input";
+import {
+  addDaysToDatetimeLocalValue,
+  fromDatetimeLocalValue,
+  nowAsDatetimeLocalValue,
+  toDatetimeLocalValue,
+} from "@/lib/datetime-input";
 import type { Invoice, InvoiceStatus, OnlineOrOffline } from "@/lib/invoices";
 import { createInvoice, printInvoicePdf, updateInvoice } from "@/lib/invoices";
 import type { SalesOrder } from "@/lib/sales-orders";
@@ -36,6 +41,9 @@ import { XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
 type Status = "idle" | "saving";
+
+// New invoices default their due date to invoice date + this many days.
+const DUE_DATE_DAYS = 10;
 
 const INVOICE_STATUS_OPTIONS: SingleSelectOption[] = [
   { value: "unpaid", label: "Unpaid", isDeleted: false },
@@ -67,8 +75,13 @@ export function InvoiceFormModal({
     initialInvoice ? toDatetimeLocalValue(initialInvoice.date) : nowAsDatetimeLocalValue(),
   );
   const [dueDate, setDueDate] = useState(
-    initialInvoice ? toDatetimeLocalValue(initialInvoice.dueDate) : nowAsDatetimeLocalValue(),
+    initialInvoice
+      ? toDatetimeLocalValue(initialInvoice.dueDate)
+      : addDaysToDatetimeLocalValue(nowAsDatetimeLocalValue(), DUE_DATE_DAYS),
   );
+  // On a new invoice the due date tracks invoice date + DUE_DATE_DAYS until
+  // the admin edits it by hand; after that it's left alone.
+  const [dueDateEdited, setDueDateEdited] = useState(!!initialInvoice);
   const [onlineOrOffline, setOnlineOrOffline] = useState<OnlineOrOffline>(
     initialInvoice?.onlineOrOffline ?? "offline",
   );
@@ -262,7 +275,12 @@ export function InvoiceFormModal({
                 type="datetime-local"
                 required
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => {
+                  setDate(e.target.value);
+                  if (!dueDateEdited && e.target.value) {
+                    setDueDate(addDaysToDatetimeLocalValue(e.target.value, DUE_DATE_DAYS));
+                  }
+                }}
                 className={styles.formInput}
               />
             </div>
@@ -276,7 +294,10 @@ export function InvoiceFormModal({
                 type="datetime-local"
                 required
                 value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
+                onChange={(e) => {
+                  setDueDate(e.target.value);
+                  setDueDateEdited(true);
+                }}
                 className={styles.formInput}
               />
             </div>

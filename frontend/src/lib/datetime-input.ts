@@ -26,9 +26,9 @@ export function fromDatetimeLocalValue(value: string): string {
 }
 
 // Adds `days` to a datetime-local input value, formatted the same way as
-// nowAsDatetimeLocalValue. Used to default a quotation's "valid till" field
-// to its issue date + 10 days (quotation-form-modal.tsx) — the result stays
-// a plain editable input value, not a derived/computed one.
+// nowAsDatetimeLocalValue. Used to default a sales invoice's due date to its
+// invoice date + 10 days (invoice-form-modal.tsx) — the result stays a plain
+// editable input value, not a derived/computed one.
 export function addDaysToDatetimeLocalValue(value: string, days: number): string {
   const date = new Date(fromDatetimeLocalValue(value));
   date.setDate(date.getDate() + days);
