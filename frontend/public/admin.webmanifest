@@ -1,0 +1,17 @@
+{
+  "id": "/admin",
+  "name": "Handpikd Admin",
+  "short_name": "Handpikd",
+  "description": "Manage Handpikd orders, invoices, inventory and inquiries.",
+  "start_url": "/admin",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5f1ed",
+  "theme_color": "#f5f1ed",
+  "icons": [
+    { "src": "/pwa/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

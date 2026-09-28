@@ -13,6 +13,20 @@ const nextConfig: NextConfig = {
   // static /catalogue gallery were merged onto /catalogue. Permanent (308)
   // rather than temporary, so search engines transfer the old URL's ranking
   // instead of keeping both, and any existing inbound link still lands.
+  // The admin app's service worker (public/sw.js). Never HTTP-cached, so a
+  // changed worker reaches installed phones on their next launch instead of
+  // whenever a cached copy happens to expire.
+  async headers() {
+    return [
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        ],
+      },
+    ];
+  },
   async redirects() {
     return [
       {
