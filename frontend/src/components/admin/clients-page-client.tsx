@@ -13,6 +13,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { CustomerFormModal } from "@/components/admin/customer-form-modal";
+import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import { fetchCustomers, type Customer } from "@/lib/customers";
 import { stateNameForCode } from "@/lib/gst";
 import styles from "@/styles/dashboard.module.css";
@@ -27,7 +28,21 @@ export function ClientsPageClient() {
   const [modalState, setModalState] = useState<ModalState>(null);
   const [view, setView] = useState<View>("active");
 
-  const visibleCustomers = customers.filter((c) => (view === "deleted" ? c.isDeleted : !c.isDeleted));
+  const [search, setSearch] = useState("");
+
+  // Searches what the row shows plus the login email — the one field an
+  // admin is likely to have to hand that isn't a column.
+  const visibleCustomers = customers.filter(
+    (c) =>
+      (view === "deleted" ? c.isDeleted : !c.isDeleted) &&
+      matchesSearch(search, [
+        c.registeredName,
+        c.companyOrDepartment,
+        c.companyGst,
+        c.stateName || stateNameForCode(c.companyGst.slice(0, 2)),
+        c.mail,
+      ]),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -75,25 +90,34 @@ export function ClientsPageClient() {
         </Button>
       </div>
 
-      <div className={styles.viewToggle} role="tablist" aria-label="Client status">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "active"}
-          onClick={() => setView("active")}
-          className={`${styles.viewToggleButton} ${view === "active" ? styles.viewToggleButtonActive : ""}`}
-        >
-          Active clients
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "deleted"}
-          onClick={() => setView("deleted")}
-          className={`${styles.viewToggleButton} ${view === "deleted" ? styles.viewToggleButtonActive : ""}`}
-        >
-          Deleted clients
-        </button>
+      <div className={styles.filterToggleRow}>
+        <TableSearchInput
+          value={search}
+          onChange={setSearch}
+          label="Search clients"
+          placeholder="Search name, department, GST or email…"
+        />
+
+        <div className={`${styles.viewToggle} ${styles.viewToggleEnd}`} role="tablist" aria-label="Client status">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "active"}
+            onClick={() => setView("active")}
+            className={`${styles.viewToggleButton} ${view === "active" ? styles.viewToggleButtonActive : ""}`}
+          >
+            Active clients
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "deleted"}
+            onClick={() => setView("deleted")}
+            className={`${styles.viewToggleButton} ${view === "deleted" ? styles.viewToggleButtonActive : ""}`}
+          >
+            Deleted clients
+          </button>
+        </div>
       </div>
 
       <div className={styles.tableWrap}>
@@ -134,7 +158,13 @@ export function ClientsPageClient() {
         {loadState === "loading" && <p className={styles.pageSubtext}>Loading customers…</p>}
         {loadState === "error" && <p className={styles.formError}>Couldn&apos;t load customers. Please try again.</p>}
         {loadState === "loaded" && visibleCustomers.length === 0 && (
-          <p className={styles.pageSubtext}>{view === "deleted" ? "No deleted customers." : "No active customers."}</p>
+          <p className={styles.pageSubtext}>
+            {search.trim() !== ""
+              ? "No customers match your search."
+              : view === "deleted"
+                ? "No deleted customers."
+                : "No active customers."}
+          </p>
         )}
       </div>
 

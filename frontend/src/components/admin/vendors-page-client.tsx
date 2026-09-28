@@ -15,6 +15,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { VendorFormModal } from "@/components/admin/vendor-form-modal";
+import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import { fetchVendors, VENDOR_TYPE_LABELS, type Vendor, type VendorType } from "@/lib/vendors";
 import { stateNameForCode } from "@/lib/gst";
 import styles from "@/styles/dashboard.module.css";
@@ -42,9 +43,21 @@ export function VendorsPageClient() {
   const [view, setView] = useState<View>("active");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
+  const [search, setSearch] = useState("");
+
+  // Searches the row as rendered — type label and derived state name rather
+  // than the raw codes — so what you can find is what you can see.
   const visibleVendors = vendors.filter(
     (v) =>
-      (view === "deleted" ? v.isDeleted : !v.isDeleted) && (typeFilter === "all" || v.vendorType === typeFilter),
+      (view === "deleted" ? v.isDeleted : !v.isDeleted) &&
+      (typeFilter === "all" || v.vendorType === typeFilter) &&
+      matchesSearch(search, [
+        v.registeredName,
+        v.vendorType ? VENDOR_TYPE_LABELS[v.vendorType] : "",
+        v.gst,
+        v.stateName || stateNameForCode(v.gst.slice(0, 2)),
+        v.address,
+      ]),
   );
 
   useEffect(() => {
@@ -95,6 +108,13 @@ export function VendorsPageClient() {
       </div>
 
       <div className={styles.filterToggleRow}>
+        <TableSearchInput
+          value={search}
+          onChange={setSearch}
+          label="Search vendors"
+          placeholder="Search name, GST, state or address…"
+        />
+
         <div className={styles.viewToggle} role="tablist" aria-label="Vendor type">
           {TYPE_FILTERS.map((filter) => (
             <button
@@ -170,7 +190,9 @@ export function VendorsPageClient() {
         </table>
         {loadState === "loading" && <p className={styles.pageSubtext}>Loading vendors…</p>}
         {loadState === "loaded" && visibleVendors.length === 0 && (
-          <p className={styles.pageSubtext}>No vendors available.</p>
+          <p className={styles.pageSubtext}>
+            {search.trim() !== "" ? "No vendors match your search." : "No vendors available."}
+          </p>
         )}
       </div>
 
