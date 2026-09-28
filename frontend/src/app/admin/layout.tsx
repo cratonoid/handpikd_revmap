@@ -25,10 +25,15 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-// Tints the phone's status bar / browser chrome to the dashboard's cream
-// background instead of the default white.
+// themeColor tints the phone's status bar / browser chrome to the dashboard's
+// cream background instead of the default white. viewportFit: "cover" lets
+// the installed app use the whole screen; the top bar, tab bar and modals
+// pad themselves clear of the notch and home indicator with
+// env(safe-area-inset-*) (see the phone layout section of
+// dashboard.module.css).
 export const viewport: Viewport = {
   themeColor: "#f5f1ed",
+  viewportFit: "cover",
 };
 
 export default function AdminLayout({ children }: { children: ReactNode }) {

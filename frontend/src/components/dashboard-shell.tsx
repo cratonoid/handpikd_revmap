@@ -69,6 +69,7 @@ import {
   UsersIcon,
   XMarkIcon,
 } from "@/components/icons";
+import { useResponsiveTables } from "@/components/use-responsive-tables";
 import { clearSession, getUserRole, type UserRole } from "@/lib/auth";
 import styles from "@/styles/dashboard.module.css";
 
@@ -102,6 +103,28 @@ const NAV_ITEMS: Record<UserRole, NavItem[]> = {
   ],
 };
 
+// The phone-only bottom tab bar: the screens reached for most often on the go,
+// one tap away instead of two through the drawer. Everything else (and these
+// too) stays in the drawer. Customers have only two destinations, so the
+// drawer alone serves them and they get no tab bar.
+const TAB_ITEMS: Partial<Record<UserRole, NavItem[]>> = {
+  admin: [
+    { label: "Dashboard", href: "/admin", icon: ChartBarIcon },
+    { label: "Orders", href: "/admin/orders", icon: ShoppingCartIcon },
+    { label: "Invoices", href: "/admin/invoices", icon: ReceiptIcon },
+    { label: "Inventory", href: "/admin/inventory", icon: ArchiveBoxIcon },
+    { label: "Inquiries", href: "/admin/inquiry-form", icon: GiftBoxIcon },
+  ],
+};
+
+// A section's root link also stays lit on its sub-pages (the sales order
+// details page under /admin/orders). The dashboard root is the exception:
+// every admin page sits under /admin, so it matches exactly or not at all.
+function isActiveHref(pathname: string, href: string) {
+  if (href === "/admin" || href === "/customer") return pathname === href;
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 const ROLE_LABEL: Record<UserRole, string> = {
   admin: "Admin",
   customer: "Customer",
@@ -129,6 +152,9 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
   // The drawer panel itself, focused on open so the next Tab lands inside the
   // nav rather than continuing from wherever focus was in the page.
   const navPanelRef = useRef<HTMLElement>(null);
+  // The content pane, whose tables useResponsiveTables turns into cards on
+  // a phone when they don't fit.
+  const contentRef = useRef<HTMLElement>(null);
 
   // Runs once, after mount — i.e. only once hydration has already
   // settled, so there's no earlier "unauthorized" commit for a redirect
@@ -140,6 +166,8 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
       setStatus(getUserRole() === role ? "authorized" : "unauthorized");
     });
   }, [role]);
+
+  useResponsiveTables(contentRef, styles.tableCellPrimary, status === "authorized");
 
   useEffect(() => {
     if (status === "unauthorized") {
@@ -210,10 +238,11 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
   // actually on. The top bar otherwise shows only the logo, which says nothing
   // about where in the dashboard you are once the horizontal pill strip (which
   // used to answer that) is gone.
-  const activeItem = navItems.find((item) => item.href === pathname);
+  const activeItem = navItems.find((item) => isActiveHref(pathname, item.href));
+  const tabItems = TAB_ITEMS[role];
 
   return (
-    <div className={styles.shell}>
+    <div className={`${styles.shell} ${tabItems ? styles.shellWithTabs : ""}`}>
       <header className={styles.topbar}>
         <div className={styles.topbarLeft}>
           {/* Hidden at >= 768px, where .sidebar is always on screen. */}
@@ -282,7 +311,7 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
           </div>
 
           {navItems.map((item) => {
-            const isActive = pathname === item.href;
+            const isActive = isActiveHref(pathname, item.href);
             const Icon = item.icon;
             return (
               <Link
@@ -308,10 +337,33 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
             put); .contentInner holds the centred max-width column, which
             keeps the scrollbar at the edge of the pane rather than floating
             mid-screen on a wide monitor. */}
-        <main className={styles.content}>
+        <main ref={contentRef} className={styles.content}>
           <div className={styles.contentInner}>{children}</div>
         </main>
       </div>
+
+      {/* Hidden at >= 768px, where the sidebar shows every destination. */}
+      {tabItems && (
+        <nav className={styles.tabBar} aria-label="Quick navigation">
+          {tabItems.map((item) => {
+            const isActive = isActiveHref(pathname, item.href);
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`${styles.tabLink} ${isActive ? styles.tabLinkActive : ""}`}
+                aria-current={isActive ? "page" : undefined}
+              >
+                <span className={styles.tabIcon}>
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      )}
     </div>
   );
 }

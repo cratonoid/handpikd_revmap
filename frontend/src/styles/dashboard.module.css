@@ -4201,3 +4201,232 @@ select.formInput:disabled {
   display: flex;
   justify-content: flex-end;
 }
+
+/* =============================================================================
+   Phone layout: installed-app safe areas, bottom tab bar, card tables and
+   full-screen modals. Everything here applies below 768px only (the tab bar
+   and card tables) or below 640px (modals); desktop is untouched.
+   ============================================================================= */
+
+/* The installed app runs edge to edge (viewportFit: "cover" in
+   app/admin/layout.tsx), so the top bar clears the notch / status bar
+   itself. env() is 0 in a normal browser tab, where this changes nothing. */
+.topbar {
+  padding-top: calc(0.75rem + env(safe-area-inset-top));
+}
+
+/* -----------------------------------------------------------------------
+   Bottom tab bar (components/dashboard-shell.tsx, TAB_ITEMS)
+   ----------------------------------------------------------------------- */
+
+.tabBar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  /* Same layer as .topbar: under the drawer's backdrop (50), so an open
+     drawer dims it along with the page. */
+  z-index: 40;
+  display: flex;
+  border-top: 1px solid var(--color-border);
+  background-color: color-mix(in srgb, var(--color-cream) 94%, transparent);
+  backdrop-filter: blur(6px);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tabLink {
+  display: flex;
+  min-width: 0;
+  min-height: 3.5rem;
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: 0.4rem 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--color-ink) 62%, transparent);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tabLink:focus-visible {
+  outline: 2px solid var(--color-charcoal);
+  outline-offset: -4px;
+  border-radius: 0.75rem;
+}
+
+/* The pill behind the active tab's icon, rather than colour alone, so the
+   current screen reads at a glance in bright sunlight too. */
+.tabIcon {
+  display: flex;
+  height: 1.75rem;
+  width: 3rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  transition: background-color 0.2s;
+}
+
+.tabLinkActive {
+  color: var(--color-charcoal);
+}
+
+.tabLinkActive .tabIcon {
+  background-color: var(--color-button-tertiary);
+}
+
+@media (min-width: 768px) {
+  .tabBar {
+    display: none;
+  }
+}
+
+/* Room under the last row so the fixed bar never covers it. */
+@media (max-width: 767px) {
+  .shellWithTabs .contentInner {
+    padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* -----------------------------------------------------------------------
+   Card tables (components/use-responsive-tables.ts)
+   -----------------------------------------------------------------------
+   A table flagged data-cards (below 768px, and only when it doesn't fit)
+   drops its grid: each row becomes a card, its title cell across the top
+   and the other cells in two columns, each under its column's heading
+   (data-label). Heading cells holding a control (sort, column filter) stay
+   on screen as a row of chips above the cards, so sorting and filtering
+   still work; plain-text headings are dropped, since every card now
+   carries them as labels.
+   ----------------------------------------------------------------------- */
+
+@media (max-width: 767px) {
+  .table[data-cards],
+  .table[data-cards] thead,
+  .table[data-cards] tbody,
+  .table[data-cards] tfoot {
+    display: block;
+  }
+
+  .table[data-cards] thead tr {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .table[data-cards] thead tr:has(th button) {
+    margin-bottom: 0.875rem;
+  }
+
+  .table[data-cards] th {
+    display: none;
+  }
+
+  .table[data-cards] th:has(button) {
+    position: static;
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--color-border);
+    border-radius: 9999px;
+    background-color: transparent;
+    box-shadow: none;
+    padding: 0.4rem 0.85rem;
+  }
+
+  .table[data-cards] tbody tr,
+  .table[data-cards] tfoot tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem 1rem;
+    margin-bottom: 0.625rem;
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+    background-color: color-mix(in srgb, var(--color-white) 45%, var(--color-cream));
+    padding: 0.95rem 1rem;
+  }
+
+  /* :nth-child(n) only lifts specificity above the striped-row and pinned-
+     column fills, which would otherwise paint blocks inside the card. */
+  .table[data-cards] tr:nth-child(n) td {
+    position: static;
+    display: block;
+    min-width: 0;
+    background-color: transparent;
+    box-shadow: none;
+    padding: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .table[data-cards] td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.2rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+  }
+
+  .table[data-cards] td[data-label=""]::before,
+  .table[data-cards] td[data-card-title]::before {
+    content: none;
+  }
+
+  .table[data-cards] tr:nth-child(n) td[data-card-title] {
+    grid-column: 1 / -1;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--color-charcoal);
+  }
+
+  /* A row number means nothing once rows are separate cards. */
+  .table[data-cards] tr:nth-child(n) td[data-card-serial] {
+    display: none;
+  }
+
+  /* Controls and spanning cells get the card's full width. */
+  .table[data-cards] td[colspan],
+  .table[data-cards] td:has(button, select, input, textarea) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* -----------------------------------------------------------------------
+   Full-screen modals on phones
+   -----------------------------------------------------------------------
+   A floating panel inside 2.5rem of dimmed margin wastes a phone's width
+   on long forms (sales orders, invoices). Below 640px the panel fills the
+   screen instead, with its header (title + close) pinned while the form
+   scrolls under it.
+   ----------------------------------------------------------------------- */
+
+@media (max-width: 639px) {
+  /* align-items stays flex-start (not stretch): a stretched panel is pinned
+     to exactly one screen height, and a long form then spills out of it with
+     no background behind it. min-height below fills short forms instead. The
+     solid fill means nothing behind can show through either way. */
+  .modalBackdrop {
+    background-color: var(--color-cream);
+    padding: 0;
+  }
+
+  .modalPanel {
+    min-height: 100%;
+    max-width: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .modalHeader {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background-color: var(--color-cream);
+    padding-top: calc(1.25rem + env(safe-area-inset-top));
+  }
+}
