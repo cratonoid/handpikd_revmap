@@ -5,6 +5,7 @@
 from app.models.email_template import EmailAudience
 from app.services.email_render import (
     build_html_document,
+    fit_logo,
     fill_body,
     fill_subject,
     html_to_text,
@@ -66,3 +67,9 @@ def test_build_message_has_text_html_and_attachment():
     kinds = [part.get_content_type() for part in message.walk()]
     assert "text/plain" in kinds and "text/html" in kinds and "application/pdf" in kinds
     assert [part.get_filename() for part in message.iter_attachments()] == ["catalogue.pdf"]
+
+
+def test_logo_keeps_its_shape_inside_the_box():
+    assert fit_logo(192, 192) == (96, 96)
+    assert fit_logo(600, 200) == (180, 60)
+    assert fit_logo(100, 400) == (24, 96)

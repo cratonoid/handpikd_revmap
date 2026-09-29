@@ -8,6 +8,7 @@
 # The frontend mirrors this list in lib/emails.ts (PLACEHOLDER_FIELDS).
 import html
 import re
+from dataclasses import dataclass
 from html.parser import HTMLParser
 
 from app.models.email_template import EmailAudience
@@ -52,13 +53,43 @@ def fill_body(body_html: str, values: dict[str, str]) -> str:
     return _PLACEHOLDER.sub(lambda match: html.escape(values.get(match.group(1), match.group(0))), body_html)
 
 
-def build_html_document(body_html: str, signature_html: str = "") -> str:
+@dataclass
+class InlineLogo:
+    # Content-ID of the image part embedded in the same message (see
+    # build_message in services/email_sender.py), and the size to show it
+    # at in CSS pixels.
+    cid: str
+    width: int
+    height: int
+
+
+# The logo is fitted inside this box, keeping its shape.
+LOGO_MAX_WIDTH = 180
+LOGO_MAX_HEIGHT = 96
+
+
+def fit_logo(width: int, height: int) -> tuple[int, int]:
+    scale = min(LOGO_MAX_WIDTH / width, LOGO_MAX_HEIGHT / height)
+    return max(1, round(width * scale)), max(1, round(height * scale))
+
+
+def build_html_document(body_html: str, signature_html: str = "", logo: InlineLogo | None = None) -> str:
     """Wraps the editor's fragment in a full, inline-styled HTML email.
 
     Inline styles only: most mail clients drop <style> blocks and every
-    external stylesheet.
+    external stylesheet. `logo` is the signature logo embedded in the same
+    message; None leaves it out.
     """
     signature = f'<div style="margin-top:24px;">{signature_html}</div>' if signature_html.strip() else ""
+    if logo is not None:
+        # width and height as attributes as well as styles: Outlook ignores
+        # the CSS and would otherwise show the image at full size.
+        signature += (
+            '<div style="margin-top:16px;">'
+            f'<img src="cid:{html.escape(logo.cid)}" alt="Handpikd" width="{logo.width}" height="{logo.height}" '
+            f'style="display:block;width:{logo.width}px;height:{logo.height}px;border:0;">'
+            "</div>"
+        )
     return (
         "<!DOCTYPE html>"
         '<html><head><meta charset="utf-8"></head>'

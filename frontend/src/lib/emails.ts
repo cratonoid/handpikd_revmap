@@ -50,7 +50,16 @@ export type EmailTemplate = {
   updatedAt: string;
 };
 
-export type RecipientStatus = "pending" | "sent" | "failed";
+// "bounced": Titan accepted it, then the recipient's server sent it back
+// (found by the backend's periodic bounce check).
+export type RecipientStatus = "pending" | "sent" | "failed" | "bounced";
+
+export const RECIPIENT_STATUS_LABELS: Record<RecipientStatus, string> = {
+  pending: "Waiting",
+  sent: "Sent",
+  failed: "Failed",
+  bounced: "Bounced",
+};
 
 export type EmailSendRecipient = {
   contactId: number;
@@ -60,6 +69,7 @@ export type EmailSendRecipient = {
   error: string;
   savedToSent: boolean;
   sentAt: string | null;
+  bouncedAt: string | null;
 };
 
 export type EmailSend = {
@@ -72,8 +82,10 @@ export type EmailSend = {
   done: boolean;
   interrupted: boolean;
   total: number;
+  // Delivered and not (yet) bounced.
   sentCount: number;
   failedCount: number;
+  bouncedCount: number;
   recipients: EmailSendRecipient[];
   createdAt: string;
 };
@@ -112,6 +124,7 @@ type SendItemResponse = {
   total: number;
   sent_count: number;
   failed_count: number;
+  bounced_count: number;
   recipients: {
     contact_id: number;
     name: string;
@@ -120,6 +133,7 @@ type SendItemResponse = {
     error: string | null;
     saved_to_sent: boolean;
     sent_at: string | null;
+    bounced_at: string | null;
   }[];
   created_at: string;
 };
@@ -155,6 +169,7 @@ function toSend(item: SendItemResponse): EmailSend {
     total: item.total,
     sentCount: item.sent_count,
     failedCount: item.failed_count,
+    bouncedCount: item.bounced_count,
     recipients: item.recipients.map((recipient) => ({
       contactId: recipient.contact_id,
       name: recipient.name,
@@ -163,6 +178,7 @@ function toSend(item: SendItemResponse): EmailSend {
       error: recipient.error ?? "",
       savedToSent: recipient.saved_to_sent,
       sentAt: recipient.sent_at,
+      bouncedAt: recipient.bounced_at,
     })),
     createdAt: item.created_at,
   };
@@ -311,23 +327,60 @@ export async function removeTemplateAttachment(templateId: number, attachmentId:
 
 // --- signature -------------------------------------------------------------
 
-export async function fetchSignature(): Promise<string> {
+export type EmailSignature = {
+  html: string;
+  // Whether emails carry the logo under the signature text.
+  showLogo: boolean;
+  // An uploaded logo rather than the bundled Handpikd one.
+  hasCustomLogo: boolean;
+};
+
+type SignatureResponse = { signature_html: string; show_logo: boolean; has_custom_logo: boolean };
+
+function toSignature(body: SignatureResponse): EmailSignature {
+  return { html: body.signature_html, showLogo: body.show_logo, hasCustomLogo: body.has_custom_logo };
+}
+
+export async function fetchSignature(): Promise<EmailSignature> {
   const response = await apiFetch("/admin/email/get_signature");
   if (!response.ok) {
     throw new Error("Failed to load the email signature.");
   }
-  const body: { signature_html: string } = await response.json();
-  return body.signature_html;
+  return toSignature(await response.json());
 }
 
-export async function saveSignature(signatureHtml: string): Promise<string> {
+export async function saveSignature(html: string, showLogo: boolean): Promise<EmailSignature> {
   const response = await postJson(
     "/admin/email/update_signature",
-    { signature_html: signatureHtml },
+    { signature_html: html, show_logo: showLogo },
     "Couldn't save the signature. Please try again.",
   );
-  const body: { signature_html: string } = await response.json();
-  return body.signature_html;
+  return toSignature(await response.json());
+}
+
+// The logo image as an object URL (the endpoint needs the auth header, so
+// a plain <img src> can't load it). Revoke it when done.
+export async function fetchSignatureLogoUrl(): Promise<string> {
+  const response = await apiFetch("/admin/email/get_signature_logo");
+  if (!response.ok) {
+    throw new Error("Couldn't load the signature logo.");
+  }
+  return URL.createObjectURL(await response.blob());
+}
+
+export async function uploadSignatureLogo(file: File): Promise<EmailSignature> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await apiFetch("/admin/email/upload_signature_logo", { method: "POST", body: formData });
+  if (!response.ok) {
+    throw new Error(await detailOr(response, "Couldn't upload the logo."));
+  }
+  return toSignature(await response.json());
+}
+
+export async function resetSignatureLogo(): Promise<EmailSignature> {
+  const response = await postJson("/admin/email/reset_signature_logo", {}, "Couldn't reset the logo.");
+  return toSignature(await response.json());
 }
 
 // --- sending ---------------------------------------------------------------
@@ -363,6 +416,14 @@ export async function fetchSend(id: number): Promise<EmailSend> {
     throw new Error("Couldn't check on the send.");
   }
   return toSend(await response.json());
+}
+
+// Reads the Titan inbox for bounce reports now, rather than waiting for the
+// backend's next scheduled check. Resolves with a message to show.
+export async function checkBounces(): Promise<string> {
+  const response = await postJson("/admin/email/check_bounces", {}, "Couldn't check for bounces.");
+  const body: { message: string } = await response.json();
+  return body.message;
 }
 
 export async function fetchSends(): Promise<EmailSend[]> {

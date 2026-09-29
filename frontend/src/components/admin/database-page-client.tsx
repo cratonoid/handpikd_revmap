@@ -108,10 +108,13 @@ export function DatabasePageClient() {
     );
 
   // Selection may include rows the search currently hides; they still count.
+  // Addresses that bounced are left out of bulk sends until corrected; the
+  // row's own Email button still works, for a deliberate retry.
+  const canBulkEmail = (contact: Contact) => Boolean(contact.email) && !contact.emailBounceReason;
   const selectedContacts = contacts.filter(
-    (contact) => contact.type === tab && contact.email && selectedIds.includes(contact.id),
+    (contact) => contact.type === tab && canBulkEmail(contact) && selectedIds.includes(contact.id),
   );
-  const selectableVisible = visibleContacts.filter((contact) => contact.email);
+  const selectableVisible = visibleContacts.filter(canBulkEmail);
   const allVisibleSelected =
     selectableVisible.length > 0 && selectableVisible.every((contact) => selectedIds.includes(contact.id));
 
@@ -324,10 +327,16 @@ export function DatabasePageClient() {
                   <td className={styles.tableCell}>
                     <input
                       type="checkbox"
-                      checked={Boolean(contact.email) && selectedIds.includes(contact.id)}
+                      checked={canBulkEmail(contact) && selectedIds.includes(contact.id)}
                       onChange={() => toggleSelected(contact.id)}
-                      disabled={!contact.email}
-                      title={contact.email ? undefined : "No email address"}
+                      disabled={!canBulkEmail(contact)}
+                      title={
+                        !contact.email
+                          ? "No email address"
+                          : contact.emailBounceReason
+                            ? "The last email to this address bounced. Fix the address to include it again."
+                            : undefined
+                      }
                       aria-label={`Select ${contact.name}`}
                       className={emailStyles.rowCheckbox}
                     />
@@ -345,8 +354,12 @@ export function DatabasePageClient() {
                 <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.phone}>
                   {contact.phone}
                 </td>
-                <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.email}>
+                <td
+                  className={`${styles.tableCell} ${styles.databaseCellClip}`}
+                  title={contact.emailBounceReason ? `Bounced: ${contact.emailBounceReason}` : contact.email}
+                >
                   {contact.email || "—"}
+                  {contact.emailBounceReason && <span className={emailStyles.bouncedBadge}>Bounced</span>}
                 </td>
                 {isLead && (
                   <td className={styles.tableCell}>

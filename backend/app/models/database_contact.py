@@ -51,6 +51,11 @@ class DatabaseContact(Document):
     # emailing a lead from the app ticks "mail" itself (see
     # services/email_sender.py). Empty on client and vendor rows.
     outreach_channels: list[OutreachChannel] = []
+    # Set when an email the app sent to `email` bounced (see
+    # services/email_bounces.py), so the address can be flagged and left out
+    # of bulk sends. Cleared whenever the email address is edited.
+    email_bounced_at: datetime | None = None
+    email_bounce_reason: str | None = None
     # Stamped server-side on insert.
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 

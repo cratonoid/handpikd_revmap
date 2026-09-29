@@ -42,6 +42,8 @@ export type Contact = {
   // Lead-only; [] on client and vendor rows. "mail" is also ticked by the
   // backend whenever the lead is emailed from the app.
   outreachChannels: OutreachChannel[];
+  // Why the last email the app sent to this address bounced; "" if it didn't.
+  emailBounceReason: string;
   createdAt: string;
 };
 
@@ -69,6 +71,7 @@ type ContactItemResponse = {
   contact_person: string | null;
   lead_status: LeadStatus | null;
   outreach_channels?: OutreachChannel[];
+  email_bounce_reason?: string | null;
   created_at: string;
 };
 
@@ -85,6 +88,7 @@ function toContact(item: ContactItemResponse): Contact {
     contactPerson: item.contact_person ?? "",
     leadStatus: item.lead_status ?? "new",
     outreachChannels: item.outreach_channels ?? [],
+    emailBounceReason: item.email_bounce_reason ?? "",
     createdAt: item.created_at,
   };
 }

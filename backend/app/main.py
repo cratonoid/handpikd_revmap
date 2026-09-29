@@ -1,5 +1,6 @@
 # FastAPI application entrypoint: wires up middleware, routers, and the MongoDB lifespan hook.
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -9,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.router import api_router
 from app.core.config import settings
 from app.core.db import close_mongo_connection, connect_to_mongo
+from app.services.email_bounces import bounce_check_loop
 from app.services.pdf_renderer import start_browser, stop_browser
 
 
@@ -19,7 +21,13 @@ async def lifespan(app: FastAPI):
     # headless Chromium launch takes ~1-2s, so every quotation PDF reuses
     # this one already-running browser instead of paying that cost each time.
     await start_browser()
+    # Looks for bounce reports in the Titan inbox every few minutes (see
+    # services/email_bounces.py); a no-op until SMTP_USER/SMTP_PASSWORD are set.
+    bounce_task = asyncio.create_task(bounce_check_loop())
     yield
+    bounce_task.cancel()
+    with suppress(asyncio.CancelledError):
+        await bounce_task
     await stop_browser()
     await close_mongo_connection()
 

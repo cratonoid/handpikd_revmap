@@ -544,7 +544,8 @@
   background-color: var(--color-status-completed);
 }
 
-.sendStatus_failed {
+.sendStatus_failed,
+.sendStatus_bounced {
   background-color: var(--color-red);
 }
 
@@ -650,4 +651,70 @@
 .rowCheckbox:disabled {
   cursor: not-allowed;
   opacity: 0.4;
+}
+
+/* --- Signature logo ---------------------------------------------------- */
+
+.logoPanel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem 1.25rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-white);
+  padding: 1rem;
+}
+
+.logoPreviewBox {
+  display: flex;
+  height: 96px;
+  width: 180px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* Same box the email fits the logo into (fit_logo in
+   backend/app/services/email_render.py). */
+.logoPreview {
+  max-height: 96px;
+  max-width: 180px;
+  object-fit: contain;
+}
+
+.logoPreviewOff {
+  opacity: 0.3;
+}
+
+.logoControls {
+  display: flex;
+  min-width: 14rem;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.logoButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.previewLogo {
+  display: block;
+  margin-top: 1rem;
+  max-height: 96px;
+  max-width: 180px;
+  object-fit: contain;
+}
+
+.bouncedBadge {
+  margin-left: 0.4rem;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, var(--color-red) 12%, transparent);
+  padding: 0.05rem 0.45rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: var(--color-red);
 }

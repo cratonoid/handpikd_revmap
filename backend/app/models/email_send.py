@@ -26,7 +26,11 @@ class EmailSendStatus(str, Enum):
 class RecipientStatus(str, Enum):
     pending = "pending"
     sent = "sent"
+    # Refused by the mail server while sending.
     failed = "failed"
+    # Accepted by Titan, then returned by the recipient's server — found
+    # afterwards in the mailbox's bounce reports (services/email_bounces.py).
+    bounced = "bounced"
 
 
 class EmailRecipient(BaseModel):
@@ -40,6 +44,11 @@ class EmailRecipient(BaseModel):
     # Sent folder — the recipient still got it.
     saved_to_sent: bool = False
     sent_at: datetime | None = None
+    # The Message-ID header this recipient's copy went out with — what a
+    # bounce report quotes back, so it can be matched to exactly this send.
+    message_id: str | None = None
+    bounce_reason: str | None = None
+    bounced_at: datetime | None = None
 
 
 class EmailSend(Document):

@@ -11,21 +11,27 @@
 //
 // The banner at the top says whether the Titan mailbox is set up, and can
 // check the login without emailing anyone.
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/button";
 import { EmailTemplateModal } from "@/components/admin/email-template-modal";
 import { isHtmlEmpty, RichTextEditor } from "@/components/admin/rich-text-editor";
 import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import {
   AUDIENCE_LABELS,
+  checkBounces,
   deleteTemplate,
   fetchEmailStatus,
   fetchSends,
   fetchSignature,
+  fetchSignatureLogoUrl,
   fetchTemplates,
+  RECIPIENT_STATUS_LABELS,
+  resetSignatureLogo,
   saveSignature,
   testEmailConnection,
+  uploadSignatureLogo,
   type EmailSend,
+  type EmailSignature,
   type EmailStatus,
   type EmailTemplate,
 } from "@/lib/emails";
@@ -315,6 +321,22 @@ function SentTab() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [checkResult, setCheckResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  async function handleCheckBounces() {
+    setChecking(true);
+    setCheckResult(null);
+    try {
+      const message = await checkBounces();
+      setSends(await fetchSends());
+      setCheckResult({ ok: true, message });
+    } catch (caught) {
+      setCheckResult({ ok: false, message: caught instanceof Error ? caught.message : "Couldn't check for bounces." });
+    } finally {
+      setChecking(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -346,7 +368,19 @@ function SentTab() {
     <>
       <div className={styles.tabToolbar}>
         <TableSearchInput value={search} onChange={setSearch} label="Search sent emails" placeholder="Search subject, template or recipient…" />
+        <button type="button" onClick={() => void handleCheckBounces()} disabled={checking} className={styles.smallButton}>
+          {checking ? "Checking inbox…" : "Check for bounces"}
+        </button>
       </div>
+      <p className={dashboardStyles.formHint}>
+        &quot;Sent&quot; means Titan accepted the email. If the recipient&apos;s server later returns it (address
+        doesn&apos;t exist, inbox full), it changes to <strong>Bounced</strong>. Your inbox is checked every 10 minutes.
+      </p>
+      {checkResult && (
+        <p role="status" className={checkResult.ok ? styles.testOk : styles.testFailed}>
+          {checkResult.message}
+        </p>
+      )}
 
       <div className={dashboardStyles.tableWrap}>
         <table className={dashboardStyles.table}>
@@ -377,6 +411,7 @@ function SentTab() {
                   <td className={dashboardStyles.tableCell}>
                     {send.sentCount}/{send.total} sent
                     {send.failedCount > 0 && <span className={styles.failedText}> · {send.failedCount} failed</span>}
+                    {send.bouncedCount > 0 && <span className={styles.failedText}> · {send.bouncedCount} bounced</span>}
                     {!send.done && " · sending…"}
                     {send.interrupted && <span className={styles.failedText}> · interrupted</span>}
                   </td>
@@ -412,9 +447,7 @@ function SentTab() {
                             <span className={styles.sendStatusLabel}>
                               {recipient.status === "sent" && recipient.sentAt
                                 ? formatDateTime(utc(recipient.sentAt))
-                                : recipient.status === "failed"
-                                  ? "Failed"
-                                  : "Waiting"}
+                                : RECIPIENT_STATUS_LABELS[recipient.status]}
                             </span>
                           </li>
                         ))}
@@ -439,18 +472,27 @@ function SentTab() {
 function SignatureTab() {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [initial, setInitial] = useState("");
+  const [saved, setSaved] = useState<EmailSignature | null>(null);
   const [html, setHtml] = useState("");
+  const [showLogo, setShowLogo] = useState(true);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetchSignature()
-      .then((value) => {
-        if (cancelled) return;
-        setInitial(value);
-        setHtml(value);
+    Promise.all([fetchSignature(), fetchSignatureLogoUrl().catch(() => null)])
+      .then(([signature, url]) => {
+        if (cancelled) {
+          if (url) URL.revokeObjectURL(url);
+          return;
+        }
+        setSaved(signature);
+        setHtml(signature.html);
+        setShowLogo(signature.showLogo);
+        setLogoUrl(url);
         setLoadState("loaded");
       })
       .catch((caught: unknown) => {
@@ -463,12 +505,24 @@ function SignatureTab() {
     };
   }, []);
 
+  // Object URLs hold the image in memory until revoked.
+  useEffect(() => {
+    return () => {
+      if (logoUrl) URL.revokeObjectURL(logoUrl);
+    };
+  }, [logoUrl]);
+
+  async function refreshLogo() {
+    const url = await fetchSignatureLogoUrl().catch(() => null);
+    setLogoUrl(url);
+  }
+
   async function handleSave() {
     setSaving(true);
     setMessage(null);
     try {
-      const saved = await saveSignature(isHtmlEmpty(html) ? "" : html);
-      setInitial(saved);
+      const next = await saveSignature(isHtmlEmpty(html) ? "" : html, showLogo);
+      setSaved(next);
       setMessage({ ok: true, text: "Signature saved." });
     } catch (caught) {
       setMessage({ ok: false, text: caught instanceof Error ? caught.message : "Couldn't save the signature." });
@@ -477,32 +531,116 @@ function SignatureTab() {
     }
   }
 
+  async function handleLogoChange(action: () => Promise<EmailSignature>, done: string) {
+    setLogoBusy(true);
+    setMessage(null);
+    try {
+      const next = await action();
+      // A logo change saves on its own; keep any unsaved text edits.
+      setSaved((current) => (current ? { ...current, showLogo: next.showLogo, hasCustomLogo: next.hasCustomLogo } : next));
+      setShowLogo(next.showLogo);
+      await refreshLogo();
+      setMessage({ ok: true, text: done });
+    } catch (caught) {
+      setMessage({ ok: false, text: caught instanceof Error ? caught.message : "Couldn't change the logo." });
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+
   if (loadState === "loading") return <p className={dashboardStyles.pageSubtext}>Loading…</p>;
-  if (loadState === "error") return <p className={dashboardStyles.formError}>{loadError}</p>;
+  if (loadState === "error" || !saved) return <p className={dashboardStyles.formError}>{loadError}</p>;
+
+  const dirty = html !== saved.html || showLogo !== saved.showLogo;
 
   return (
     <div className={styles.signatureCard}>
       <p className={dashboardStyles.formHint}>
-        Added to the end of every email sent from the app. You can turn it off for a single email when composing.
+        Added to the end of every email sent from the app. You can leave it off for a single email when composing.
+        Press <strong>Shift+Enter</strong> for a new line without a gap.
       </p>
       <RichTextEditor
-        initialHtml={initial}
+        initialHtml={saved.html}
         onChange={(value) => {
           setHtml(value);
           setMessage(null);
         }}
         disabled={saving}
         label="Email signature"
-        placeholder={"Warm regards,\nAlvis Abreo\nHandpikd · handpikd.co"}
+        placeholder="Regards, your name, phone, website…"
         minHeight="8rem"
       />
+
+      <div className={styles.logoPanel}>
+        <div className={styles.logoPreviewBox}>
+          {logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element -- a blob: URL, not an optimisable asset
+            <img src={logoUrl} alt="Signature logo" className={`${styles.logoPreview} ${showLogo ? "" : styles.logoPreviewOff}`} />
+          ) : (
+            <span className={dashboardStyles.formHint}>No preview</span>
+          )}
+        </div>
+        <div className={styles.logoControls}>
+          <label className={dashboardStyles.formCheckboxField}>
+            <input
+              type="checkbox"
+              checked={showLogo}
+              onChange={(event) => {
+                setShowLogo(event.target.checked);
+                setMessage(null);
+              }}
+              className={dashboardStyles.selectCheckbox}
+              disabled={saving || logoBusy}
+            />
+            <span className={dashboardStyles.formCheckboxText}>
+              <span>Show logo under the signature</span>
+              <span className={dashboardStyles.formCheckboxHint}>
+                {saved.hasCustomLogo ? "Your uploaded logo." : "The Handpikd logo."} It&apos;s embedded in the email, so it
+                shows without the recipient allowing images.
+              </span>
+            </span>
+          </label>
+          <div className={styles.logoButtons}>
+            <button
+              type="button"
+              onClick={() => logoInputRef.current?.click()}
+              disabled={logoBusy || saving}
+              className={styles.smallButton}
+            >
+              {logoBusy ? "Working…" : "Upload a different logo"}
+            </button>
+            {saved.hasCustomLogo && (
+              <button
+                type="button"
+                onClick={() => void handleLogoChange(resetSignatureLogo, "Back to the Handpikd logo.")}
+                disabled={logoBusy || saving}
+                className={styles.smallButton}
+              >
+                Use the Handpikd logo
+              </button>
+            )}
+          </div>
+          <input
+            ref={logoInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/gif"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void handleLogoChange(() => uploadSignatureLogo(file), "Logo updated.");
+            }}
+          />
+        </div>
+      </div>
+
       <div className={styles.signatureActions}>
         {message && (
           <span role="status" className={message.ok ? styles.testOk : styles.testFailed}>
             {message.text}
           </span>
         )}
-        <Button type="button" variant="primary" onClick={() => void handleSave()} disabled={saving || html === initial}>
+        <Button type="button" variant="primary" onClick={() => void handleSave()} disabled={saving || !dirty}>
           {saving ? "Saving…" : "Save signature"}
         </Button>
       </div>

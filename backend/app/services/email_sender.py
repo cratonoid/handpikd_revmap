@@ -36,6 +36,7 @@ from app.models import (
     RecipientStatus,
 )
 from app.services.email_render import build_html_document, fill_body, fill_subject, html_to_text, placeholder_values
+from app.services.email_signature import LOGO_CID, LogoImage, Signature
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,7 @@ def build_message(
     subject: str,
     html_document: str,
     attachments: list[OutgoingAttachment],
+    logo: LogoImage | None = None,
 ) -> EmailMessage:
     message = EmailMessage()
     message["From"] = formataddr((settings.smtp_from_name, settings.smtp_user))
@@ -76,6 +78,13 @@ def build_message(
     message["Message-ID"] = make_msgid(domain=domain)
     message.set_content(html_to_text(html_document))
     message.add_alternative(html_document, subtype="html")
+    if logo is not None:
+        # Embedded next to the HTML (multipart/related) and referenced from
+        # it as cid:, so mail clients show it inline rather than as a file
+        # and don't need to fetch anything from the internet.
+        html_part = message.get_payload()[1]
+        maintype, _, subtype = logo.content_type.partition("/")
+        html_part.add_related(logo.data, maintype=maintype or "image", subtype=subtype or "png", cid=f"<{LOGO_CID}>")
     for attachment in attachments:
         maintype, _, subtype = attachment.content_type.partition("/")
         if not maintype or not subtype:
@@ -202,7 +211,7 @@ async def _mark_contact_emailed(contact_id: int) -> None:
     await contact.save()
 
 
-async def _run_send(send_id: int, signature_html: str, attachments: list[OutgoingAttachment]) -> None:
+async def _run_send(send_id: int, signature: Signature | None, attachments: list[OutgoingAttachment]) -> None:
     send = await EmailSend.get(send_id)
     if send is None:
         return
@@ -223,8 +232,13 @@ async def _run_send(send_id: int, signature_html: str, attachments: list[Outgoin
                 to_name=recipient.contact_person or recipient.name,
                 to_email=recipient.email,
                 subject=fill_subject(send.subject, values),
-                html_document=build_html_document(fill_body(send.body_html, values), signature_html),
+                html_document=build_html_document(
+                    fill_body(send.body_html, values),
+                    signature.html if signature else "",
+                    signature.inline_logo() if signature else None,
+                ),
                 attachments=attachments,
+                logo=signature.logo if signature else None,
             )
             try:
                 await asyncio.to_thread(mailbox.send, message)
@@ -238,6 +252,7 @@ async def _run_send(send_id: int, signature_html: str, attachments: list[Outgoin
             else:
                 recipient.status = RecipientStatus.sent
                 recipient.sent_at = _now()
+                recipient.message_id = str(message["Message-ID"])
                 try:
                     await asyncio.to_thread(mailbox.save_to_sent, message)
                     recipient.saved_to_sent = True
@@ -264,7 +279,7 @@ async def _run_send(send_id: int, signature_html: str, attachments: list[Outgoin
         await send.save()
 
 
-def start_send(send_id: int, signature_html: str, attachments: list[OutgoingAttachment]) -> None:
-    task = asyncio.create_task(_run_send(send_id, signature_html, attachments))
+def start_send(send_id: int, signature: Signature | None, attachments: list[OutgoingAttachment]) -> None:
+    task = asyncio.create_task(_run_send(send_id, signature, attachments))
     _running_tasks.add(task)
     task.add_done_callback(_running_tasks.discard)

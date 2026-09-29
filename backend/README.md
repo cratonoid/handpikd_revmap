@@ -45,6 +45,34 @@ Leaving the key unset is a supported configuration: invoices the
 deterministic pass can read still upload, and the rest are refused with a
 message telling the admin to enter the purchase order by hand.
 
+## Sending email (Titan)
+
+The Emails module (`app/api/routes/emails.py`) sends through the company's
+Titan mailbox over SMTP and files a copy of each message into its Sent
+folder over IMAP. Add the mailbox login to `.env` — locally and in the
+VPS's `backend/.env`, which deploys never overwrite — then restart the
+backend:
+
+```
+SMTP_USER=info@handpikd.co
+SMTP_PASSWORD=...
+# optional — these are the defaults
+SMTP_FROM_NAME=Handpikd
+EMAIL_BULK_LIMIT=50
+EMAIL_SEND_INTERVAL_SECONDS=2
+```
+
+Titan's hosts and ports are built in (`app/core/config.py`). With the login
+unset, the compose screen says email isn't set up rather than failing per
+recipient. "Test connection" on `/admin/emails` checks both logins without
+sending anything.
+
+Emails that Titan accepts but the recipient's server later returns are
+caught by `app/services/email_bounces.py`: every 10 minutes (started from
+`app/main.py`'s lifespan) it reads the inbox's bounce reports read-only,
+matches each to the send by Message-ID, and marks that recipient — and the
+contact's address — as bounced.
+
 ## Test
 
 ```bash

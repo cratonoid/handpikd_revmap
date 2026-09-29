@@ -39,6 +39,7 @@ def _to_item(contact: DatabaseContact) -> ContactItem:
         contact_person=contact.contact_person,
         lead_status=(contact.lead_status or LeadStatus.new) if contact.contact_type == ContactType.lead else None,
         outreach_channels=_ordered_channels(contact.outreach_channels) if contact.contact_type == ContactType.lead else [],
+        email_bounce_reason=contact.email_bounce_reason if contact.email_bounced_at else None,
         created_at=contact.created_at,
     )
 
@@ -135,7 +136,12 @@ async def update_contact(
         contact.phone = _required(payload.phone, "phone number")
         changed = True
     if payload.email is not None:
-        contact.email = _clean_email(payload.email)
+        new_email = _clean_email(payload.email)
+        if (new_email or "").lower() != (contact.email or "").lower():
+            # A corrected address hasn't bounced; drop the old warning.
+            contact.email_bounced_at = None
+            contact.email_bounce_reason = None
+        contact.email = new_email
         changed = True
     if contact.contact_type == ContactType.vendor:
         for field in _VENDOR_ONLY_FIELDS:

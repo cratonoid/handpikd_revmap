@@ -64,6 +64,15 @@ class RemoveTemplateAttachmentRequest(BaseModel):
 
 class EmailSignatureItem(BaseModel):
     signature_html: str
+    # Whether emails carry the logo under the signature, and whether it's
+    # one uploaded here rather than the bundled Handpikd logo.
+    show_logo: bool
+    has_custom_logo: bool
+
+
+class UpdateSignatureRequest(BaseModel):
+    signature_html: str
+    show_logo: bool = True
 
 
 # Sent as the JSON `payload` field of the multipart /send request, next to
@@ -88,6 +97,7 @@ class EmailRecipientItem(BaseModel):
     error: str | None
     saved_to_sent: bool
     sent_at: datetime | None
+    bounced_at: datetime | None = None
 
 
 class EmailSendItem(BaseModel):
@@ -103,8 +113,10 @@ class EmailSendItem(BaseModel):
     # mid-send and the pending recipients never got their email.
     interrupted: bool
     total: int
+    # sent_count is delivered-and-not-bounced.
     sent_count: int
     failed_count: int
+    bounced_count: int
     recipients: list[EmailRecipientItem]
     created_at: datetime
 

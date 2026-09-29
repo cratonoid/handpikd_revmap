@@ -13,7 +13,7 @@ import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from pydantic import ValidationError
 
 from app.api.deps import require_section
@@ -47,9 +47,10 @@ from app.schemas.emails import (
     SendEmailResponse,
     TemplateAttachmentItem,
     TemplateResponse,
+    UpdateSignatureRequest,
     UpdateTemplateRequest,
 )
-from app.services import email_sender
+from app.services import email_bounces, email_sender, email_signature
 from app.services.counters import get_next_id
 from app.services.email_render import unknown_placeholders
 
@@ -57,7 +58,10 @@ router = APIRouter(prefix="/admin/email", tags=["emails"])
 
 _require_emails = require_section(Section.emails)
 
-_SETTINGS_ID = 1
+# The signature logo rides along inside every single email, so it's kept
+# small, and to formats every mail client displays inline.
+_MAX_LOGO_BYTES = 1024 * 1024
+_LOGO_CONTENT_TYPES = {"image/png", "image/jpeg", "image/gif"}
 # Stored template files live in Mongo (see models/email_attachment.py), so
 # each has to stay well inside the 16MB document limit.
 _MAX_TEMPLATE_ATTACHMENT_BYTES = 10 * 1024 * 1024
@@ -124,10 +128,13 @@ def _to_send_item(send: EmailSend) -> EmailSendItem:
             error=(
                 "Sending was interrupted before this email went out."
                 if interrupted and recipient.status == RecipientStatus.pending
+                else recipient.bounce_reason
+                if recipient.status == RecipientStatus.bounced
                 else recipient.error
             ),
             saved_to_sent=recipient.saved_to_sent,
             sent_at=recipient.sent_at,
+            bounced_at=recipient.bounced_at,
         )
         for recipient in send.recipients
     ]
@@ -144,6 +151,7 @@ def _to_send_item(send: EmailSend) -> EmailSendItem:
         total=len(recipients),
         sent_count=sum(1 for recipient in recipients if recipient.status == RecipientStatus.sent),
         failed_count=sum(1 for recipient in recipients if recipient.status == RecipientStatus.failed),
+        bounced_count=sum(1 for recipient in recipients if recipient.status == RecipientStatus.bounced),
         recipients=recipients,
         created_at=send.created_at,
     )
@@ -154,11 +162,6 @@ async def _get_template_or_404(template_id: int) -> EmailTemplate:
     if template is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="template not found")
     return template
-
-
-async def _get_signature() -> str:
-    row = await EmailSettings.get(_SETTINGS_ID)
-    return row.signature_html if row else ""
 
 
 # --- status ----------------------------------------------------------------
@@ -288,21 +291,76 @@ async def remove_template_attachment(
 # --- signature -------------------------------------------------------------
 
 
+def _to_signature_item(row: EmailSettings | None) -> EmailSignatureItem:
+    return EmailSignatureItem(
+        signature_html=email_signature.signature_html_for(row),
+        show_logo=row.show_logo if row else True,
+        has_custom_logo=bool(row and row.logo_data),
+    )
+
+
 @router.get("/get_signature", response_model=EmailSignatureItem)
 async def get_signature(_: User | None = Depends(_require_emails)) -> EmailSignatureItem:
-    return EmailSignatureItem(signature_html=await _get_signature())
+    return _to_signature_item(await email_signature.get_settings_row())
 
 
 @router.post("/update_signature", response_model=EmailSignatureItem)
-async def update_signature(payload: EmailSignatureItem, _: User | None = Depends(_require_emails)) -> EmailSignatureItem:
-    row = await EmailSettings.get(_SETTINGS_ID)
-    if row is None:
-        row = EmailSettings(id=_SETTINGS_ID, signature_html=payload.signature_html)
-        await row.insert()
-    else:
-        row.signature_html = payload.signature_html
-        await row.save()
-    return EmailSignatureItem(signature_html=row.signature_html)
+async def update_signature(
+    payload: UpdateSignatureRequest,
+    _: User | None = Depends(_require_emails),
+) -> EmailSignatureItem:
+    row = await email_signature.get_or_create_settings_row()
+    row.signature_html = payload.signature_html
+    row.show_logo = payload.show_logo
+    await row.save()
+    return _to_signature_item(row)
+
+
+@router.get("/get_signature_logo")
+async def get_signature_logo(_: User | None = Depends(_require_emails)) -> Response:
+    # The logo emails carry right now, for the Signature tab and the
+    # compose preview. Served even while switched off, so the tab can show
+    # what turning it back on would add.
+    row = await email_signature.get_settings_row()
+    logo = email_signature.logo_for(row, ignore_hidden=True)
+    return Response(content=logo.data, media_type=logo.content_type, headers={"Cache-Control": "no-store"})
+
+
+@router.post("/upload_signature_logo", response_model=EmailSignatureItem)
+async def upload_signature_logo(
+    file: UploadFile = File(...),
+    _: User | None = Depends(_require_emails),
+) -> EmailSignatureItem:
+    data = await file.read()
+    content_type = (file.content_type or "").lower()
+    if content_type not in _LOGO_CONTENT_TYPES:
+        raise _bad_request("the logo has to be a PNG, JPG or GIF image")
+    if len(data) > _MAX_LOGO_BYTES:
+        raise _bad_request("the logo can be at most 1MB — it's embedded in every email you send")
+    size = email_signature.image_size(data)
+    if size is None:
+        raise _bad_request("that file couldn't be read as an image")
+
+    row = await email_signature.get_or_create_settings_row()
+    row.logo_data = data
+    row.logo_content_type = content_type
+    row.logo_width, row.logo_height = size
+    row.show_logo = True
+    await row.save()
+    return _to_signature_item(row)
+
+
+@router.post("/reset_signature_logo", response_model=EmailSignatureItem)
+async def reset_signature_logo(_: User | None = Depends(_require_emails)) -> EmailSignatureItem:
+    # Back to the bundled Handpikd logo; hiding the logo altogether is
+    # show_logo on update_signature.
+    row = await email_signature.get_or_create_settings_row()
+    row.logo_data = None
+    row.logo_content_type = None
+    row.logo_width = None
+    row.logo_height = None
+    await row.save()
+    return _to_signature_item(row)
 
 
 # --- sending ---------------------------------------------------------------
@@ -393,7 +451,7 @@ async def send_email(
     )
     await send.insert()
 
-    signature = await _get_signature() if request.include_signature else ""
+    signature = await email_signature.load_signature() if request.include_signature else None
     email_sender.start_send(send.id, signature, attachments)
     return SendEmailResponse(message="sending started", send=_to_send_item(send))
 
@@ -404,6 +462,20 @@ async def get_send(send_id: int, _: User | None = Depends(_require_emails)) -> E
     if send is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="send not found")
     return _to_send_item(send)
+
+
+@router.post("/check_bounces")
+async def check_bounces(_: User | None = Depends(_require_emails)) -> dict[str, int | str]:
+    # The same check the background loop runs every few minutes, on demand.
+    if not email_sender.is_configured():
+        raise _bad_request("Email isn't set up yet — add SMTP_USER and SMTP_PASSWORD to the backend .env.")
+    try:
+        found = await email_bounces.check_bounces()
+    except Exception as error:  # noqa: BLE001 — reported to the admin as-is
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=email_sender.friendly_error(error))
+    if found == 0:
+        return {"found": 0, "message": "No new bounces."}
+    return {"found": found, "message": f"{found} email{'s' if found != 1 else ''} bounced — marked on the list below."}
 
 
 @router.get("/get_sends", response_model=list[EmailSendItem])

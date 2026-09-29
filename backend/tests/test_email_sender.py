@@ -9,6 +9,7 @@ import pytest
 
 from app.models import ContactType, EmailRecipient, EmailSendStatus, LeadStatus, OutreachChannel, RecipientStatus
 from app.services import email_sender
+from app.services.email_signature import LOGO_CID, Signature, default_logo
 
 
 class FakeMailbox:
@@ -91,11 +92,17 @@ def test_each_recipient_gets_own_personalised_message(wire):
     lead = _make_contact(ContactType.lead, [OutreachChannel.whatsapp])
     wire(send, mailbox, {1: lead, 2: _make_contact(ContactType.lead)})
 
-    asyncio.run(email_sender._run_send(7, "<b>Alvis</b>", []))
+    asyncio.run(email_sender._run_send(7, Signature(html="<b>Alvis</b>", logo=default_logo()), []))
 
     assert [message["Subject"] for message in mailbox.sent] == ["Hello Riya", "Hello Beta Ltd"]
     assert "Hi Riya at Acme" in mailbox.sent[0].get_body(("html",)).get_content()
-    assert "<b>Alvis</b>" in mailbox.sent[0].get_body(("html",)).get_content()
+    html = mailbox.sent[0].get_body(("html",)).get_content()
+    assert "<b>Alvis</b>" in html
+    # The logo travels inside the message and the HTML points at it.
+    assert f'src="cid:{LOGO_CID}"' in html and 'width="96" height="96"' in html
+    images = [part for part in mailbox.sent[0].walk() if part.get_content_type() == "image/png"]
+    assert len(images) == 1 and images[0]["Content-ID"] == f"<{LOGO_CID}>"
+    assert images[0].get_content_disposition() != "attachment"
     assert len(mailbox.filed) == 2
     assert all(recipient.status == RecipientStatus.sent and recipient.saved_to_sent for recipient in send.recipients)
     assert send.status == EmailSendStatus.done
@@ -117,7 +124,7 @@ def test_one_refused_recipient_does_not_stop_the_rest(wire):
     client = _make_contact(ContactType.client)
     wire(send, mailbox, {1: _make_contact(ContactType.client), 2: client})
 
-    asyncio.run(email_sender._run_send(7, "", []))
+    asyncio.run(email_sender._run_send(7, None, []))
 
     bad, good = send.recipients
     assert bad.status == RecipientStatus.failed and "refused" in bad.error
@@ -136,7 +143,7 @@ def test_bad_login_fails_everyone_without_retrying(wire):
     mailbox = FakeMailbox(fail_for={"@x.co": auth_error})
     wire(send, mailbox, {})
 
-    asyncio.run(email_sender._run_send(7, "", []))
+    asyncio.run(email_sender._run_send(7, None, []))
 
     assert all(recipient.status == RecipientStatus.failed for recipient in send.recipients)
     assert all("SMTP_PASSWORD" in recipient.error for recipient in send.recipients)

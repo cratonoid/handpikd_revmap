@@ -26,13 +26,16 @@ import {
   fetchEmailStatus,
   fetchSend,
   fetchSignature,
+  fetchSignatureLogoUrl,
   fetchTemplates,
   fillPlaceholders,
   formatFileSize,
   placeholderValues,
   sendEmail,
   type EmailAudience,
+  RECIPIENT_STATUS_LABELS,
   type EmailSend,
+  type EmailSignature,
   type EmailStatus,
   type EmailTemplate,
 } from "@/lib/emails";
@@ -61,7 +64,8 @@ export function EmailComposeModal({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [status, setStatus] = useState<EmailStatus | null>(null);
   const [templates, setTemplates] = useState<EmailTemplate[]>([]);
-  const [signature, setSignature] = useState("");
+  const [signature, setSignature] = useState<EmailSignature | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
   const [recipients, setRecipients] = useState<Contact[]>(initialRecipients);
   const [templateId, setTemplateId] = useState<number | null>(null);
@@ -102,6 +106,14 @@ export function EmailComposeModal({
         setStatus(nextStatus);
         setTemplates(nextTemplates);
         setSignature(nextSignature);
+        if (nextSignature.showLogo) {
+          fetchSignatureLogoUrl()
+            .then((url) => {
+              if (cancelled) URL.revokeObjectURL(url);
+              else setLogoUrl(url);
+            })
+            .catch(() => undefined);
+        }
         setLoadState("loaded");
       })
       .catch((caught: unknown) => {
@@ -113,6 +125,15 @@ export function EmailComposeModal({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (logoUrl) URL.revokeObjectURL(logoUrl);
+    };
+  }, [logoUrl]);
+
+  const signatureText = signature && !isHtmlEmpty(signature.html) ? signature.html : "";
+  const hasSignature = Boolean(signatureText) || Boolean(signature?.showLogo);
 
   // Polls the running send until the server marks it done.
   const sendId = send?.id;
@@ -350,11 +371,15 @@ export function EmailComposeModal({
                       dangerouslySetInnerHTML={{
                         __html:
                           fillPlaceholders(bodyHtml, previewValues, true) +
-                          (includeSignature && !isHtmlEmpty(signature)
-                            ? `<div class="${styles.previewSignature}">${signature}</div>`
+                          (includeSignature && signatureText
+                            ? `<div class="${styles.previewSignature}">${signatureText}</div>`
                             : ""),
                       }}
                     />
+                    {includeSignature && logoUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element -- a blob: URL, not an optimisable asset
+                      <img src={logoUrl} alt="Signature logo" className={styles.previewLogo} />
+                    )}
                   </div>
                 ) : (
                   <>
@@ -392,7 +417,7 @@ export function EmailComposeModal({
                   />
                   <span className={dashboardStyles.formCheckboxText}>
                     <span>Add my signature</span>
-                    {isHtmlEmpty(signature) && (
+                    {!hasSignature && (
                       <span className={dashboardStyles.formCheckboxHint}>
                         No signature saved yet. Set one on the Emails page.
                       </span>
@@ -526,7 +551,7 @@ function SendProgress({ send, onClose }: { send: EmailSend; onClose: () => void 
               {recipient.error && <span className={styles.sendRecipientError}>{recipient.error}</span>}
             </span>
             <span className={styles.sendStatusLabel}>
-              {recipient.status === "sent" ? "Sent" : recipient.status === "failed" ? "Failed" : "Waiting"}
+              {RECIPIENT_STATUS_LABELS[recipient.status]}
             </span>
           </li>
         ))}

@@ -20,6 +20,8 @@ class ContactItem(BaseModel):
     lead_status: LeadStatus | None
     # Lead-only; [] on client and vendor rows.
     outreach_channels: list[OutreachChannel] = []
+    # Set when the last email the app sent to this address bounced.
+    email_bounce_reason: str | None = None
     created_at: datetime
 
 
