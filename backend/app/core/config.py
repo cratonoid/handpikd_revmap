@@ -60,12 +60,18 @@ class Settings(BaseSettings):
     # IMAP, since mail submitted over SMTP never shows up there on its own
     # — see services/email_sender.py. imap_sent_folder is only the fallback
     # when the server doesn't flag its Sent folder itself.
-    smtp_host: str = "smtp.titan.email"
+    #
+    # The hosts are GoDaddy's, not Titan's own (smtp.titan.email): handpikd.co
+    # mail is Titan-based email bought through GoDaddy, which runs on
+    # GoDaddy's servers (MX *.secureserver.net) — Titan's hosts reject the
+    # login outright. SPF only authorises secureserver.net too, so sending
+    # through any other host would also fail spam checks.
+    smtp_host: str = "smtpout.secureserver.net"
     smtp_port: int = 465
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from_name: str = "Handpikd"
-    imap_host: str = "imap.titan.email"
+    imap_host: str = "imap.secureserver.net"
     imap_port: int = 993
     imap_sent_folder: str = "Sent"
     # Bulk sends go out one personalised message at a time with this pause

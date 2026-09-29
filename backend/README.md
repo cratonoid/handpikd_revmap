@@ -62,7 +62,8 @@ EMAIL_BULK_LIMIT=50
 EMAIL_SEND_INTERVAL_SECONDS=2
 ```
 
-Titan's hosts and ports are built in (`app/core/config.py`). With the login
+GoDaddy's hosts and ports (where handpikd.co's Titan mailbox actually
+lives) are built in (`app/core/config.py`). With the login
 unset, the compose screen says email isn't set up rather than failing per
 recipient. "Test connection" on `/admin/emails` checks both logins without
 sending anything.
