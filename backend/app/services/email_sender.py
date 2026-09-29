@@ -219,7 +219,13 @@ async def _run_send(send_id: int, signature: Signature | None, attachments: list
     mailbox = _Mailbox()
     abort_reason: str | None = None
     try:
-        for index, recipient in enumerate(send.recipients):
+        for index in range(len(send.recipients)):
+            # Looked up afresh every time, never held across a save: Beanie's
+            # save() reloads the document and replaces send.recipients with
+            # new objects, so a reference taken before it (as enumerate()
+            # would hold) is edited in memory but never written back — which
+            # left every recipient after the first stuck at "pending".
+            recipient = send.recipients[index]
             if recipient.status != RecipientStatus.pending:
                 continue
             if abort_reason is not None:

@@ -108,9 +108,14 @@ export function DatabasePageClient() {
     );
 
   // Selection may include rows the search currently hides; they still count.
-  // Addresses that bounced are left out of bulk sends until corrected; the
-  // row's own Email button still works, for a deliberate retry.
-  const canBulkEmail = (contact: Contact) => Boolean(contact.email) && !contact.emailBounceReason;
+  // Left out of bulk sends: addresses that bounced (until corrected), and
+  // leads already emailed — status Sent with Mail ticked — so a batch never
+  // repeats the same outreach. The row's own Email button still works, for
+  // a deliberate follow-up or retry.
+  const alreadyMailed = (contact: Contact) =>
+    contact.type === "lead" && contact.leadStatus === "sent" && contact.outreachChannels.includes("mail");
+  const canBulkEmail = (contact: Contact) =>
+    Boolean(contact.email) && !contact.emailBounceReason && !alreadyMailed(contact);
   const selectedContacts = contacts.filter(
     (contact) => contact.type === tab && canBulkEmail(contact) && selectedIds.includes(contact.id),
   );
@@ -279,7 +284,10 @@ export function DatabasePageClient() {
             </button>
           ) : (
             <span>
-              Tick {activeTab.label.toLowerCase()} to email several at once. Rows without an email can&apos;t be ticked.
+              Tick {activeTab.label.toLowerCase()} to email several at once.{" "}
+              {isLead
+                ? "Leads without an email, already emailed (Sent + Mail), or whose email bounced can't be ticked."
+                : "Rows without an email, or whose email bounced, can't be ticked."}
             </span>
           )}
         </div>
@@ -335,7 +343,9 @@ export function DatabasePageClient() {
                           ? "No email address"
                           : contact.emailBounceReason
                             ? "The last email to this address bounced. Fix the address to include it again."
-                            : undefined
+                            : alreadyMailed(contact)
+                              ? "Already emailed (status Sent, Mail ticked). Use the row's Email button to follow up."
+                              : undefined
                       }
                       aria-label={`Select ${contact.name}`}
                       className={emailStyles.rowCheckbox}

@@ -37,18 +37,23 @@ class FakeMailbox:
 
 
 def _make_send(recipients):
-    async def save():
-        return None
-
-    return SimpleNamespace(
+    send = SimpleNamespace(
         id=7,
         subject="Hello {{contact_person}}",
         body_html="<p>Hi {{contact_person}} at {{name}}</p>",
         recipients=recipients,
         status=EmailSendStatus.sending,
         updated_at=None,
-        save=save,
     )
+
+    async def save():
+        # Like Beanie's save(): the document is reloaded afterwards, so
+        # send.recipients becomes a list of *new* objects. Code that kept a
+        # reference from before the save and edits it would lose the edit.
+        send.recipients = [recipient.model_copy() for recipient in send.recipients]
+
+    send.save = save
+    return send
 
 
 def _make_contact(contact_type, channels=None):
