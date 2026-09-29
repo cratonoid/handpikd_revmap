@@ -430,7 +430,7 @@ function RecentOrdersTable({ stats, loadState }: { stats: DashboardStats | null;
                 </span>
               </td>
               <td data-label="Amount" className={`${styles.tableCell} ${styles.dashAmountCell}`}>
-                {formatRupees(order.totalAmountAfterTax)}
+                {formatRupees(order.totalAmountBeforeTax)}
               </td>
             </tr>
           ))}

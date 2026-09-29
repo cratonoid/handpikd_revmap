@@ -72,12 +72,14 @@ async def get_dashboard_stats(
         if order.order_status_id in status_counts:
             status_counts[order.order_status_id] += 1
 
+    # Sales figures are NET: total_amount_before_tax, which already has
+    # discounts taken off (see models/sales_orders.py) and excludes GST.
     month_keys = _last_month_keys(_SALES_TREND_MONTHS, datetime.now())
     monthly = {key: [0.0, 0] for key in month_keys}
     for order in orders:
         key = f"{order.date.year:04d}-{order.date.month:02d}"
         if key in monthly:
-            monthly[key][0] += order.total_amount_after_tax
+            monthly[key][0] += order.total_amount_before_tax
             monthly[key][1] += 1
 
     # Receivables follow the client portal's rule: only tax (standard)
@@ -96,7 +98,7 @@ async def get_dashboard_stats(
     return DashboardStatsResponse(
         total_clients=total_clients,
         open_orders=len(open_orders),
-        open_orders_value=round(sum(order.total_amount_after_tax for order in open_orders), 2),
+        open_orders_value=round(sum(order.total_amount_before_tax for order in open_orders), 2),
         unpaid_invoices=len(unpaid),
         unpaid_amount=round(sum(invoice.total_amount_after_tax for invoice in unpaid), 2),
         orders_by_status=[
@@ -115,7 +117,7 @@ async def get_dashboard_stats(
                 status_id=order.order_status_id,
                 status_name=status_names.get(order.order_status_id, "—"),
                 date=order.date,
-                total_amount_after_tax=order.total_amount_after_tax,
+                total_amount_before_tax=order.total_amount_before_tax,
             )
             for order in recent
         ],

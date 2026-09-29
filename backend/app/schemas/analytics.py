@@ -23,7 +23,7 @@ class RecentOrder(BaseModel):
     status_id: int
     status_name: str
     date: datetime
-    total_amount_after_tax: float
+    total_amount_before_tax: float
 
 
 class DashboardStatsResponse(BaseModel):

@@ -25,7 +25,7 @@ export type RecentOrder = {
   statusId: number;
   statusName: string;
   date: string;
-  totalAmountAfterTax: number;
+  totalAmountBeforeTax: number;
 };
 
 export type DashboardStats = {
@@ -55,7 +55,7 @@ type DashboardStatsResponse = {
     status_id: number;
     status_name: string;
     date: string;
-    total_amount_after_tax: number;
+    total_amount_before_tax: number;
   }[];
 };
 
@@ -89,7 +89,7 @@ export async function fetchDashboardStats(): Promise<DashboardStats> {
       statusId: row.status_id,
       statusName: row.status_name,
       date: row.date,
-      totalAmountAfterTax: row.total_amount_after_tax,
+      totalAmountBeforeTax: row.total_amount_before_tax,
     })),
   };
 }
