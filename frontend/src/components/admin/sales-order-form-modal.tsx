@@ -52,7 +52,7 @@ import { apiFetch } from "@/lib/api";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue } from "@/lib/datetime-input";
 import type { SalesOrder } from "@/lib/sales-orders";
-import type { CustomerOption } from "@/lib/customers";
+import { customerLabel, type CustomerOption } from "@/lib/customers";
 import type { Product } from "@/lib/products";
 import type { PurchaseOrderOption } from "@/lib/purchase-orders";
 import type { UnbilledPurchaseOrderOption } from "@/lib/unbilled-purchase-orders";
@@ -178,7 +178,7 @@ export function SalesOrderFormModal({
   // department fall back to the bare name.
   const customerOptions: SingleSelectOption[] = customers.map((customer) => ({
     value: String(customer.id),
-    label: customer.companyOrDepartment ? `${customer.name} · ${customer.companyOrDepartment}` : customer.name,
+    label: customerLabel(customer),
     isDeleted: customer.isDeleted,
   }));
 

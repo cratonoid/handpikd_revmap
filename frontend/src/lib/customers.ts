@@ -85,6 +85,13 @@ export type CustomerOption = {
   isDeleted: boolean;
 };
 
+// "Name · Department" — how pickers and filters label a client, since the
+// same registered name appears once per department. Clients with no
+// department fall back to the bare name.
+export function customerLabel(customer: CustomerOption): string {
+  return customer.companyOrDepartment ? `${customer.name} · ${customer.companyOrDepartment}` : customer.name;
+}
+
 // Shape returned by the backend's CustomerListItem schema.
 type CustomerListItem = {
   customer_id: number;

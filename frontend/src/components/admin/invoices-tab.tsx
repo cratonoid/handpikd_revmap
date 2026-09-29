@@ -18,8 +18,14 @@
 // info baked onto every generated PDF (backend/app/services/invoice_pdf.py,
 // proforma_invoice_pdf.py), stored in the #personal_details EAV table
 // (lib/personal-details.ts).
+//
+// The "Customer" header carries the same multiselect filter as the sales
+// orders table (components/admin/column-filter-dropdown.tsx), labelled name
+// plus department. Its options come from the current Standard/Proforma view
+// only, and switching views clears it.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
+import { ColumnFilterDropdown } from "@/components/admin/column-filter-dropdown";
 import { InvoiceFormModal } from "@/components/admin/invoice-form-modal";
 import { ProformaInvoiceFormModal } from "@/components/admin/proforma-invoice-form-modal";
 import { PersonalDetailsModal } from "@/components/admin/personal-details-modal";
@@ -36,7 +42,7 @@ import {
 import { fetchPersonalDetails } from "@/lib/personal-details";
 import { fetchSalesOrders, type SalesOrder } from "@/lib/sales-orders";
 import { fetchProducts, type Product } from "@/lib/products";
-import { fetchCustomerList, type CustomerOption } from "@/lib/customers";
+import { customerLabel, fetchCustomerList, type CustomerOption } from "@/lib/customers";
 import { byNewestFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
 import { formatDate } from "@/lib/format-date";
@@ -86,12 +92,45 @@ export function InvoicesTab() {
   const [bulkToDate, setBulkToDate] = useState("");
   const [bulkDownloading, setBulkDownloading] = useState(false);
   const [bulkDownloadError, setBulkDownloadError] = useState<string | null>(null);
+  // Customer ids ticked in the dropdown beside the "Customer" header. Empty
+  // means no filter.
+  const [customerFilterIds, setCustomerFilterIds] = useState<number[]>([]);
 
   const salesOrdersById = new Map(salesOrders.map((order) => [order.id, order]));
   const customersById = new Map(customers.map((c) => [c.id, c]));
-  const visibleInvoices = invoices
-    .filter((invoice) => invoice.type === invoiceType)
+  // A standard invoice's customer comes from its first linked sales order; a
+  // proforma invoice (no sales orders) carries its own custId.
+  const linkedSalesOrdersOf = (invoice: Invoice) =>
+    invoice.salesIds
+      .map((id) => salesOrdersById.get(id))
+      .filter((order): order is SalesOrder => !!order);
+  const invoiceCustId = (invoice: Invoice) =>
+    linkedSalesOrdersOf(invoice)[0]?.custId ?? invoice.custId ?? undefined;
+  const invoicesOfType = invoices.filter((invoice) => invoice.type === invoiceType);
+  // Only customers who actually have an invoice in this view, A-Z.
+  const customerFilterOptions = [
+    ...new Set(
+      invoicesOfType.map(invoiceCustId).filter((custId): custId is number => custId !== undefined),
+    ),
+  ]
+    .map((custId) => {
+      const customer = customersById.get(custId);
+      return { value: custId, label: customer ? customerLabel(customer) : `Customer #${custId}` };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const customerFilterSet = new Set(customerFilterIds);
+  const visibleInvoices = invoicesOfType
+    .filter((invoice) => {
+      if (customerFilterSet.size === 0) return true;
+      const custId = invoiceCustId(invoice);
+      return custId !== undefined && customerFilterSet.has(custId);
+    })
     .sort(byNewestFirst);
+
+  function handleInvoiceTypeChange(nextType: InvoiceType) {
+    setInvoiceType(nextType);
+    setCustomerFilterIds([]);
+  }
 
   function loadAll() {
     return Promise.all([
@@ -216,7 +255,7 @@ export function InvoicesTab() {
             type="button"
             role="tab"
             aria-selected={invoiceType === "standard"}
-            onClick={() => setInvoiceType("standard")}
+            onClick={() => handleInvoiceTypeChange("standard")}
             className={`${styles.viewToggleButton} ${invoiceType === "standard" ? styles.viewToggleButtonActive : ""}`}
           >
             Standard
@@ -225,7 +264,7 @@ export function InvoicesTab() {
             type="button"
             role="tab"
             aria-selected={invoiceType === "proforma"}
-            onClick={() => setInvoiceType("proforma")}
+            onClick={() => handleInvoiceTypeChange("proforma")}
             className={`${styles.viewToggleButton} ${invoiceType === "proforma" ? styles.viewToggleButtonActive : ""}`}
           >
             Proforma
@@ -303,7 +342,19 @@ export function InvoicesTab() {
               <th className={styles.tableHeadCell}>Invoice no.</th>
               <th className={styles.tableHeadCell}>Date</th>
               {invoiceType === "standard" && <th className={styles.tableHeadCell}>Sales order</th>}
-              <th className={styles.tableHeadCell}>Customer</th>
+              <th className={styles.tableHeadCell}>
+                <span className={styles.tableHeadControls}>
+                  Customer
+                  <ColumnFilterDropdown
+                    label="Filter by customer"
+                    searchPlaceholder="Search customers…"
+                    emptyMessage="No customers match."
+                    options={customerFilterOptions}
+                    selectedValues={customerFilterIds}
+                    onChange={setCustomerFilterIds}
+                  />
+                </span>
+              </th>
               {invoiceType === "proforma" && <th className={styles.tableHeadCell}>Due date</th>}
               {invoiceType === "standard" && <th className={styles.tableHeadCell}>Status</th>}
               <th className={styles.tableHeadCell}>Amount</th>
@@ -312,10 +363,8 @@ export function InvoicesTab() {
           </thead>
           <tbody>
             {visibleInvoices.map((invoice, index) => {
-              const linkedSalesOrders = invoice.salesIds
-                .map((id) => salesOrdersById.get(id))
-                .filter((order): order is SalesOrder => !!order);
-              const custId = linkedSalesOrders[0]?.custId ?? invoice.custId ?? undefined;
+              const linkedSalesOrders = linkedSalesOrdersOf(invoice);
+              const custId = invoiceCustId(invoice);
               const customerName = custId !== undefined ? customersById.get(custId)?.name : undefined;
               return (
                 <tr
@@ -373,7 +422,11 @@ export function InvoicesTab() {
         {loadState === "loading" && <p className={styles.pageSubtext}>Loading invoices…</p>}
         {loadState === "loaded" && visibleInvoices.length === 0 && (
           <p className={styles.pageSubtext}>
-            {invoiceType === "standard" ? "No invoices raised yet." : "No proforma invoices raised yet."}
+            {customerFilterIds.length > 0
+              ? "No invoices for the selected customers."
+              : invoiceType === "standard"
+                ? "No invoices raised yet."
+                : "No proforma invoices raised yet."}
           </p>
         )}
       </div>

@@ -51,7 +51,7 @@ import { SalesOrderCostingTable } from "@/components/admin/sales-order-costing-t
 import { SalesOrderFormModal } from "@/components/admin/sales-order-form-modal";
 import { StatusSelect } from "@/components/admin/status-select";
 import { fetchSalesOrders, updateSalesOrderStatus, type SalesOrder } from "@/lib/sales-orders";
-import { fetchCustomerList, type CustomerOption } from "@/lib/customers";
+import { customerLabel, fetchCustomerList, type CustomerOption } from "@/lib/customers";
 import { fetchProducts, type Product } from "@/lib/products";
 import { fetchPurchaseOrderList, type PurchaseOrderOption } from "@/lib/purchase-orders";
 import {
@@ -130,9 +130,14 @@ export function SalesOrdersTab() {
   }));
   const customerName = (order: SalesOrder) => customersById.get(order.custId)?.name;
   // Only customers who actually have an order, A-Z — a customer with nothing
-  // to filter to would just be a checkbox that empties the table.
+  // to filter to would just be a checkbox that empties the table. Labelled
+  // name plus department, like the order form's picker, since the same
+  // registered name appears once per department.
   const customerFilterOptions = [...new Set(orders.map((order) => order.custId))]
-    .map((custId) => ({ value: custId, label: customersById.get(custId)?.name ?? `Customer #${custId}` }))
+    .map((custId) => {
+      const customer = customersById.get(custId);
+      return { value: custId, label: customer ? customerLabel(customer) : `Customer #${custId}` };
+    })
     .sort((a, b) => a.label.localeCompare(b.label));
   const customerFilterSet = new Set(customerFilterIds);
   const visibleOrders = orders
