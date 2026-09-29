@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.db import close_mongo_connection, connect_to_mongo
 from app.core.security import hash_password
-from app.models import User, UserRole
+from app.models import SYSTEM_ROLE_ID, User, UserRole
 
 TEST_MAIL = "test@handpikd.com"
 TEST_PASSWORD = "Test1234!"
@@ -22,7 +22,7 @@ async def main() -> None:
     if existing is not None:
         print(f"already exists: id={existing.id} mail={existing.mail}")
     else:
-        user = User(id=1, mail=TEST_MAIL, password=hash_password(TEST_PASSWORD), role=UserRole.admin)
+        user = User(id=1, mail=TEST_MAIL, password=hash_password(TEST_PASSWORD), role=UserRole.admin, role_id=SYSTEM_ROLE_ID)
         await user.insert()
         print(f"created: id=1 mail={TEST_MAIL} password={TEST_PASSWORD}")
 

@@ -11,8 +11,8 @@
 # the admin API.
 from fastapi import APIRouter, Depends
 
-from app.api.routes.admin import require_admin
-from app.models import Inventory, InventoryHistory, ProductDetails, User
+from app.api.deps import require_section
+from app.models import Section, Inventory, InventoryHistory, ProductDetails, User
 from app.schemas.inventory import InventoryHistoryItem, InventoryItem
 
 router = APIRouter(prefix="/admin", tags=["inventory"])
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/admin", tags=["inventory"])
 
 @router.get("/get_inventory", response_model=list[InventoryItem])
 async def get_inventory(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.inventory)),
 ) -> list[InventoryItem]:
     # One row per product with stock on hand. A product with no purchase/sale
     # history yet, or one that's been sold down to 0 (see
@@ -48,7 +48,7 @@ async def get_inventory(
 
 @router.get("/get_inventory_history", response_model=list[InventoryHistoryItem])
 async def get_inventory_history(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.inventory)),
 ) -> list[InventoryHistoryItem]:
     history = await InventoryHistory.find_all().to_list()
     return [

@@ -1,6 +1,6 @@
 # Unbilled orders module: endpoints for recording stock bought WITHOUT a
 # bill, restricted to admins (bypassed entirely when settings.auth_enabled is
-# False, matching require_admin in routes/admin.py).
+# False, matching require_staff in api/deps.py).
 #
 # The third purchase module, after routes/orders.py (material) and
 # routes/printing_orders.py (printing). What it does and does not share with
@@ -28,7 +28,7 @@
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.routes.admin import require_admin
+from app.api.deps import require_section, require_staff
 
 # The one rule that says whether two product names are "the same" name. It
 # lives next door because that is where (hsn_code, product_name) uniqueness
@@ -37,6 +37,7 @@ from app.api.routes.admin import require_admin
 # checks would disagree about what counts as a duplicate.
 from app.api.routes.products import _normalised_product_name
 from app.models import (
+    Section,
     ProductDetails,
     ProductIdCounter,
     SalesOrders,
@@ -281,7 +282,7 @@ async def _insert_summary_rows(
 @router.post("/create_new_unbilled_purchase_order", response_model=CreateNewUnbilledPurchaseOrderResponse)
 async def create_new_unbilled_purchase_order(
     payload: CreateNewUnbilledPurchaseOrderRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.orders)),
 ) -> CreateNewUnbilledPurchaseOrderResponse:
     await _get_vendor_or_404(payload.vendor_id)
 
@@ -332,7 +333,7 @@ async def create_new_unbilled_purchase_order(
 
 @router.get("/get_unbilled_purchase_order_list", response_model=list[UnbilledPurchaseOrderListItem])
 async def get_unbilled_purchase_order_list(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[UnbilledPurchaseOrderListItem]:
     # Lightweight list for the sales order form's "related unbilled
     # purchases" multiselect — the twin of get_purchase_order_list.
@@ -356,7 +357,7 @@ async def get_unbilled_purchase_order_list(
 
 @router.get("/get_unbilled_products", response_model=list[UnbilledProductListItem])
 async def get_unbilled_products(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[UnbilledProductListItem]:
     # What the purchase form's product field offers before it falls back to
     # creating one. Narrowed to live unbilled products here rather than
@@ -377,7 +378,7 @@ async def get_unbilled_products(
 
 @router.get("/get_unbilled_purchase_order_details", response_model=list[UnbilledPurchaseOrderDetailItem])
 async def get_unbilled_purchase_order_details(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[UnbilledPurchaseOrderDetailItem]:
     orders = await UnbilledPurchaseOrders.find_all().to_list()
     if not orders:
@@ -429,7 +430,7 @@ async def get_unbilled_purchase_order_details(
 )
 async def update_unbilled_purchase_order_details(
     payload: UpdateUnbilledPurchaseOrderDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.orders)),
 ) -> UpdateUnbilledPurchaseOrderDetailsResponse:
     unbilled_purchase_order = await UnbilledPurchaseOrders.get(payload.id)
     if unbilled_purchase_order is None:

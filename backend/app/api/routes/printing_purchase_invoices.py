@@ -1,8 +1,8 @@
 # Printing purchase invoices module: endpoints for viewing, editing and
 # voiding a printing purchase invoice, and for attaching (or replacing) the
 # vendor's own PDF. Restricted to admins (bypassed entirely when
-# settings.auth_enabled is False, matching require_admin in
-# routes/admin.py).
+# settings.auth_enabled is False, matching require_staff in
+# api/deps.py).
 #
 # The printing counterpart of routes/purchase_invoices.py, with two
 # deliberate differences:
@@ -25,8 +25,8 @@ from datetime import date, datetime, time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 
-from app.api.routes.admin import require_admin
-from app.models import PrintingPurchaseInvoiceDetails, User
+from app.api.deps import require_section
+from app.models import Section, PrintingPurchaseInvoiceDetails, User
 from app.schemas.printing_purchase_invoices import (
     AttachPrintingPurchaseInvoicePdfResponse,
     PrintingPurchaseInvoiceDetailItem,
@@ -57,7 +57,7 @@ async def _get_printing_purchase_invoice_or_404(
 async def attach_printing_purchase_invoice_pdf(
     printing_purchase_invoice_id: int = Form(...),
     file: UploadFile = File(...),
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices, Section.orders)),
 ) -> AttachPrintingPurchaseInvoicePdfResponse:
     printing_purchase_invoice = await _get_printing_purchase_invoice_or_404(printing_purchase_invoice_id)
 
@@ -105,7 +105,7 @@ def _to_detail_item(
     "/get_printing_purchase_invoice_details", response_model=list[PrintingPurchaseInvoiceDetailItem]
 )
 async def get_printing_purchase_invoice_details(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> list[PrintingPurchaseInvoiceDetailItem]:
     printing_purchase_invoices = await PrintingPurchaseInvoiceDetails.find(
         PrintingPurchaseInvoiceDetails.is_deleted == False  # noqa: E712 — Beanie needs the comparison
@@ -119,7 +119,7 @@ async def get_printing_purchase_invoice_details(
 )
 async def update_printing_purchase_invoice_details(
     payload: UpdatePrintingPurchaseInvoiceDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> UpdatePrintingPurchaseInvoiceDetailsResponse:
     printing_purchase_invoice = await _get_printing_purchase_invoice_or_404(payload.id)
 
@@ -135,7 +135,7 @@ async def update_printing_purchase_invoice_details(
 @router.get("/get_printing_purchase_invoice_uploaded_pdf")
 async def get_printing_purchase_invoice_uploaded_pdf(
     printing_purchase_invoice_id: int,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> Response:
     printing_purchase_invoice = await _get_printing_purchase_invoice_or_404(printing_purchase_invoice_id)
     if printing_purchase_invoice.uploaded_pdf_path is None:
@@ -162,7 +162,7 @@ async def get_printing_purchase_invoice_uploaded_pdf(
 async def get_printing_purchase_invoices_pdf_zip(
     start_date: date,
     end_date: date,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> Response:
     # The printing counterpart of get_purchase_invoices_pdf_zip in
     # routes/purchase_invoices.py, and identical in behaviour: inclusive on

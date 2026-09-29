@@ -19,11 +19,13 @@
 // the little vertical room a phone has. The drawer costs one tap but shows
 // every destination at once, as a readable vertical list.
 //
-// Role check: this is a purely client-side guard against sessionStorage
-// (see lib/auth.ts) — there's no backend call yet, so it only prevents an
-// admin-only page from flashing on screen for a customer's tab, not a
-// determined attacker. Real enforcement happens once each module wires up
-// to its API.
+// Role check: first a purely client-side guard against sessionStorage (see
+// lib/auth.ts), so an admin page never flashes on screen in a customer's
+// tab. Team accounts then fetch which sections their role grants (see
+// lib/access.ts): the sidebar and tab bar show only those, and a page
+// outside them renders a "no access" notice instead of its content. The
+// backend enforces the same sections on every admin endpoint
+// (require_section in backend/app/api/deps.py) — this is presentation only.
 //
 // This used to read the stored role via useSyncExternalStore with a
 // getServerSnapshot that always returned null (sessionStorage isn't
@@ -61,8 +63,10 @@ import {
   InboxIcon,
   LedgerIcon,
   LogoutIcon,
+  MailIcon,
   MenuIcon,
   ReceiptIcon,
+  ShieldUserIcon,
   ShoppingCartIcon,
   StorefrontIcon,
   TagIcon,
@@ -70,33 +74,55 @@ import {
   XMarkIcon,
 } from "@/components/icons";
 import { useResponsiveTables } from "@/components/use-responsive-tables";
+import {
+  ADMIN_SECTIONS,
+  canAccess,
+  fetchMyAccess,
+  isSectionPath,
+  sectionForPath,
+  type MyAccess,
+  type SectionKey,
+} from "@/lib/access";
 import { clearSession, getUserRole, type UserRole } from "@/lib/auth";
 import styles from "@/styles/dashboard.module.css";
+
+type Icon = (props: { className?: string }) => React.JSX.Element;
 
 type NavItem = {
   label: string;
   href: string;
-  icon: (props: { className?: string }) => React.JSX.Element;
+  icon: Icon;
+  // Admin items only: the section a role must grant for the link to show.
+  section?: SectionKey;
+};
+
+const SECTION_ICONS: Record<SectionKey, Icon> = {
+  dashboard: ChartBarIcon,
+  clients: UsersIcon,
+  vendors: StorefrontIcon,
+  database: DatabaseIcon,
+  emails: MailIcon,
+  orders: ShoppingCartIcon,
+  invoices: ReceiptIcon,
+  accounts: LedgerIcon,
+  inventory: ArchiveBoxIcon,
+  products: CubeIcon,
+  categories: TagIcon,
+  catalogues: DiaryIcon,
+  inquiry_form: GiftBoxIcon,
+  product_inquiries: InboxIcon,
+  quotation: DocumentTextIcon,
+  profile: IdCardIcon,
+  users: ShieldUserIcon,
 };
 
 const NAV_ITEMS: Record<UserRole, NavItem[]> = {
-  admin: [
-    { label: "Analytical Dashboard", href: "/admin", icon: ChartBarIcon },
-    { label: "Clients", href: "/admin/clients", icon: UsersIcon },
-    { label: "Vendors", href: "/admin/vendors", icon: StorefrontIcon },
-    { label: "Database", href: "/admin/database", icon: DatabaseIcon },
-    { label: "Orders", href: "/admin/orders", icon: ShoppingCartIcon },
-    { label: "Invoices", href: "/admin/invoices", icon: ReceiptIcon },
-    { label: "Accounts", href: "/admin/accounts", icon: LedgerIcon },
-    { label: "Inventory", href: "/admin/inventory", icon: ArchiveBoxIcon },
-    { label: "Products", href: "/admin/products", icon: CubeIcon },
-    { label: "Categories", href: "/admin/categories", icon: TagIcon },
-    { label: "Catalogues", href: "/admin/catalogues", icon: DiaryIcon },
-    { label: "Hamper Inquiry Form", href: "/admin/inquiry-form", icon: GiftBoxIcon },
-    { label: "Product Inquiries", href: "/admin/product-inquiries", icon: InboxIcon },
-    { label: "Quotation", href: "/admin/quotation", icon: DocumentTextIcon },
-    { label: "Profile", href: "/admin/profile", icon: IdCardIcon },
-  ],
+  admin: ADMIN_SECTIONS.map((section) => ({
+    label: section.label,
+    href: section.href,
+    icon: SECTION_ICONS[section.key],
+    section: section.key,
+  })),
   customer: [
     { label: "Dashboard", href: "/customer", icon: HomeIcon },
     { label: "Invoices", href: "/customer/invoices", icon: ReceiptIcon },
@@ -109,20 +135,21 @@ const NAV_ITEMS: Record<UserRole, NavItem[]> = {
 // drawer alone serves them and they get no tab bar.
 const TAB_ITEMS: Partial<Record<UserRole, NavItem[]>> = {
   admin: [
-    { label: "Dashboard", href: "/admin", icon: ChartBarIcon },
-    { label: "Orders", href: "/admin/orders", icon: ShoppingCartIcon },
-    { label: "Invoices", href: "/admin/invoices", icon: ReceiptIcon },
-    { label: "Inventory", href: "/admin/inventory", icon: ArchiveBoxIcon },
-    { label: "Inquiries", href: "/admin/inquiry-form", icon: GiftBoxIcon },
+    { label: "Dashboard", href: "/admin", icon: ChartBarIcon, section: "dashboard" },
+    { label: "Orders", href: "/admin/orders", icon: ShoppingCartIcon, section: "orders" },
+    { label: "Invoices", href: "/admin/invoices", icon: ReceiptIcon, section: "invoices" },
+    { label: "Inventory", href: "/admin/inventory", icon: ArchiveBoxIcon, section: "inventory" },
+    { label: "Inquiries", href: "/admin/inquiry-form", icon: GiftBoxIcon, section: "inquiry_form" },
   ],
 };
 
 // A section's root link also stays lit on its sub-pages (the sales order
-// details page under /admin/orders). The dashboard root is the exception:
-// every admin page sits under /admin, so it matches exactly or not at all.
-function isActiveHref(pathname: string, href: string) {
-  if (href === "/admin" || href === "/customer") return pathname === href;
-  return pathname === href || pathname.startsWith(`${href}/`);
+// details page under /admin/orders) — see isSectionPath in lib/access.ts.
+const isActiveHref = isSectionPath;
+
+// Customers have no roles, so `access` is only ever set for team accounts.
+function isAllowed(item: NavItem, access: MyAccess | null) {
+  return !item.section || !access || canAccess(access, item.section);
 }
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -174,6 +201,50 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
       router.replace("/login");
     }
   }, [status, router]);
+
+  // Team accounts only: which sections their role grants. Re-fetched on
+  // every navigation (the shell itself stays mounted between admin pages),
+  // so a role edited by someone else applies without signing out. Only the
+  // first load holds the page back — later ones keep the last answer on
+  // screen until the new one arrives.
+  const [access, setAccess] = useState<MyAccess | null>(null);
+  const [accessError, setAccessError] = useState(false);
+
+  useEffect(() => {
+    if (role !== "admin" || status !== "authorized") return;
+    let cancelled = false;
+
+    fetchMyAccess()
+      .then((data) => {
+        if (cancelled) return;
+        setAccess(data);
+        setAccessError(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAccessError(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [role, status, pathname]);
+
+  const currentSection = role === "admin" ? sectionForPath(pathname) : undefined;
+  const sectionBlocked = !!access && !!currentSection && !canAccess(access, currentSection.key);
+  // /admin is where login lands everyone, so a role without the dashboard
+  // is sent on to its first section instead of being shown a "no access"
+  // notice on arrival.
+  const landingHref =
+    sectionBlocked && pathname === "/admin"
+      ? ADMIN_SECTIONS.find((section) => canAccess(access, section.key))?.href
+      : undefined;
+
+  useEffect(() => {
+    if (landingHref) {
+      router.replace(landingHref);
+    }
+  }, [landingHref, router]);
 
   // While the drawer is open: Escape closes it, and the page behind it is
   // frozen so a scroll gesture that starts on the dimmed backdrop doesn't
@@ -229,17 +300,48 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
     router.push("/login");
   }
 
-  if (status !== "authorized") {
+  if (status !== "authorized" || (role === "admin" && !access && !accessError)) {
     return null;
   }
 
-  const navItems = NAV_ITEMS[role];
+  const navItems = NAV_ITEMS[role].filter((item) => isAllowed(item, access));
   // What the hamburger sits next to on a phone: the label of the page you are
   // actually on. The top bar otherwise shows only the logo, which says nothing
   // about where in the dashboard you are once the horizontal pill strip (which
   // used to answer that) is gone.
-  const activeItem = navItems.find((item) => isActiveHref(pathname, item.href));
-  const tabItems = TAB_ITEMS[role];
+  const activeItem = NAV_ITEMS[role].find((item) => isActiveHref(pathname, item.href));
+  const allowedTabItems = TAB_ITEMS[role]?.filter((item) => isAllowed(item, access));
+  const tabItems = allowedTabItems && allowedTabItems.length > 0 ? allowedTabItems : undefined;
+  const roleLabel = access?.roleName || ROLE_LABEL[role];
+
+  let content: ReactNode = children;
+  if (!access && accessError) {
+    content = (
+      <p className={styles.formError}>Couldn&apos;t load your permissions. Please refresh the page to try again.</p>
+    );
+  } else if (landingHref) {
+    content = null;
+  } else if (sectionBlocked) {
+    content =
+      navItems.length === 0 ? (
+        <div className={styles.noAccessNotice}>
+          <h1 className={`${styles.pageHeading} ${styles.pageHeadingKeep}`}>No sections yet</h1>
+          <p className={styles.pageSubtext}>
+            Your role doesn&apos;t include any sections. Ask an administrator to give it access on Users &amp; Roles.
+          </p>
+        </div>
+      ) : (
+        <div className={styles.noAccessNotice}>
+          <h1 className={`${styles.pageHeading} ${styles.pageHeadingKeep}`}>No access</h1>
+          <p className={styles.pageSubtext}>
+            Your role doesn&apos;t include {currentSection?.label}. Ask an administrator if you need it.
+          </p>
+          <Link href={navItems[0].href} className={styles.noAccessLink}>
+            Go to {navItems[0].label}
+          </Link>
+        </div>
+      );
+  }
 
   return (
     <div className={`${styles.shell} ${tabItems ? styles.shellWithTabs : ""}`}>
@@ -266,7 +368,7 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
         </div>
 
         <div className={styles.topbarRight}>
-          <span className={styles.roleBadge}>{ROLE_LABEL[role]}</span>
+          <span className={styles.roleBadge}>{roleLabel}</span>
           {/* aria-label rather than relying on the text: .logoutButtonLabel is
               display: none under 420px, which would otherwise leave this an
               unnamed icon button on the narrowest phones. */}
@@ -338,7 +440,7 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
             keeps the scrollbar at the edge of the pane rather than floating
             mid-screen on a wide monitor. */}
         <main ref={contentRef} className={styles.content}>
-          <div className={styles.contentInner}>{children}</div>
+          <div className={styles.contentInner}>{content}</div>
         </main>
       </div>
 

@@ -1,6 +1,6 @@
 # Products module: endpoints for managing the product catalogue, restricted
 # to admins (bypassed entirely when settings.auth_enabled is False, matching
-# require_admin in routes/admin.py). `public_router` (get_public_products /
+# require_staff in api/deps.py). `public_router` (get_public_products /
 # get_public_categories, for the storefront's /products page) is intentionally
 # unauthenticated and separate from every admin endpoint above it, mirroring
 # routes/catalogues.py's router/public_router split.
@@ -16,8 +16,9 @@ import base64
 from beanie.operators import In
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from app.api.routes.admin import require_admin
+from app.api.deps import require_section, require_staff
 from app.models import (
+    Section,
     Category,
     ProductDetails,
     ProductIdCounter,
@@ -55,7 +56,7 @@ from app.services.storage import upload_product_image as store_product_image
 router = APIRouter(prefix="/admin", tags=["products"])
 
 # Public/unauthenticated read endpoints for the storefront's /products page —
-# unlike the rest of this file, nothing here sits behind require_admin.
+# unlike the rest of this file, nothing here sits behind require_section.
 public_router = APIRouter(prefix="/products", tags=["products-public"])
 
 
@@ -101,7 +102,7 @@ async def _replace_image_paths(product_id: int, image_paths: list[str]) -> None:
 @router.post("/upload_product_image", response_model=UploadProductImageResponse)
 async def upload_product_image(
     file: UploadFile = File(...),
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.products)),
 ) -> UploadProductImageResponse:
     # No disk write here — just reads the bytes back so the frontend can
     # preview and, on Save, upload the same file again via add_product_image
@@ -113,7 +114,7 @@ async def upload_product_image(
 @router.post("/add_product_details", response_model=AddProductDetailsResponse)
 async def add_product_details(
     payload: AddProductDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.products)),
 ) -> AddProductDetailsResponse:
     vendor = await VendorDetails.get(payload.vendor_id)
     if vendor is None:
@@ -145,7 +146,7 @@ async def add_product_details(
 
 @router.get("/get_product_details", response_model=list[ProductDetailItem])
 async def get_product_details(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[ProductDetailItem]:
     # Deliberately unfiltered — hidden AND soft-deleted products come back
     # too, each carrying its flags. The admin UI splits them into its
@@ -187,7 +188,7 @@ async def get_product_details(
 @router.post("/update_product_details", response_model=UpdateProductDetailsResponse)
 async def update_product_details(
     payload: UpdateProductDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.products)),
 ) -> UpdateProductDetailsResponse:
     product = await ProductDetails.get(payload.id)
     if product is None:
@@ -261,7 +262,7 @@ async def _describe_product_references(product_id: int) -> list[str]:
 @router.post("/delete_product_details", response_model=DeleteProductDetailsResponse)
 async def delete_product_details(
     payload: DeleteProductDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.products)),
 ) -> DeleteProductDetailsResponse:
     # Two very different actions behind one endpoint, matching the two options
     # the admin picks between in the delete popup (product-form-modal.tsx):
@@ -305,7 +306,7 @@ async def delete_product_details(
 @router.post("/restore_product_details", response_model=RestoreProductDetailsResponse)
 async def restore_product_details(
     payload: RestoreProductDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.products)),
 ) -> RestoreProductDetailsResponse:
     product = await ProductDetails.get(payload.product_id)
     if product is None:
@@ -328,7 +329,7 @@ async def restore_product_details(
 async def add_product_image(
     product_id: int = Form(...),
     file: UploadFile = File(...),
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.products)),
 ) -> AddProductImageResponse:
     # Persists one image for an already-saved product — see the module
     # docstring above for why this is a separate, per-image call rather than
@@ -352,7 +353,7 @@ async def add_product_image(
 @router.post("/delete_product_image", response_model=DeleteProductImageResponse)
 async def delete_product_image(
     payload: DeleteProductImageRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.products)),
 ) -> DeleteProductImageResponse:
     product = await ProductDetails.get(payload.product_id)
     if product is None:

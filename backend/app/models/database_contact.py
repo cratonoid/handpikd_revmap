@@ -22,6 +22,11 @@ class LeadStatus(str, Enum):
     sent = "sent"
 
 
+class OutreachChannel(str, Enum):
+    whatsapp = "whatsapp"
+    mail = "mail"
+
+
 class DatabaseContact(Document):
     id: int
     contact_type: ContactType
@@ -41,6 +46,11 @@ class DatabaseContact(Document):
     # this field existed have no value stored and read back as "new" (see
     # _to_item in routes/database_contacts.py).
     lead_status: LeadStatus | None = None
+    # Lead-only: the channels this lead has been reached on so far — the
+    # two tick boxes in the Leads table. Ticked by hand, except that
+    # emailing a lead from the app ticks "mail" itself (see
+    # services/email_sender.py). Empty on client and vendor rows.
+    outreach_channels: list[OutreachChannel] = []
     # Stamped server-side on insert.
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 

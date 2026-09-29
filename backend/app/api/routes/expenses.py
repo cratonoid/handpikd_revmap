@@ -1,7 +1,7 @@
 # Expenses module: endpoints for the hand-entered expense list on the admin's
 # /admin/accounts page (frontend components/admin/accounts-expenses-tab.tsx),
 # restricted to admins (bypassed entirely when settings.auth_enabled is
-# False, matching require_admin in routes/admin.py).
+# False, matching require_staff in api/deps.py).
 #
 # Unlike the rest of the accounts module (routes/accounts.py), which only
 # derives figures from collections other modules maintain, this one owns its
@@ -12,8 +12,8 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.routes.admin import require_admin
-from app.models import ExpenseDetails, ExpenseIdCounter, User
+from app.api.deps import require_section
+from app.models import Section, ExpenseDetails, ExpenseIdCounter, User
 from app.schemas.expenses import (
     AddExpenseRequest,
     AddExpenseResponse,
@@ -45,7 +45,7 @@ def _at_midnight(value: date) -> datetime:
 
 @router.get("/get_expenses", response_model=list[ExpenseItem])
 async def get_expenses(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.accounts)),
 ) -> list[ExpenseItem]:
     # Newest first by the entered date, with id breaking ties within a day
     # so the row added last sits on top (the same rule lib/row-order.ts
@@ -57,7 +57,7 @@ async def get_expenses(
 @router.post("/add_expense", response_model=AddExpenseResponse)
 async def add_expense(
     payload: AddExpenseRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.accounts)),
 ) -> AddExpenseResponse:
     expense_name = payload.expense_name.strip()
     if not expense_name:
@@ -81,7 +81,7 @@ async def add_expense(
 @router.post("/update_expense", response_model=UpdateExpenseResponse)
 async def update_expense(
     payload: UpdateExpenseRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.accounts)),
 ) -> UpdateExpenseResponse:
     expense = await ExpenseDetails.get(payload.expense_id)
     if expense is None:

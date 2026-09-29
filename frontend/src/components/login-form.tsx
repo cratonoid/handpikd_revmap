@@ -51,10 +51,18 @@ export function LoginForm() {
         // login_auth returns 403 for an unknown email and 401 for a password
         // mismatch (see backend/app/api/routes/authentication.py) — both are
         // shown as the same generic message rather than revealing which one.
+        // A disabled account is also a 403, but only after the password
+        // matched, so it is safe to say so.
+        const detail: unknown = await response
+          .json()
+          .then((body: { detail?: unknown }) => body.detail)
+          .catch(() => undefined);
         setError(
-          response.status === 401 || response.status === 403
-            ? "Invalid email or password."
-            : "Something went wrong. Please try again.",
+          detail === "account disabled"
+            ? "This account has been disabled. Ask an administrator to re-enable it."
+            : response.status === 401 || response.status === 403
+              ? "Invalid email or password."
+              : "Something went wrong. Please try again.",
         );
         setStatus("idle");
         return;

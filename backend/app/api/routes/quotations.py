@@ -2,8 +2,8 @@
 # products (unlike invoices, a quotation carries its own line items — see
 # QuotationSummary — rather than being raised against an existing sales
 # order) and generating their PDFs. Restricted to admins (bypassed entirely
-# when settings.auth_enabled is False, matching require_admin in
-# routes/admin.py).
+# when settings.auth_enabled is False, matching require_staff in
+# api/deps.py).
 #
 # A quotation is the one document here that doesn't have to be built out
 # of rows that already exist: its buyer is either a #customer_details
@@ -18,8 +18,9 @@ from datetime import datetime
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.api.routes.admin import require_admin
+from app.api.deps import require_section
 from app.models import (
+    Section,
     CustomerDetails,
     CustomerPocDetails,
     ProductDetails,
@@ -143,7 +144,7 @@ async def _insert_quotation_summary_rows(
 @router.post("/create_new_quotation", response_model=CreateNewQuotationResponse)
 async def create_new_quotation(
     payload: CreateNewQuotationRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.quotation)),
 ) -> CreateNewQuotationResponse:
     await _validate_customer_exists(payload.cust_id)
     await _validate_products_exist(payload.product_ids, reject_deleted=True)
@@ -194,7 +195,7 @@ async def create_new_quotation(
 
 @router.get("/get_quotation_details", response_model=list[QuotationDetailItem])
 async def get_quotation_details(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.quotation)),
 ) -> list[QuotationDetailItem]:
     quotations = await QuotationDetails.find(QuotationDetails.is_deleted == False).to_list()
     if not quotations:
@@ -239,7 +240,7 @@ async def get_quotation_details(
 @router.post("/update_quotation_details", response_model=UpdateQuotationDetailsResponse)
 async def update_quotation_details(
     payload: UpdateQuotationDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.quotation)),
 ) -> UpdateQuotationDetailsResponse:
     quotation = await QuotationDetails.get(payload.id)
     if quotation is None:
@@ -287,7 +288,7 @@ async def update_quotation_details(
 @router.get("/get_quotation_pdf")
 async def get_quotation_pdf(
     quotation_id: int,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.quotation)),
 ) -> Response:
     quotation = await QuotationDetails.get(quotation_id)
     if quotation is None:

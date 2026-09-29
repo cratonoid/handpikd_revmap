@@ -4,7 +4,7 @@
 # inventory (see services/inventory.py::record_purchase_received) — that
 # stays exclusively on the purchase-order-received flow. Restricted to admins
 # (bypassed entirely when settings.auth_enabled is False, matching
-# require_admin in routes/admin.py).
+# require_staff in api/deps.py).
 #
 # There is deliberately no branded PDF here. A purchase invoice is a record
 # of what a VENDOR billed us, so their own document is the authoritative one
@@ -37,8 +37,8 @@ from datetime import date, datetime, time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 
-from app.api.routes.admin import require_admin
-from app.models import PurchaseInvoiceDetails, User
+from app.api.deps import require_section
+from app.models import Section, PurchaseInvoiceDetails, User
 from app.schemas.purchase_invoices import (
     AttachPurchaseInvoicePdfResponse,
     PurchaseInvoiceDetailItem,
@@ -63,7 +63,7 @@ async def _get_purchase_invoice_or_404(purchase_invoice_id: int) -> PurchaseInvo
 async def attach_purchase_invoice_pdf(
     purchase_invoice_id: int = Form(...),
     file: UploadFile = File(...),
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices, Section.orders)),
 ) -> AttachPurchaseInvoicePdfResponse:
     purchase_invoice = await _get_purchase_invoice_or_404(purchase_invoice_id)
 
@@ -105,7 +105,7 @@ def _to_purchase_invoice_detail_item(purchase_invoice: PurchaseInvoiceDetails) -
 
 @router.get("/get_purchase_invoice_details", response_model=list[PurchaseInvoiceDetailItem])
 async def get_purchase_invoice_details(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> list[PurchaseInvoiceDetailItem]:
     purchase_invoices = await PurchaseInvoiceDetails.find(PurchaseInvoiceDetails.is_deleted == False).to_list()
     return [_to_purchase_invoice_detail_item(purchase_invoice) for purchase_invoice in purchase_invoices]
@@ -114,7 +114,7 @@ async def get_purchase_invoice_details(
 @router.post("/update_purchase_invoice_details", response_model=UpdatePurchaseInvoiceDetailsResponse)
 async def update_purchase_invoice_details(
     payload: UpdatePurchaseInvoiceDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> UpdatePurchaseInvoiceDetailsResponse:
     purchase_invoice = await _get_purchase_invoice_or_404(payload.id)
 
@@ -128,7 +128,7 @@ async def update_purchase_invoice_details(
 @router.get("/get_purchase_invoice_uploaded_pdf")
 async def get_purchase_invoice_uploaded_pdf(
     purchase_invoice_id: int,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> Response:
     purchase_invoice = await _get_purchase_invoice_or_404(purchase_invoice_id)
     if purchase_invoice.uploaded_pdf_path is None:
@@ -154,7 +154,7 @@ async def get_purchase_invoice_uploaded_pdf(
 async def get_purchase_invoices_pdf_zip(
     start_date: date,
     end_date: date,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> Response:
     # Bulk counterpart of get_purchase_invoice_uploaded_pdf, mirroring
     # get_invoices_pdf_zip in routes/invoices.py: same inclusive-both-ends

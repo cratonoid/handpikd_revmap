@@ -1,14 +1,15 @@
 # Analytics module: read-only aggregates backing the admin dashboard
 # (frontend components/admin/dashboard-page-client.tsx). Restricted to admins
 # (bypassed entirely when settings.auth_enabled is False, matching
-# require_admin in routes/admin.py).
+# require_staff in api/deps.py).
 from datetime import datetime
 
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.routes.admin import require_admin
+from app.api.deps import require_section
 from app.models import (
+    Section,
     CustomerDetails,
     InvoiceDetails,
     InvoiceStatus,
@@ -48,7 +49,7 @@ def _last_month_keys(count: int, today: datetime) -> list[str]:
 
 @router.get("/get_dashboard_stats", response_model=DashboardStatsResponse)
 async def get_dashboard_stats(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.dashboard)),
 ) -> DashboardStatsResponse:
     order_statuses = await OrderStatusMaster.find_all().sort("+_id").to_list()
     status_names = {order_status.id: order_status.status_name for order_status in order_statuses}

@@ -2,15 +2,16 @@
 # (frontend components/admin/database-page-client.tsx) — three tabs of
 # clients, leads and vendors, each a name, phone and optional email, with
 # vendors also carrying a type, description and location, and leads an
-# optional contact person and a status (new / sent). Restricted to
+# optional contact person, a status (new / sent) and the outreach channels
+# (WhatsApp / mail) they've been reached on. Restricted to
 # admins (bypassed entirely when settings.auth_enabled is False, matching
-# require_admin in routes/admin.py).
+# require_staff in api/deps.py).
 #
 # Same add / update-or-delete shape as routes/expenses.py.
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.routes.admin import require_admin
-from app.models import ContactType, DatabaseContact, DatabaseContactIdCounter, LeadStatus, User
+from app.api.deps import require_section
+from app.models import Section, ContactType, DatabaseContact, DatabaseContactIdCounter, LeadStatus, OutreachChannel, User
 from app.schemas.database_contacts import (
     AddContactRequest,
     AddContactResponse,
@@ -37,8 +38,16 @@ def _to_item(contact: DatabaseContact) -> ContactItem:
         location=contact.location,
         contact_person=contact.contact_person,
         lead_status=(contact.lead_status or LeadStatus.new) if contact.contact_type == ContactType.lead else None,
+        outreach_channels=_ordered_channels(contact.outreach_channels) if contact.contact_type == ContactType.lead else [],
         created_at=contact.created_at,
     )
+
+
+def _ordered_channels(channels: list[OutreachChannel] | None) -> list[OutreachChannel]:
+    # Deduplicated and in the enum's order, however the request listed them,
+    # so the stored list compares cleanly and always reads WhatsApp, mail.
+    chosen = set(channels or [])
+    return [channel for channel in OutreachChannel if channel in chosen]
 
 
 def _required(value: str, field: str) -> str:
@@ -66,7 +75,7 @@ def _clean_email(value: str | None) -> str | None:
 @router.get("/get_contacts", response_model=list[ContactItem])
 async def get_contacts(
     contact_type: ContactType | None = None,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.database)),
 ) -> list[ContactItem]:
     # One tab at a time when `contact_type` is given, everything otherwise.
     # Newest first, the same rule lib/row-order.ts applies to every list.
@@ -80,7 +89,7 @@ async def get_contacts(
 @router.post("/add_contact", response_model=AddContactResponse)
 async def add_contact(
     payload: AddContactRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.database)),
 ) -> AddContactResponse:
     is_vendor = payload.contact_type == ContactType.vendor
     is_lead = payload.contact_type == ContactType.lead
@@ -95,6 +104,7 @@ async def add_contact(
         location=_optional(payload.location) if is_vendor else None,
         contact_person=_optional(payload.contact_person) if is_lead else None,
         lead_status=(payload.lead_status or LeadStatus.new) if is_lead else None,
+        outreach_channels=_ordered_channels(payload.outreach_channels) if is_lead else [],
     )
     # Id taken only once the payload has validated, so a rejected request
     # doesn't burn a number.
@@ -107,7 +117,7 @@ async def add_contact(
 @router.post("/update_contact", response_model=UpdateContactResponse)
 async def update_contact(
     payload: UpdateContactRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.database)),
 ) -> UpdateContactResponse:
     contact = await DatabaseContact.get(payload.contact_id)
     if contact is None:
@@ -139,6 +149,9 @@ async def update_contact(
             changed = True
         if payload.lead_status is not None:
             contact.lead_status = payload.lead_status
+            changed = True
+        if payload.outreach_channels is not None:
+            contact.outreach_channels = _ordered_channels(payload.outreach_channels)
             changed = True
 
     if not changed:

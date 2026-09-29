@@ -5,7 +5,8 @@
 // One list for all three tabs on /admin/database, told apart by `type`.
 // Name and phone are required; email is optional; vendors also carry a
 // type, description and location, all optional; leads carry an optional
-// contact person and a status that defaults to "new". Optional fields come back
+// contact person, a status that defaults to "new", and the outreach
+// channels (WhatsApp / mail) they've been reached on. Optional fields come back
 // as "" rather than null so they drop straight into form inputs.
 import { apiFetch } from "@/lib/api";
 
@@ -16,6 +17,13 @@ export type LeadStatus = "new" | "sent";
 export const LEAD_STATUS_OPTIONS: { value: LeadStatus; label: string }[] = [
   { value: "new", label: "New" },
   { value: "sent", label: "Sent" },
+];
+
+export type OutreachChannel = "whatsapp" | "mail";
+
+export const OUTREACH_OPTIONS: { value: OutreachChannel; label: string }[] = [
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "mail", label: "Mail" },
 ];
 
 export type Contact = {
@@ -31,6 +39,9 @@ export type Contact = {
   contactPerson: string;
   // Always "new" on client and vendor rows, where it isn't shown.
   leadStatus: LeadStatus;
+  // Lead-only; [] on client and vendor rows. "mail" is also ticked by the
+  // backend whenever the lead is emailed from the app.
+  outreachChannels: OutreachChannel[];
   createdAt: string;
 };
 
@@ -57,6 +68,7 @@ type ContactItemResponse = {
   location: string | null;
   contact_person: string | null;
   lead_status: LeadStatus | null;
+  outreach_channels?: OutreachChannel[];
   created_at: string;
 };
 
@@ -72,6 +84,7 @@ function toContact(item: ContactItemResponse): Contact {
     location: item.location ?? "",
     contactPerson: item.contact_person ?? "",
     leadStatus: item.lead_status ?? "new",
+    outreachChannels: item.outreach_channels ?? [],
     createdAt: item.created_at,
   };
 }
@@ -144,6 +157,19 @@ export async function updateLeadStatus(id: number, status: LeadStatus): Promise<
   });
   if (!response.ok) {
     throw new Error(await detailOr(response, "Couldn't update the status. Please try again."));
+  }
+}
+
+// The full set of ticked channels for the Leads table's Outreach column.
+// Throws an Error with a user-facing message on failure.
+export async function updateOutreachChannels(id: number, channels: OutreachChannel[]): Promise<void> {
+  const response = await apiFetch("/admin/database/update_contact", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contact_id: id, outreach_channels: channels }),
+  });
+  if (!response.ok) {
+    throw new Error(await detailOr(response, "Couldn't update the outreach. Please try again."));
   }
 }
 

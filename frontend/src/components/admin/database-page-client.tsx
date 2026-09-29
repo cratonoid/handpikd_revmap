@@ -14,21 +14,31 @@
 // All three tabs come from one fetch, so switching between them is instant.
 // Add and edit share <ContactFormModal>; delete asks once inline, the same
 // way the expenses table does (accounts-expenses-tab.tsx).
+//
+// Leads and clients can be emailed from here: tick rows (or use a row's
+// Email button) and <EmailComposeModal> sends each one their own copy.
+// Leads also have two outreach tick boxes — WhatsApp and Mail — for the
+// channels they've been reached on; emailing a lead ticks Mail itself.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { ContactFormModal } from "@/components/admin/contact-form-modal";
+import { EmailComposeModal } from "@/components/admin/email-compose-modal";
 import { StatusSelect } from "@/components/admin/status-select";
 import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import {
   deleteContact,
   fetchContacts,
   LEAD_STATUS_OPTIONS,
+  OUTREACH_OPTIONS,
   updateLeadStatus,
+  updateOutreachChannels,
   type Contact,
   type ContactType,
   type LeadStatus,
+  type OutreachChannel,
 } from "@/lib/database-contacts";
 import styles from "@/styles/dashboard.module.css";
+import emailStyles from "@/styles/emails.module.css";
 
 type LoadState = "loading" | "loaded" | "error";
 type ModalState = { mode: "add" } | { mode: "edit"; contact: Contact } | null;
@@ -52,6 +62,11 @@ export function DatabasePageClient() {
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [statusSavingId, setStatusSavingId] = useState<number | null>(null);
+  const [outreachSavingId, setOutreachSavingId] = useState<number | null>(null);
+
+  // Rows ticked for emailing, on the current tab only.
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [composeFor, setComposeFor] = useState<Contact[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +90,8 @@ export function DatabasePageClient() {
   const isVendor = tab === "vendor";
   const isLead = tab === "lead";
   const nameLabel = tab === "lead" ? "Company name" : "Name";
+  // The Emails module writes to leads and clients only.
+  const canEmail = tab === "lead" || tab === "client";
 
   const visibleContacts = contacts
     .filter((contact) => contact.type === tab)
@@ -90,10 +107,43 @@ export function DatabasePageClient() {
       ]),
     );
 
+  // Selection may include rows the search currently hides; they still count.
+  const selectedContacts = contacts.filter(
+    (contact) => contact.type === tab && contact.email && selectedIds.includes(contact.id),
+  );
+  const selectableVisible = visibleContacts.filter((contact) => contact.email);
+  const allVisibleSelected =
+    selectableVisible.length > 0 && selectableVisible.every((contact) => selectedIds.includes(contact.id));
+
   function switchTab(next: ContactType) {
     setTab(next);
     setConfirmingDeleteId(null);
     setRowError(null);
+    setSelectedIds([]);
+  }
+
+  function toggleSelected(id: number) {
+    setSelectedIds((current) => (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]));
+  }
+
+  function toggleAllVisible() {
+    const visibleIds = selectableVisible.map((contact) => contact.id);
+    setSelectedIds((current) =>
+      allVisibleSelected
+        ? current.filter((id) => !visibleIds.includes(id))
+        : [...current, ...visibleIds.filter((id) => !current.includes(id))],
+    );
+  }
+
+  // A lead that was emailed comes back as "sent" with Mail ticked, so the
+  // rows are reloaded rather than patched by guesswork.
+  function handleComposeClosed(sent: boolean) {
+    setComposeFor(null);
+    if (!sent) return;
+    setSelectedIds([]);
+    fetchContacts()
+      .then(setContacts)
+      .catch(() => setRowError("Emails were sent, but the list couldn't refresh. Reload the page to see the changes."));
   }
 
   function handleSaved(saved: Contact) {
@@ -129,6 +179,27 @@ export function DatabasePageClient() {
       setRowError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
     } finally {
       setStatusSavingId(null);
+    }
+  }
+
+  // Applied straight away and rolled back if the backend refuses, like the
+  // status dropdown above.
+  async function handleOutreachToggle(contact: Contact, channel: OutreachChannel) {
+    const previous = contact.outreachChannels;
+    const next = previous.includes(channel) ? previous.filter((value) => value !== channel) : [...previous, channel];
+    const apply = (value: OutreachChannel[]) =>
+      setContacts((current) => current.map((row) => (row.id === contact.id ? { ...row, outreachChannels: value } : row)));
+
+    setRowError(null);
+    setOutreachSavingId(contact.id);
+    apply(next);
+    try {
+      await updateOutreachChannels(contact.id, next);
+    } catch (caught) {
+      apply(previous);
+      setRowError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
+    } finally {
+      setOutreachSavingId(null);
     }
   }
 
@@ -187,16 +258,53 @@ export function DatabasePageClient() {
         </p>
       )}
 
+      {canEmail && (
+        <div className={emailStyles.selectionBar}>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={selectedContacts.length === 0}
+            onClick={() => setComposeFor(selectedContacts)}
+          >
+            {selectedContacts.length === 0
+              ? `Email selected ${activeTab.label.toLowerCase()}`
+              : `Email ${selectedContacts.length} selected`}
+          </Button>
+          {selectedContacts.length > 0 ? (
+            <button type="button" onClick={() => setSelectedIds([])} className={emailStyles.smallButton}>
+              Clear selection
+            </button>
+          ) : (
+            <span>
+              Tick {activeTab.label.toLowerCase()} to email several at once. Rows without an email can&apos;t be ticked.
+            </span>
+          )}
+        </div>
+      )}
+
       <div className={styles.tableWrap}>
         <table className={`${styles.table} ${styles.databaseTable}`}>
           <thead>
             <tr>
+              {canEmail && (
+                <th className={`${styles.tableHeadCell} ${emailStyles.colSelect}`}>
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleAllVisible}
+                    disabled={selectableVisible.length === 0}
+                    aria-label={`Select all ${activeTab.label.toLowerCase()} with an email`}
+                    className={emailStyles.rowCheckbox}
+                  />
+                </th>
+              )}
               <th className={`${styles.tableHeadCell} ${styles.databaseColSerial}`}>S.No</th>
               <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>{nameLabel}</th>
               {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Contact person</th>}
               <th className={`${styles.tableHeadCell} ${styles.databaseColPhone}`}>Phone no.</th>
               <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Email</th>
               {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>Status</th>}
+              {isLead && <th className={`${styles.tableHeadCell} ${emailStyles.colOutreach}`}>Outreach</th>}
               {isVendor && (
                 <>
                   <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Type</th>
@@ -212,6 +320,19 @@ export function DatabasePageClient() {
           <tbody>
             {visibleContacts.map((contact, index) => (
               <tr key={contact.id} className={styles.tableRow}>
+                {canEmail && (
+                  <td className={styles.tableCell}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(contact.email) && selectedIds.includes(contact.id)}
+                      onChange={() => toggleSelected(contact.id)}
+                      disabled={!contact.email}
+                      title={contact.email ? undefined : "No email address"}
+                      aria-label={`Select ${contact.name}`}
+                      className={emailStyles.rowCheckbox}
+                    />
+                  </td>
+                )}
                 <td className={styles.tableCell}>{index + 1}</td>
                 <td className={`${styles.tableCell} ${styles.tableCellPrimary} ${styles.databaseCellClip}`} title={contact.name}>
                   {contact.name}
@@ -236,6 +357,23 @@ export function DatabasePageClient() {
                       disabled={statusSavingId === contact.id}
                       onChange={(nextStatus) => void handleStatusChange(contact, nextStatus)}
                     />
+                  </td>
+                )}
+                {isLead && (
+                  <td className={styles.tableCell}>
+                    <div className={emailStyles.outreachGroup} role="group" aria-label={`Outreach for ${contact.name}`}>
+                      {OUTREACH_OPTIONS.map((option) => (
+                        <label key={option.value} className={emailStyles.outreachOption}>
+                          <input
+                            type="checkbox"
+                            checked={contact.outreachChannels.includes(option.value)}
+                            onChange={() => void handleOutreachToggle(contact, option.value)}
+                            disabled={outreachSavingId === contact.id}
+                          />
+                          {option.label}
+                        </label>
+                      ))}
+                    </div>
                   </td>
                 )}
                 {isVendor && (
@@ -273,6 +411,17 @@ export function DatabasePageClient() {
                     </div>
                   ) : (
                     <div className={styles.deleteConfirmRow}>
+                      {canEmail && (
+                        <button
+                          type="button"
+                          onClick={() => setComposeFor([contact])}
+                          disabled={!contact.email}
+                          title={contact.email ? `Email ${contact.email}` : "Add an email address to this contact first"}
+                          className={styles.expenseRowButton}
+                        >
+                          Email
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setModalState({ mode: "edit", contact })}
@@ -313,6 +462,14 @@ export function DatabasePageClient() {
           initialContact={modalState.mode === "edit" ? modalState.contact : undefined}
           onClose={() => setModalState(null)}
           onSaved={handleSaved}
+        />
+      )}
+
+      {composeFor && canEmail && (
+        <EmailComposeModal
+          audience={tab === "lead" ? "lead" : "client"}
+          recipients={composeFor}
+          onClose={handleComposeClosed}
         />
       )}
     </>

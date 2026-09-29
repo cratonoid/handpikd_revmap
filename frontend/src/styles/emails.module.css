@@ -1,0 +1,653 @@
+/* Styles for the Emails module: /admin/emails, the template and compose
+   modals, the formatted-text editor, and the outreach/selection controls on
+   the /admin/database Leads and Clients tabs. Kept apart from
+   dashboard.module.css (whose modal, form and table classes these build on)
+   so the module can be read — and changed — in one place. */
+
+/* --- Modals ------------------------------------------------------------ */
+
+.wideModalPanel {
+  max-width: 52rem;
+}
+
+.modalBodyPad {
+  padding: 1.5rem;
+}
+
+.labelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.labelRow > span {
+  margin-bottom: 0;
+}
+
+.smallButton {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  padding: 0.3rem 0.8rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.smallButton:hover:not(:disabled) {
+  border-color: var(--color-charcoal);
+}
+
+.smallButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- Notices ----------------------------------------------------------- */
+
+.noticeInfo,
+.noticeWarning {
+  margin-bottom: 1.25rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  padding: 0.85rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-ink);
+}
+
+.noticeInfo {
+  background-color: color-mix(in srgb, var(--color-status-new) 6%, var(--color-cream));
+}
+
+.noticeWarning {
+  border-color: color-mix(in srgb, var(--color-status-processing) 40%, var(--color-border));
+  background-color: color-mix(in srgb, var(--color-status-processing) 8%, var(--color-cream));
+}
+
+.noticeInfo code,
+.noticeWarning code {
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.noticeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.testOk,
+.testFailed {
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.testOk {
+  color: var(--color-status-completed);
+}
+
+.testFailed,
+.failedText {
+  color: var(--color-red);
+}
+
+/* --- Formatted-text editor ---------------------------------------------- */
+
+.editor {
+  overflow: hidden;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-white);
+  transition: border-color 0.2s;
+}
+
+.editor:focus-within {
+  border-color: var(--color-charcoal);
+}
+
+.editorDisabled {
+  opacity: 0.65;
+}
+
+.editorToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  padding: 0.4rem;
+}
+
+.toolbarButton {
+  min-width: 2rem;
+  border-radius: 0.4rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+  cursor: pointer;
+}
+
+.toolbarButton:hover:not(:disabled) {
+  background-color: var(--color-cream-deep);
+}
+
+.toolbarBold {
+  font-weight: 800;
+}
+
+.toolbarItalic {
+  font-style: italic;
+}
+
+.toolbarUnderline {
+  text-decoration: underline;
+}
+
+.editorLinkRow {
+  display: flex;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.4rem;
+}
+
+.editorLinkInput {
+  min-width: 0;
+  flex: 1;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  padding: 0.3rem 0.6rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.editorLinkInput:focus {
+  border-color: var(--color-charcoal);
+}
+
+.editorAreaWrap {
+  position: relative;
+}
+
+.editorPlaceholder {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  padding: 0.85rem 1rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  white-space: pre-line;
+  color: color-mix(in srgb, var(--color-ink) 45%, transparent);
+}
+
+.editorArea,
+.previewBody {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #222222;
+  overflow-wrap: anywhere;
+}
+
+.editorArea {
+  max-height: 26rem;
+  overflow-y: auto;
+  padding: 0.85rem 1rem;
+  outline: none;
+}
+
+/* Tailwind's preflight strips list markers and paragraph spacing; put back
+   what the email will actually look like in a mail client. */
+.editorArea p,
+.previewBody p {
+  margin: 0 0 0.75em;
+}
+
+.editorArea ul,
+.previewBody ul {
+  margin: 0 0 0.75em;
+  padding-left: 1.5em;
+  list-style: disc;
+}
+
+.editorArea ol,
+.previewBody ol {
+  margin: 0 0 0.75em;
+  padding-left: 1.5em;
+  list-style: decimal;
+}
+
+.editorArea a,
+.previewBody a {
+  color: #1a56db;
+  text-decoration: underline;
+}
+
+/* --- Placeholders, attachments, recipients ------------------------------ */
+
+.placeholderBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.placeholderBarLabel {
+  font-size: 0.8125rem;
+  color: var(--color-ink);
+}
+
+.placeholderChip {
+  border-radius: 9999px;
+  border: 1px dashed var(--color-border);
+  background-color: var(--color-cream);
+  padding: 0.2rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+  cursor: pointer;
+}
+
+.placeholderChip:hover:not(:disabled) {
+  border-style: solid;
+  border-color: var(--color-charcoal);
+}
+
+.placeholderChip::before {
+  content: "+ ";
+}
+
+.dropZone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 0.75rem;
+  border: 1px dashed var(--color-border);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: var(--color-ink);
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.dropZoneActive {
+  border-color: var(--color-charcoal);
+  background-color: var(--color-cream-deep);
+}
+
+.dropZoneHint {
+  flex-basis: 100%;
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--color-ink) 65%, transparent);
+}
+
+.attachmentList,
+.recipientList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+
+.recipientList {
+  max-height: 9rem;
+  overflow-y: auto;
+}
+
+.attachmentChip,
+.recipientChip {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-white);
+  padding: 0.25rem 0.4rem 0.25rem 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.attachmentName,
+.recipientName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.attachmentName {
+  max-width: 16rem;
+}
+
+.attachmentMeta,
+.recipientEmail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--color-ink) 65%, transparent);
+}
+
+.attachmentRemove {
+  display: inline-flex;
+  height: 1.3rem;
+  width: 1.3rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.attachmentRemove:hover:not(:disabled) {
+  background-color: var(--color-cream-deep);
+}
+
+/* --- Template audience ------------------------------------------------- */
+
+.audienceFieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.audienceOptions {
+  display: grid;
+  gap: 0.6rem;
+}
+
+@media (min-width: 560px) {
+  .audienceOptions {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.audienceOption {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-white);
+  padding: 0.75rem 1rem 0.75rem 2.6rem;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.audienceOption:hover {
+  border-color: var(--color-charcoal);
+}
+
+.audienceOptionActive {
+  border-color: var(--color-charcoal);
+  box-shadow: inset 0 0 0 1px var(--color-charcoal);
+}
+
+.audienceOptionLocked {
+  cursor: default;
+}
+
+.audienceOptionLocked:not(.audienceOptionActive) {
+  opacity: 0.45;
+}
+
+.audienceRadio {
+  position: absolute;
+  top: 0.95rem;
+  left: 1rem;
+  accent-color: var(--color-charcoal);
+}
+
+.audienceOptionTitle {
+  font-weight: 700;
+  color: var(--color-charcoal);
+}
+
+.audienceOptionHint {
+  font-size: 0.8125rem;
+  color: var(--color-ink);
+}
+
+.audiencePill {
+  display: inline-block;
+  border-radius: 9999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.audiencePillLead {
+  background-color: color-mix(in srgb, var(--color-status-new) 12%, transparent);
+  color: var(--color-status-new);
+}
+
+.audiencePillClient {
+  background-color: color-mix(in srgb, var(--color-status-completed) 12%, transparent);
+  color: var(--color-status-completed);
+}
+
+/* --- Preview ----------------------------------------------------------- */
+
+.preview {
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-white);
+  padding: 1rem;
+}
+
+.previewMeta {
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--color-ink) 65%, transparent);
+}
+
+.previewSubject {
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.6rem;
+  font-weight: 700;
+  color: var(--color-charcoal);
+}
+
+.previewSignature {
+  margin-top: 1.5rem;
+}
+
+/* --- Sending ----------------------------------------------------------- */
+
+.confirmBar {
+  display: flex;
+  width: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.progressTrack {
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: 9999px;
+  background-color: var(--color-cream-deep);
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 9999px;
+  background-color: var(--color-charcoal);
+  transition: width 0.4s;
+}
+
+.progressSummary {
+  font-weight: 700;
+  color: var(--color-charcoal);
+}
+
+.sendRecipientList {
+  display: flex;
+  max-height: 22rem;
+  flex-direction: column;
+  overflow-y: auto;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-white);
+}
+
+.sendRecipientRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.8125rem;
+}
+
+.sendRecipientRow + .sendRecipientRow {
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+}
+
+.sendStatusDot {
+  margin-top: 0.35rem;
+  height: 0.55rem;
+  width: 0.55rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+}
+
+.sendStatus_pending {
+  background-color: var(--color-border);
+}
+
+.sendStatus_sent {
+  background-color: var(--color-status-completed);
+}
+
+.sendStatus_failed {
+  background-color: var(--color-red);
+}
+
+.sendRecipientText {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.sendRecipientError {
+  font-size: 0.75rem;
+  color: var(--color-red);
+}
+
+.sendStatusLabel {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.sendDetailCell {
+  background-color: var(--color-cream);
+  padding: 0.75rem 1rem 1rem;
+}
+
+/* --- /admin/emails page ------------------------------------------------ */
+
+.tabToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.signatureCard {
+  display: flex;
+  max-width: 44rem;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.signatureActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+/* --- /admin/database: selection and outreach --------------------------- */
+
+.selectionBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--color-ink);
+}
+
+.colSelect {
+  width: 2.75rem;
+}
+
+.colOutreach {
+  width: 9.5rem;
+}
+
+.outreachGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.8rem;
+}
+
+.outreachOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.outreachOption input {
+  height: 0.95rem;
+  width: 0.95rem;
+  accent-color: var(--color-charcoal);
+  cursor: pointer;
+}
+
+.rowCheckbox {
+  height: 1rem;
+  width: 1rem;
+  accent-color: var(--color-charcoal);
+  cursor: pointer;
+}
+
+.rowCheckbox:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}

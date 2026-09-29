@@ -1,7 +1,7 @@
 # Catalogues module: endpoints for managing vendor/brand catalogues. `router`
 # (admin CRUD) is restricted to admins (bypassed entirely when
-# settings.auth_enabled is False, matching require_admin in
-# routes/admin.py); `public_router` (get_public_catalogues, for the
+# settings.auth_enabled is False, matching require_staff in
+# api/deps.py); `public_router` (get_public_catalogues, for the
 # storefront's /brand-catalogues page) is intentionally unauthenticated. A
 # catalogue's images always come from an admin-uploaded PDF (see
 # upload_catalogue_pdf) rather than individual image uploads — the PDF is
@@ -29,8 +29,9 @@
 from beanie.operators import NE, In
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 
-from app.api.routes.admin import require_admin
+from app.api.deps import require_section
 from app.models import (
+    Section,
     CatalogueDetails,
     CatalogueIdCounter,
     CatalogueImageDetails,
@@ -73,7 +74,7 @@ from app.services.storage import upload_catalogue_image as store_catalogue_image
 router = APIRouter(prefix="/admin", tags=["catalogues"])
 
 # Public/unauthenticated read endpoint for the storefront's /brand-catalogues
-# page — unlike the rest of this file, nothing here sits behind require_admin.
+# page — unlike the rest of this file, nothing here sits behind require_section.
 public_router = APIRouter(prefix="/catalogues", tags=["catalogues-public"])
 
 
@@ -116,7 +117,7 @@ _PDF_UPLOAD_CHUNK_SIZE = 1024 * 1024
 @router.post("/upload_catalogue_pdf", response_model=UploadCataloguePdfResponse)
 async def upload_catalogue_pdf(
     file: UploadFile = File(...),
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.catalogues)),
 ) -> UploadCataloguePdfResponse:
     # Stages the PDF and reports how many pages it has; the client then asks
     # for those pages one at a time (get_catalogue_pdf_page). Rendering every
@@ -160,7 +161,7 @@ async def upload_catalogue_pdf(
 def get_catalogue_pdf_page(
     session_id: str = Query(...),
     page: int = Query(..., ge=0),
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.catalogues)),
 ) -> Response:
     try:
         image_bytes = render_staged_page(session_id, page)
@@ -177,7 +178,7 @@ def get_catalogue_pdf_page(
 @router.post("/discard_catalogue_pdf", response_model=DiscardCataloguePdfResponse)
 async def discard_catalogue_pdf(
     payload: DiscardCataloguePdfRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.catalogues)),
 ) -> DiscardCataloguePdfResponse:
     # Called by the client once it has pulled every page it needs, so the
     # staged PDF goes away immediately instead of waiting for the TTL sweep.
@@ -190,7 +191,7 @@ async def discard_catalogue_pdf(
 @router.post("/add_catalogue_details", response_model=AddCatalogueDetailsResponse)
 async def add_catalogue_details(
     payload: AddCatalogueDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.catalogues)),
 ) -> AddCatalogueDetailsResponse:
     await _require_vendor_and_categories(payload.catalogue_vendor_id, payload.category_ids)
 
@@ -212,7 +213,7 @@ async def add_catalogue_details(
 
 @router.get("/get_catalogue_details", response_model=list[CatalogueDetailItem])
 async def get_catalogue_details(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.catalogues)),
 ) -> list[CatalogueDetailItem]:
     catalogues = await CatalogueDetails.find_all().to_list()
     if not catalogues:
@@ -241,7 +242,7 @@ async def get_catalogue_details(
 @router.post("/update_catalogue_details", response_model=UpdateCatalogueDetailsResponse)
 async def update_catalogue_details(
     payload: UpdateCatalogueDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.catalogues)),
 ) -> UpdateCatalogueDetailsResponse:
     catalogue = await CatalogueDetails.get(payload.id)
     if catalogue is None:
@@ -265,7 +266,7 @@ async def update_catalogue_details(
 async def add_catalogue_image(
     catalogue_id: int = Form(...),
     file: UploadFile = File(...),
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.catalogues)),
 ) -> AddCatalogueImageResponse:
     # Persists one page for an already-saved catalogue — see the module
     # docstring above for why this is a separate, per-page call rather than
@@ -289,7 +290,7 @@ async def add_catalogue_image(
 @router.post("/delete_catalogue_details", response_model=DeleteCatalogueDetailsResponse)
 async def delete_catalogue_details(
     payload: DeleteCatalogueDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.catalogues)),
 ) -> DeleteCatalogueDetailsResponse:
     catalogue = await CatalogueDetails.get(payload.id)
     if catalogue is None:
@@ -308,7 +309,7 @@ async def delete_catalogue_details(
 @router.post("/delete_catalogue_image", response_model=DeleteCatalogueImageResponse)
 async def delete_catalogue_image(
     payload: DeleteCatalogueImageRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.catalogues)),
 ) -> DeleteCatalogueImageResponse:
     catalogue = await CatalogueDetails.get(payload.catalogue_id)
     if catalogue is None:

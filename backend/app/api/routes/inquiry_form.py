@@ -2,8 +2,8 @@
 # (category -> item -> brand option -> ...) for the /hamper-inquiry-form
 # visitor page, plus admin endpoints to view submitted inquiries. `router`
 # (hierarchy editing + viewing submissions) is restricted to admins (bypassed
-# entirely when settings.auth_enabled is False, matching require_admin in
-# routes/admin.py); `public_router` (get_public_nodes, submit) is
+# entirely when settings.auth_enabled is False, matching require_staff in
+# api/deps.py); `public_router` (get_public_nodes, submit) is
 # intentionally unauthenticated so a visitor can load and submit the form
 # without logging in - same split as catalogues.router/public_router.
 from collections import defaultdict
@@ -12,8 +12,9 @@ from datetime import datetime, timezone
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.routes.admin import require_admin
+from app.api.deps import require_section
 from app.models import (
+    Section,
     InquiryFormNode,
     InquiryFormNodeIdCounter,
     InquiryFormSubmission,
@@ -37,7 +38,7 @@ from app.services.counters import get_next_id
 router = APIRouter(prefix="/admin/inquiry-form", tags=["inquiry-form"])
 
 # Public/unauthenticated endpoints for the /hamper-inquiry-form storefront
-# page - unlike the rest of this file, nothing here sits behind require_admin.
+# page - unlike the rest of this file, nothing here sits behind require_section.
 public_router = APIRouter(prefix="/inquiry-form", tags=["inquiry-form-public"])
 
 
@@ -56,7 +57,7 @@ def _to_item(node: InquiryFormNode) -> InquiryFormNodeItem:
 
 
 @router.get("/get_nodes", response_model=list[InquiryFormNodeItem])
-async def get_nodes(_: User | None = Depends(require_admin)) -> list[InquiryFormNodeItem]:
+async def get_nodes(_: User | None = Depends(require_section(Section.inquiry_form))) -> list[InquiryFormNodeItem]:
     nodes = await InquiryFormNode.find_all().to_list()
     return [_to_item(node) for node in nodes]
 
@@ -64,7 +65,7 @@ async def get_nodes(_: User | None = Depends(require_admin)) -> list[InquiryForm
 @router.post("/add_node", response_model=AddInquiryFormNodeResponse)
 async def add_node(
     payload: AddInquiryFormNodeRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.inquiry_form)),
 ) -> AddInquiryFormNodeResponse:
     if not payload.label.strip():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="label is required")
@@ -96,7 +97,7 @@ async def add_node(
 @router.post("/update_node", response_model=UpdateInquiryFormNodeResponse)
 async def update_node(
     payload: UpdateInquiryFormNodeRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.inquiry_form)),
 ) -> UpdateInquiryFormNodeResponse:
     node = await InquiryFormNode.get(payload.node_id)
     if node is None:
@@ -127,7 +128,7 @@ async def update_node(
 
 
 @router.get("/get_submissions", response_model=list[InquiryFormSubmissionItem])
-async def get_submissions(_: User | None = Depends(require_admin)) -> list[InquiryFormSubmissionItem]:
+async def get_submissions(_: User | None = Depends(require_section(Section.inquiry_form))) -> list[InquiryFormSubmissionItem]:
     submissions = await InquiryFormSubmission.find_all().sort(-InquiryFormSubmission.id).to_list()
     return [
         InquiryFormSubmissionItem(

@@ -1,11 +1,12 @@
 # Vendors module: endpoints for managing vendor accounts and their points of
 # contact, restricted to admins (bypassed entirely when settings.auth_enabled
-# is False, matching require_admin in routes/admin.py).
+# is False, matching require_staff in api/deps.py).
 from beanie.operators import In
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
-from app.api.routes.admin import party_state_or_400, require_admin
-from app.models import User, VendorDetails, VendorIdCounter, VendorPocDetails, VendorPocIdCounter
+from app.api.deps import require_section, require_staff
+from app.api.routes.admin import party_state_or_400
+from app.models import Section, User, VendorDetails, VendorIdCounter, VendorPocDetails, VendorPocIdCounter
 from app.schemas.vendors import (
     AddVendorDetailsRequest,
     AddVendorDetailsResponse,
@@ -24,7 +25,7 @@ router = APIRouter(prefix="/admin", tags=["vendors"])
 @router.post("/add_vendor_details", response_model=AddVendorDetailsResponse)
 async def add_vendor_details(
     payload: AddVendorDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.vendors)),
 ) -> AddVendorDetailsResponse:
     state_code, state_name = party_state_or_400(payload.state_code, payload.gst)
 
@@ -52,7 +53,7 @@ async def add_vendor_details(
 
 @router.get("/get_vendors_list", response_model=list[VendorListItem])
 async def get_vendors_list(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[VendorListItem]:
     # Lightweight id+name list for vendor-picker dropdowns (e.g. the product
     # and purchase order popups) — unlike get_vendor_details, this excludes
@@ -78,7 +79,7 @@ async def get_vendors_list(
 
 @router.get("/get_vendor_details", response_model=list[VendorDetailItem])
 async def get_vendor_details(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[VendorDetailItem]:
     vendors = await VendorDetails.find_all().to_list()
     if not vendors:
@@ -116,7 +117,7 @@ async def get_vendor_details(
 @router.post("/update_vendor_details", response_model=UpdateVendorDetailsResponse)
 async def update_vendor_details(
     payload: UpdateVendorDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.vendors)),
 ) -> UpdateVendorDetailsResponse:
     vendor = await VendorDetails.get(payload.id)
     if vendor is None:
@@ -149,7 +150,7 @@ async def convert_vendor_qr(
     # replacement of one they already had. Omitted entirely for a
     # brand-new vendor, which is always "added".
     vendor_id: int | None = Form(default=None),
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.vendors)),
 ) -> ConvertVendorQrResponse:
     image_bytes = await file.read()
     try:

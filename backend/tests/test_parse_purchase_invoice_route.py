@@ -7,7 +7,7 @@
 # read_uploaded_invoice is stubbed out: the reading itself is covered by
 # test_invoice_extraction.py and its matching rules by
 # test_purchase_invoice_intake.py, and everything it does against Mongo is
-# exactly what these tests must not need. require_admin is overridden so
+# exactly what these tests must not need. require_staff (which require_section builds on) is overridden so
 # these don't depend on whether auth_enabled is set locally, same as
 # test_catalogue_pdf.py.
 import io
@@ -17,7 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.routes import orders
-from app.api.routes.admin import require_admin
+from app.api.deps import require_staff
 from app.main import app
 from app.services.invoice_extraction import InvoiceExtractionError
 from app.services.gst import TaxKind
@@ -30,7 +30,7 @@ from app.services.purchase_invoice_intake import (
 
 BASE = "/api/v1/admin"
 
-app.dependency_overrides[require_admin] = lambda: None
+app.dependency_overrides[require_staff] = lambda: None
 client = TestClient(app)
 
 

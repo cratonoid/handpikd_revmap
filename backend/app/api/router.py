@@ -11,6 +11,7 @@ from app.api.routes import (
     categories,
     customer_invoices,
     database_contacts,
+    emails,
     expenses,
     inquiry_form,
     inventory,
@@ -26,6 +27,7 @@ from app.api.routes import (
     sales_orders,
     test,
     unbilled_orders,
+    users,
     vendors,
 )
 
@@ -34,10 +36,12 @@ api_router.include_router(test.router)
 api_router.include_router(auth.router)
 api_router.include_router(authentication.router)
 api_router.include_router(admin.router)
+api_router.include_router(users.router)
 api_router.include_router(analytics.router)
 api_router.include_router(accounts.router)
 api_router.include_router(expenses.router)
 api_router.include_router(database_contacts.router)
+api_router.include_router(emails.router)
 api_router.include_router(categories.router)
 api_router.include_router(vendors.router)
 api_router.include_router(products.router)

@@ -1,10 +1,10 @@
 # Categories module: endpoints for managing the category tree, restricted to
 # admins (bypassed entirely when settings.auth_enabled is False, matching
-# require_admin in routes/admin.py).
+# require_staff in api/deps.py).
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.routes.admin import require_admin
-from app.models import Category, CategoryIdCounter, ProductDetails, User
+from app.api.deps import require_section, require_staff
+from app.models import Section, Category, CategoryIdCounter, ProductDetails, User
 from app.schemas.categories import (
     AddCategoryRequest,
     AddCategoryResponse,
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/admin/categories", tags=["categories"])
 
 @router.get("/get_categories", response_model=list[CategoryItem])
 async def get_categories(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[CategoryItem]:
     categories = await Category.find_all().to_list()
     return [
@@ -35,7 +35,7 @@ async def get_categories(
 @router.post("/add_category", response_model=AddCategoryResponse)
 async def add_category(
     payload: AddCategoryRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.categories)),
 ) -> AddCategoryResponse:
     parent = None
     if payload.parent_id is not None:
@@ -63,7 +63,7 @@ async def add_category(
 @router.post("/update_category", response_model=UpdateCategoryResponse)
 async def update_category(
     payload: UpdateCategoryRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.categories)),
 ) -> UpdateCategoryResponse:
     if not payload.delete:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no changes specified")

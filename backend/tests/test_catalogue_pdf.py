@@ -5,7 +5,7 @@
 # app/services/catalogue_pdf_staging.py for why it's split that way).
 #
 # None of these endpoints touch the database, so no Mongo connection is
-# needed; require_admin is overridden so the tests don't depend on whether
+# needed; require_staff (which require_section builds on) is overridden so the tests don't depend on whether
 # auth_enabled is set in the local environment.
 import io
 
@@ -13,13 +13,13 @@ import pymupdf
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.routes.admin import require_admin
+from app.api.deps import require_staff
 from app.main import app
 from app.services.catalogue_pdf_staging import _staging_root
 
 BASE = "/api/v1/admin"
 
-app.dependency_overrides[require_admin] = lambda: None
+app.dependency_overrides[require_staff] = lambda: None
 client = TestClient(app)
 
 

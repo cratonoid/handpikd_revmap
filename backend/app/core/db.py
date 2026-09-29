@@ -21,6 +21,13 @@ from app.models import (
     CustomerPocIdCounter,
     DatabaseContact,
     DatabaseContactIdCounter,
+    EmailAttachment,
+    EmailAttachmentIdCounter,
+    EmailSend,
+    EmailSendIdCounter,
+    EmailSettings,
+    EmailTemplate,
+    EmailTemplateIdCounter,
     ExpenseDetails,
     ExpenseIdCounter,
     InquiryFormNode,
@@ -65,6 +72,9 @@ from app.models import (
     QuotationNoCounterMaster,
     QuotationSummary,
     QuotationSummaryIdCounter,
+    Role,
+    RoleIdCounter,
+    SYSTEM_ROLE_ID,
     SalesOrderCosting,
     SalesOrderCostingIdCounter,
     SalesOrderIdCounter,
@@ -175,6 +185,30 @@ async def _seed_order_statuses() -> None:
         elif existing.status_name != status_name:
             existing.status_name = status_name
             await existing.save()
+
+
+async def _seed_system_role() -> None:
+    # The built-in Administrator role (see SYSTEM_ROLE_ID in
+    # app/models/role.py). Inserted if missing and forced back to
+    # is_system=True, so a hand-edited document can't lock everyone out of
+    # Users & Roles. Its name is left alone once it exists.
+    existing = await Role.get(SYSTEM_ROLE_ID)
+    if existing is None:
+        await Role(id=SYSTEM_ROLE_ID, name="Administrator", sections=[], is_system=True).insert()
+    elif not existing.is_system:
+        existing.is_system = True
+        await existing.save()
+
+
+async def _backfill_admin_role_ids() -> None:
+    # Team accounts created before roles existed have no role_id, and
+    # require_section treats "no role" as "no sections". Every one of them
+    # had full access until now, so they keep it on the system role.
+    db = get_db()
+    await db["user"].update_many(
+        {"role": "admin", "$or": [{"role_id": {"$exists": False}}, {"role_id": None}]},
+        {"$set": {"role_id": SYSTEM_ROLE_ID}},
+    )
 
 
 async def _seed_personal_details() -> None:
@@ -366,6 +400,8 @@ async def connect_to_mongo() -> None:
         document_models=[
             User,
             UserIdCounter,
+            Role,
+            RoleIdCounter,
             CustomerDetails,
             CustomerIdCounter,
             CustomerPocDetails,
@@ -437,8 +473,17 @@ async def connect_to_mongo() -> None:
             ExpenseIdCounter,
             DatabaseContact,
             DatabaseContactIdCounter,
+            EmailTemplate,
+            EmailTemplateIdCounter,
+            EmailAttachment,
+            EmailAttachmentIdCounter,
+            EmailSend,
+            EmailSendIdCounter,
+            EmailSettings,
         ],
     )
+    await _seed_system_role()
+    await _backfill_admin_role_ids()
     await _seed_order_statuses()
     await _seed_personal_details()
     await _backfill_order_dates()

@@ -9,8 +9,15 @@ from app.models.customer_details import CustomerDetails
 from app.models.customer_id_counter import CustomerIdCounter
 from app.models.customer_poc_details import CustomerPocDetails
 from app.models.customer_poc_id_counter import CustomerPocIdCounter
-from app.models.database_contact import ContactType, DatabaseContact, LeadStatus
+from app.models.database_contact import ContactType, DatabaseContact, LeadStatus, OutreachChannel
 from app.models.database_contact_id_counter import DatabaseContactIdCounter
+from app.models.email_attachment import EmailAttachment
+from app.models.email_attachment_id_counter import EmailAttachmentIdCounter
+from app.models.email_send import EmailRecipient, EmailSend, EmailSendStatus, RecipientStatus
+from app.models.email_send_id_counter import EmailSendIdCounter
+from app.models.email_settings import EmailSettings
+from app.models.email_template import EmailAudience, EmailTemplate, TemplateAttachment
+from app.models.email_template_id_counter import EmailTemplateIdCounter
 from app.models.expense_details import ExpenseDetails, ExpenseStatus
 from app.models.expense_id_counter import ExpenseIdCounter
 from app.models.inquiry_form_node import InquiryFormNode
@@ -55,6 +62,8 @@ from app.models.quotation_id_counter import QuotationIdCounter
 from app.models.quotation_no_counter_master import QuotationNoCounterMaster
 from app.models.quotation_summary import QuotationSummary
 from app.models.quotation_summary_id_counter import QuotationSummaryIdCounter
+from app.models.role import SYSTEM_ROLE_ID, Role, Section
+from app.models.role_id_counter import RoleIdCounter
 from app.models.sales_order_costing import PrintingCost, SalesOrderCosting
 from app.models.sales_order_costing_id_counter import SalesOrderCostingIdCounter
 from app.models.sales_order_id_counter import SalesOrderIdCounter
@@ -86,8 +95,21 @@ __all__ = [
     "CustomerPocIdCounter",
     "ContactType",
     "LeadStatus",
+    "OutreachChannel",
     "DatabaseContact",
     "DatabaseContactIdCounter",
+    "EmailAttachment",
+    "EmailAttachmentIdCounter",
+    "EmailAudience",
+    "EmailRecipient",
+    "EmailSend",
+    "EmailSendIdCounter",
+    "EmailSendStatus",
+    "EmailSettings",
+    "EmailTemplate",
+    "EmailTemplateIdCounter",
+    "RecipientStatus",
+    "TemplateAttachment",
     "InquiryFormNode",
     "InquiryFormNodeIdCounter",
     "InquiryFormSubmission",
@@ -136,6 +158,10 @@ __all__ = [
     "QuotationNoCounterMaster",
     "QuotationSummary",
     "QuotationSummaryIdCounter",
+    "Role",
+    "RoleIdCounter",
+    "Section",
+    "SYSTEM_ROLE_ID",
     "PrintingCost",
     "SalesOrderCosting",
     "SalesOrderCostingIdCounter",

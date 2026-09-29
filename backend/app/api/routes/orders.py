@@ -1,6 +1,6 @@
 # Orders module: endpoints for placing purchase orders against a vendor's
 # products, restricted to admins (bypassed entirely when settings.auth_enabled
-# is False, matching require_admin in routes/admin.py).
+# is False, matching require_staff in api/deps.py).
 #
 # A purchase order can be started two ways, both landing on
 # create_new_purchase_order below:
@@ -21,8 +21,9 @@
 from beanie.operators import In
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
-from app.api.routes.admin import require_admin
+from app.api.deps import require_section, require_staff
 from app.models import (
+    Section,
     ProductDetails,
     PurchaseInvoiceDetails,
     PurchaseOrderIdCounter,
@@ -272,7 +273,7 @@ async def _insert_purchase_summary_rows(
 @router.post("/create_new_purchase_order", response_model=CreateNewPurchaseOrderResponse)
 async def create_new_purchase_order(
     payload: CreateNewPurchaseOrderRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.orders)),
 ) -> CreateNewPurchaseOrderResponse:
     vendor = await VendorDetails.get(payload.vendor_id)
     if vendor is None:
@@ -337,7 +338,7 @@ async def create_new_purchase_order(
 @router.post("/parse_purchase_invoice_pdf", response_model=ParsePurchaseInvoicePdfResponse)
 async def parse_purchase_invoice_pdf(
     file: UploadFile = File(...),
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.orders)),
 ) -> ParsePurchaseInvoicePdfResponse:
     # Read-only: this endpoint never writes anything. It either returns
     # values for the admin to review and submit through
@@ -407,7 +408,7 @@ async def parse_purchase_invoice_pdf(
 
 @router.get("/get_purchase_order_list", response_model=list[PurchaseOrderListItem])
 async def get_purchase_order_list(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[PurchaseOrderListItem]:
     # Lightweight id+PO no.+vendor name list for the sales order form's
     # "related purchase orders" multiselect. PurchaseOrders has no
@@ -433,7 +434,7 @@ async def get_purchase_order_list(
 
 @router.get("/get_purchase_order_details", response_model=list[PurchaseOrderDetailItem])
 async def get_purchase_order_details(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[PurchaseOrderDetailItem]:
     orders = await PurchaseOrders.find_all().to_list()
     if not orders:
@@ -474,7 +475,7 @@ async def get_purchase_order_details(
 @router.post("/update_purchase_order_details", response_model=UpdatePurchaseOrderDetailsResponse)
 async def update_purchase_order_details(
     payload: UpdatePurchaseOrderDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.orders)),
 ) -> UpdatePurchaseOrderDetailsResponse:
     purchase_order = await PurchaseOrders.get(payload.id)
     if purchase_order is None:

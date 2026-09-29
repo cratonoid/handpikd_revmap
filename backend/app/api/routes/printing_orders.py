@@ -1,6 +1,6 @@
 # Printing orders module: endpoints for placing purchase orders against a
 # PRINTING vendor's services, restricted to admins (bypassed entirely when
-# settings.auth_enabled is False, matching require_admin in routes/admin.py).
+# settings.auth_enabled is False, matching require_staff in api/deps.py).
 #
 # The printing counterpart of routes/orders.py, and it starts the same two
 # ways — keyed in by hand, or read off the vendor's own invoice PDF by
@@ -21,8 +21,9 @@
 from beanie.operators import In
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
-from app.api.routes.admin import require_admin
+from app.api.deps import require_section, require_staff
 from app.models import (
+    Section,
     PrintingPurchaseInvoiceDetails,
     PrintingPurchaseOrderIdCounter,
     PrintingPurchaseOrders,
@@ -202,7 +203,7 @@ async def _insert_line_item_rows(
 @router.post("/create_new_printing_purchase_order", response_model=CreateNewPrintingPurchaseOrderResponse)
 async def create_new_printing_purchase_order(
     payload: CreateNewPrintingPurchaseOrderRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.orders)),
 ) -> CreateNewPrintingPurchaseOrderResponse:
     vendor = await _get_printing_vendor_or_error(payload.vendor_id)
 
@@ -267,7 +268,7 @@ async def create_new_printing_purchase_order(
 )
 async def parse_printing_purchase_invoice_pdf(
     file: UploadFile = File(...),
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.orders)),
 ) -> ParsePrintingPurchaseInvoicePdfResponse:
     # Read-only: this endpoint never writes anything. It either returns
     # values for the admin to review and submit through
@@ -323,7 +324,7 @@ async def parse_printing_purchase_invoice_pdf(
 
 @router.get("/get_printing_purchase_order_details", response_model=list[PrintingPurchaseOrderDetailItem])
 async def get_printing_purchase_order_details(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[PrintingPurchaseOrderDetailItem]:
     orders = await PrintingPurchaseOrders.find_all().to_list()
     if not orders:
@@ -369,7 +370,7 @@ async def get_printing_purchase_order_details(
 )
 async def update_printing_purchase_order_details(
     payload: UpdatePrintingPurchaseOrderDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.orders)),
 ) -> UpdatePrintingPurchaseOrderDetailsResponse:
     purchase_order = await PrintingPurchaseOrders.get(payload.id)
     if purchase_order is None:

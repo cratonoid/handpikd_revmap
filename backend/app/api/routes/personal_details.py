@@ -4,8 +4,8 @@
 # routes/*.py module here (bypassed when settings.auth_enabled is False).
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
-from app.api.routes.admin import require_admin
-from app.models import User
+from app.api.deps import require_section, require_staff
+from app.models import Section, User
 from app.schemas.personal_details import (
     PersonalDetailsItem,
     UpdatePersonalDetailsRequest,
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/admin", tags=["personal_details"])
 @router.post("/upload_signature_image", response_model=UploadSignatureImageResponse)
 async def upload_signature_image_route(
     file: UploadFile = File(...),
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.profile, Section.invoices)),
 ) -> UploadSignatureImageResponse:
     image_bytes = await file.read()
     url = store_signature_image(image_bytes, file.filename or "signature")
@@ -30,7 +30,7 @@ async def upload_signature_image_route(
 
 @router.get("/get_personal_details", response_model=list[PersonalDetailsItem])
 async def get_personal_details_route(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[PersonalDetailsItem]:
     values = await get_personal_details()
     return [PersonalDetailsItem(attribute=attribute, value=value) for attribute, value in values.items()]
@@ -39,7 +39,7 @@ async def get_personal_details_route(
 @router.post("/update_personal_details", response_model=UpdatePersonalDetailsResponse)
 async def update_personal_details_route(
     payload: UpdatePersonalDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.profile, Section.invoices)),
 ) -> UpdatePersonalDetailsResponse:
     try:
         await update_personal_details(payload.values)
@@ -55,7 +55,7 @@ async def update_personal_details_route(
 # "Company details" modal naming.
 @router.get("/get_profile_details", response_model=list[PersonalDetailsItem])
 async def get_profile_details_route(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[PersonalDetailsItem]:
     values = await get_personal_details()
     return [PersonalDetailsItem(attribute=attribute, value=value) for attribute, value in values.items()]
@@ -64,7 +64,7 @@ async def get_profile_details_route(
 @router.post("/edit_profile_details", response_model=UpdatePersonalDetailsResponse)
 async def edit_profile_details_route(
     payload: UpdatePersonalDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.profile)),
 ) -> UpdatePersonalDetailsResponse:
     try:
         await update_personal_details(payload.values)

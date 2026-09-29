@@ -1,17 +1,18 @@
 # Product inquiry module: what the storefront cart (/cart) sends when a
 # visitor presses "Send inquiry" on the products they collected, plus the
 # admin endpoint that lists those inquiries. Same router split as
-# routes/inquiry_form.py - `router` sits behind require_admin (bypassed
-# entirely when settings.auth_enabled is False, matching require_admin in
-# routes/admin.py), while `public_router` is intentionally unauthenticated
+# routes/inquiry_form.py - `router` sits behind require_section (bypassed
+# entirely when settings.auth_enabled is False, matching require_staff in
+# api/deps.py), while `public_router` is intentionally unauthenticated
 # since the cart page is a visitor-facing surface with no login.
 from datetime import datetime, timezone
 
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.routes.admin import require_admin
+from app.api.deps import require_section
 from app.models import (
+    Section,
     ProductDetails,
     ProductInquiry,
     ProductInquiryIdCounter,
@@ -99,7 +100,7 @@ async def submit_product_inquiry(payload: SubmitProductInquiryRequest) -> Submit
 
 
 @router.get("/get_inquiries", response_model=list[ProductInquiryItemResponse])
-async def get_inquiries(_: User | None = Depends(require_admin)) -> list[ProductInquiryItemResponse]:
+async def get_inquiries(_: User | None = Depends(require_section(Section.product_inquiries))) -> list[ProductInquiryItemResponse]:
     inquiries = await ProductInquiry.find_all().sort(-ProductInquiry.id).to_list()
     return [
         ProductInquiryItemResponse(

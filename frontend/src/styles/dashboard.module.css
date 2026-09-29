@@ -5213,3 +5213,52 @@ select.formInput:disabled {
     color: var(--color-cream);
   }
 }
+
+/* -----------------------------------------------------------------------
+   "No access" notice (dashboard-shell.tsx) — shown in place of a page
+   whose section the signed-in user's role doesn't include.
+   ----------------------------------------------------------------------- */
+.noAccessNotice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  max-width: 32rem;
+  padding: 2rem 0;
+}
+
+.noAccessLink {
+  margin-top: 0.5rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+  text-decoration: underline;
+  text-underline-offset: 0.15rem;
+}
+
+/* -----------------------------------------------------------------------
+   Users & Roles (/admin/users) — the role form's section checkboxes, laid
+   out as a grid so all seventeen fit without a long scroll.
+   ----------------------------------------------------------------------- */
+.sectionChecklist {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 0.25rem 1rem;
+}
+
+.sectionChecklistItem {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.25rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: var(--color-charcoal);
+}
+
+/* A role's sections in the Roles table: wraps rather than widening the
+   table, and stays readable in the phone card view. */
+.roleSectionsCell {
+  max-width: 32rem;
+  white-space: normal;
+  line-height: 1.5;
+}

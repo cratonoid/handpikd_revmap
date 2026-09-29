@@ -3,7 +3,7 @@
 # accounts-page-client.tsx and its three report tabs; the fourth, Expenses,
 # is the one hand-entered list and lives in routes/expenses.py). Restricted
 # to admins (bypassed entirely when settings.auth_enabled is False, matching
-# require_admin in routes/admin.py).
+# require_staff in api/deps.py).
 #
 # Nothing here writes. Every figure is derived on each request from the
 # collections the operational modules already maintain — there is no
@@ -60,8 +60,9 @@ from datetime import date, datetime, time
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.routes.admin import require_admin
+from app.api.deps import require_section
 from app.models import (
+    Section,
     CustomerDetails,
     ExpenseDetails,
     InvoiceDetails,
@@ -281,7 +282,7 @@ async def _cost_by_sales_order(sales_order_ids: set[int]) -> tuple[dict[int, flo
 async def get_accounts_overview(
     start_date: date,
     end_date: date,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.accounts)),
 ) -> AccountsOverviewResponse:
     start_dt, end_dt = _validate_range(start_date, end_date)
     invoices = await _standard_invoices_in_range(start_dt, end_dt)
@@ -429,7 +430,7 @@ def _aging_bucket(days_overdue: int, is_overdue: bool) -> str:
 async def get_accounts_receivables(
     start_date: date,
     end_date: date,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.accounts)),
 ) -> AccountsReceivablesResponse:
     start_dt, end_dt = _validate_range(start_date, end_date)
 
@@ -560,7 +561,7 @@ async def get_accounts_receivables(
 async def get_accounts_tax_summary(
     start_date: date,
     end_date: date,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.accounts)),
 ) -> AccountsTaxSummaryResponse:
     start_dt, end_dt = _validate_range(start_date, end_date)
 

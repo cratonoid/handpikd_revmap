@@ -52,4 +52,26 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     invoice_extraction_model: str = "claude-opus-5"
 
+    # Outgoing mail for the admin's Emails module (routes/emails.py), sent
+    # through the company's Titan mailbox. smtp_user is both the login and
+    # the From address; leaving it or the password unset disables sending
+    # (the compose screen says so rather than failing per recipient).
+    # Every sent message is also filed into the mailbox's Sent folder over
+    # IMAP, since mail submitted over SMTP never shows up there on its own
+    # — see services/email_sender.py. imap_sent_folder is only the fallback
+    # when the server doesn't flag its Sent folder itself.
+    smtp_host: str = "smtp.titan.email"
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_name: str = "Handpikd"
+    imap_host: str = "imap.titan.email"
+    imap_port: int = 993
+    imap_sent_folder: str = "Sent"
+    # Bulk sends go out one personalised message at a time with this pause
+    # in between, and are capped per send — Titan limits how much a mailbox
+    # may send per hour/day, and a burst is what trips it.
+    email_bulk_limit: int = 50
+    email_send_interval_seconds: float = 2.0
+
 settings = Settings()

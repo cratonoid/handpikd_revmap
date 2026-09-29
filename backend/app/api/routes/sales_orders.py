@@ -1,11 +1,12 @@
 # Sales orders module: endpoints for placing sales orders against a
 # customer's product picks, restricted to admins (bypassed entirely when
-# settings.auth_enabled is False, matching require_admin in routes/admin.py).
+# settings.auth_enabled is False, matching require_staff in api/deps.py).
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.routes.admin import require_admin
+from app.api.deps import require_section, require_staff
 from app.models import (
+    Section,
     CustomerDetails,
     OrderNoCounterMaster,
     OrderStatusMaster,
@@ -509,7 +510,7 @@ async def _write_sales_summary_rows(
 @router.post("/create_new_sales_order", response_model=CreateNewSalesOrderResponse)
 async def create_new_sales_order(
     payload: CreateNewSalesOrderRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.orders)),
 ) -> CreateNewSalesOrderResponse:
     await _validate_customer_exists(payload.cust_id)
     await _validate_products_exist(payload.product_ids, reject_deleted=True)
@@ -574,7 +575,7 @@ async def create_new_sales_order(
 
 @router.get("/get_sales_order_details", response_model=list[SalesOrderDetailItem])
 async def get_sales_order_details(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[SalesOrderDetailItem]:
     # Soft-deleted orders are excluded here so they can never be viewed —
     # unlike get_vendor_details/get_customer_details, there is no
@@ -627,7 +628,7 @@ async def get_sales_order_details(
 @router.post("/update_sales_order_details", response_model=UpdateSalesOrderDetailsResponse)
 async def update_sales_order_details(
     payload: UpdateSalesOrderDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.orders)),
 ) -> UpdateSalesOrderDetailsResponse:
     sales_order = await SalesOrders.get(payload.id)
     if sales_order is None:
@@ -731,7 +732,7 @@ async def update_sales_order_details(
 @router.post("/update_sales_order_status", response_model=UpdateSalesOrderStatusResponse)
 async def update_sales_order_status(
     payload: UpdateSalesOrderStatusRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.orders)),
 ) -> UpdateSalesOrderStatusResponse:
     """Move one sales order between statuses, and nothing else.
 
@@ -791,7 +792,7 @@ async def update_sales_order_status(
 
 @router.get("/get_order_status_list", response_model=list[OrderStatusListItem])
 async def get_order_status_list(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[OrderStatusListItem]:
     statuses = await OrderStatusMaster.find_all().to_list()
     return [OrderStatusListItem(id=status_row.id, status_name=status_row.status_name) for status_row in statuses]
@@ -832,7 +833,7 @@ async def _get_active_sales_order(sales_order_id: int) -> SalesOrders:
 @router.get("/get_sales_order_costing", response_model=SalesOrderCostingResponse)
 async def get_sales_order_costing(
     sales_order_id: int,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> SalesOrderCostingResponse:
     sales_order = await _get_active_sales_order(sales_order_id)
 
@@ -917,7 +918,7 @@ async def get_sales_order_costing(
 @router.post("/update_sales_order_costing", response_model=UpdateSalesOrderCostingResponse)
 async def update_sales_order_costing(
     payload: UpdateSalesOrderCostingRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.orders)),
 ) -> UpdateSalesOrderCostingResponse:
     sales_order = await _get_active_sales_order(payload.sales_order_id)
 
@@ -1201,7 +1202,7 @@ def _build_costing_report_rows(
 
 @router.get("/get_sales_order_costing_report", response_model=list[SalesOrderCostingReportRow])
 async def get_sales_order_costing_report(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[SalesOrderCostingReportRow]:
     # Soft-deleted orders are left out, as on get_sales_order_details.
     orders = await SalesOrders.find(SalesOrders.is_deleted == False).to_list()

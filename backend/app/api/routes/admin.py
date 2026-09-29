@@ -3,9 +3,10 @@
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.deps import get_current_user
+from app.api.deps import require_section, require_staff
 from app.core.security import hash_password
 from app.models import (
+    Section,
     CustomerDetails,
     CustomerIdCounter,
     CustomerPocDetails,
@@ -28,12 +29,6 @@ from app.services.gst import resolve_party_state
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-async def require_admin(current_user: User | None = Depends(get_current_user)) -> User | None:
-    if current_user is not None and current_user.role != UserRole.admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin access required")
-    return current_user
-
-
 def party_state_or_400(state_code: str, gstin: str) -> tuple[str, str]:
     """resolve_party_state with its ValueError turned into a 400.
 
@@ -50,7 +45,7 @@ def party_state_or_400(state_code: str, gstin: str) -> tuple[str, str]:
 @router.post("/add_customer_details", response_model=AddCustomerDetailsResponse)
 async def add_customer_details(
     payload: AddCustomerDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.clients)),
 ) -> AddCustomerDetailsResponse:
     existing = await User.find_one(User.mail == payload.mail)
     if existing is not None:
@@ -87,7 +82,7 @@ async def add_customer_details(
 
 @router.get("/get_customer_list", response_model=list[CustomerListItem])
 async def get_customer_list(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_staff),
 ) -> list[CustomerListItem]:
     # Lightweight id+name list for customer-picker dropdowns (the sales order
     # popup) — unlike get_vendors_list, this returns every customer, active
@@ -140,7 +135,7 @@ async def _get_customer_detail_by_mail(mail: str) -> CustomerDetailItem:
 @router.get("/get_customer_details", response_model=list[CustomerDetailItem] | CustomerDetailItem)
 async def get_customer_details(
     mail: str | None = None,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.clients)),
 ) -> list[CustomerDetailItem] | CustomerDetailItem:
     # ?mail=... looks up a single customer (404 if not found); omitted, this
     # keeps returning every customer, as the /admin/clients table relies on.
@@ -191,7 +186,7 @@ async def get_customer_details(
 @router.post("/update_customer_details", response_model=UpdateCustomerDetailsResponse)
 async def update_customer_details(
     payload: UpdateCustomerDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.clients)),
 ) -> UpdateCustomerDetailsResponse:
     user = await User.find_one(User.mail == payload.mail)
     if user is None:

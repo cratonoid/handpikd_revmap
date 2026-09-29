@@ -445,3 +445,15 @@ export function DatabaseIcon(props: IconProps) {
     </svg>
   );
 }
+
+// A shield with a person inside — the admin's Users & Roles page, which
+// decides who can open which sections.
+export function ShieldUserIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 3.5 5 6.25v5.2c0 4.3 2.9 7.55 7 9.05 4.1-1.5 7-4.75 7-9.05v-5.2L12 3.5Z" />
+      <circle cx="12" cy="10.25" r="2.1" />
+      <path d="M8.6 16c.7-1.6 1.95-2.4 3.4-2.4s2.7.8 3.4 2.4" />
+    </svg>
+  );
+}

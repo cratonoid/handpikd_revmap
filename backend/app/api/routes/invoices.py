@@ -3,8 +3,8 @@
 # no sales order/quotation involved — same "fill the form, generate a PDF"
 # flow as quotations, see routes/quotations.py), viewing/editing/voiding
 # both, and generating their PDFs. Restricted to admins (bypassed entirely
-# when settings.auth_enabled is False, matching require_admin in
-# routes/admin.py).
+# when settings.auth_enabled is False, matching require_staff in
+# api/deps.py).
 import io
 import zipfile
 from dataclasses import dataclass
@@ -13,8 +13,9 @@ from datetime import date, datetime, time
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-from app.api.routes.admin import require_admin
+from app.api.deps import require_section
 from app.models import (
+    Section,
     CustomerDetails,
     CustomerPocDetails,
     InvoiceDetails,
@@ -297,7 +298,7 @@ async def _insert_proforma_summary_rows(
 @router.post("/create_new_invoice", response_model=CreateNewInvoiceResponse)
 async def create_new_invoice(
     payload: CreateNewInvoiceRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> CreateNewInvoiceResponse:
     sales_orders = await _get_sales_orders_or_404(payload.sales_ids)
     _check_same_customer(sales_orders)
@@ -347,7 +348,7 @@ async def create_new_invoice(
 @router.post("/create_new_proforma_invoice", response_model=CreateNewProformaInvoiceResponse)
 async def create_new_proforma_invoice(
     payload: CreateNewProformaInvoiceRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> CreateNewProformaInvoiceResponse:
     await _validate_customer_exists(payload.cust_id)
     await _validate_products_exist(payload.product_ids, reject_deleted=True)
@@ -436,7 +437,7 @@ def _to_invoice_detail_item(
 
 @router.get("/get_invoice_details", response_model=list[InvoiceDetailItem])
 async def get_invoice_details(
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> list[InvoiceDetailItem]:
     invoices = await InvoiceDetails.find(InvoiceDetails.is_deleted == False).to_list()
     if not invoices:
@@ -460,7 +461,7 @@ async def get_invoice_details(
 @router.post("/update_invoice_details", response_model=UpdateInvoiceDetailsResponse)
 async def update_invoice_details(
     payload: UpdateInvoiceDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> UpdateInvoiceDetailsResponse:
     invoice = await InvoiceDetails.get(payload.id)
     if invoice is None:
@@ -509,7 +510,7 @@ async def update_invoice_details(
 @router.post("/update_invoice_status", response_model=UpdateInvoiceStatusResponse)
 async def update_invoice_status(
     payload: UpdateInvoiceStatusRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> UpdateInvoiceStatusResponse:
     """Mark one invoice paid or unpaid, and nothing else.
 
@@ -548,7 +549,7 @@ async def update_invoice_status(
 @router.post("/update_proforma_invoice_details", response_model=UpdateProformaInvoiceDetailsResponse)
 async def update_proforma_invoice_details(
     payload: UpdateProformaInvoiceDetailsRequest,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> UpdateProformaInvoiceDetailsResponse:
     invoice = await InvoiceDetails.get(payload.id)
     if invoice is None:
@@ -787,7 +788,7 @@ def pdf_response(pdf_bytes: bytes, filename: str) -> Response:
 @router.get("/get_invoice_pdf")
 async def get_invoice_pdf(
     invoice_id: int,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> Response:
     invoice = await InvoiceDetails.get(invoice_id)
     if invoice is None:
@@ -801,7 +802,7 @@ async def get_invoice_pdf(
 async def get_invoices_pdf_zip(
     start_date: date,
     end_date: date,
-    _: User | None = Depends(require_admin),
+    _: User | None = Depends(require_section(Section.invoices)),
 ) -> Response:
     # Standard invoices only, bounded by invoice date (not due date) —
     # bulk download is a "give me everything I raised this month" tool,

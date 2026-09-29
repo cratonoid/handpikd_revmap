@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from app.models.database_contact import ContactType, LeadStatus
+from app.models.database_contact import ContactType, LeadStatus, OutreachChannel
 
 
 class ContactItem(BaseModel):
@@ -18,6 +18,8 @@ class ContactItem(BaseModel):
     location: str | None
     contact_person: str | None
     lead_status: LeadStatus | None
+    # Lead-only; [] on client and vendor rows.
+    outreach_channels: list[OutreachChannel] = []
     created_at: datetime
 
 
@@ -34,6 +36,7 @@ class AddContactRequest(BaseModel):
     location: str | None = None
     contact_person: str | None = None
     lead_status: LeadStatus | None = None
+    outreach_channels: list[OutreachChannel] | None = None
 
 
 class AddContactResponse(BaseModel):
@@ -53,6 +56,8 @@ class UpdateContactRequest(BaseModel):
     location: str | None = None
     contact_person: str | None = None
     lead_status: LeadStatus | None = None
+    # The full set of ticked channels, not a delta; [] unticks both.
+    outreach_channels: list[OutreachChannel] | None = None
     delete: bool = False
 
 
