@@ -3,33 +3,54 @@
 // ---------------------------------------------------------------------------
 // <UsersPageClient> — the interactive half of /admin/users
 // ---------------------------------------------------------------------------
-// Two tabs over the same data (lib/users.ts):
+// Three tabs over lib/users.ts:
 //   - Users: team accounts that sign in to /admin, each with one role.
 //     Clicking a row opens team-user-form-modal.tsx.
 //   - Roles: named sets of sections. Clicking a row opens role-form-modal.tsx.
 //     The built-in Administrator role is listed but not clickable — it has
 //     every section, always, so there is nothing to edit.
-// Both lists are reloaded after any save, since a role rename or delete also
+//   - Client logins: every client's /customer portal login. Deliberately not
+//     mixed into Users: roles are for the admin panel, and a role picker on a
+//     client row would invite handing a client the admin panel. The row's
+//     Enable/Disable button is the one thing changed from here; clicking the
+//     row opens the client's own edit form (customer-form-modal.tsx), for
+//     anyone whose role also has Clients.
+// Everything is reloaded after any save, since a role rename or delete also
 // changes the Users tab, and a user's role change moves a Roles-tab count.
-//
-// Client logins aren't listed: they belong to a client and are edited with
-// it on /admin/clients.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
+import { CustomerFormModal } from "@/components/admin/customer-form-modal";
 import { RoleFormModal } from "@/components/admin/role-form-modal";
 import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import { TeamUserFormModal } from "@/components/admin/team-user-form-modal";
-import { ADMIN_SECTIONS, fetchMyAccess } from "@/lib/access";
+import { ADMIN_SECTIONS, canAccess, fetchMyAccess, type MyAccess } from "@/lib/access";
+import { fetchCustomerDetail, type Customer } from "@/lib/customers";
 import { formatDateTime } from "@/lib/format-date";
-import { fetchRoles, fetchTeamUsers, type Role, type TeamUser } from "@/lib/users";
+import {
+  fetchClientLogins,
+  fetchRoles,
+  fetchTeamUsers,
+  setClientLoginActive,
+  UsersApiError,
+  type ClientLogin,
+  type Role,
+  type TeamUser,
+} from "@/lib/users";
 import styles from "@/styles/dashboard.module.css";
 
-type Tab = "users" | "roles";
+type Tab = "users" | "roles" | "clients";
 type LoadState = "loading" | "loaded" | "error";
 type ModalState =
   | { kind: "user"; user?: TeamUser }
   | { kind: "role"; role?: Role }
+  | { kind: "client"; customer: Customer }
   | null;
+
+const TABS: { key: Tab; label: string; search: string; placeholder: string }[] = [
+  { key: "users", label: "Users", search: "Search users", placeholder: "Search name, email or role…" },
+  { key: "roles", label: "Roles", search: "Search roles", placeholder: "Search role or section…" },
+  { key: "clients", label: "Client logins", search: "Search client logins", placeholder: "Search client or email…" },
+];
 
 const SECTION_LABELS = new Map(ADMIN_SECTIONS.map((section) => [section.key, section.label]));
 
@@ -39,25 +60,37 @@ function roleSectionsText(role: Role): string {
   return role.sections.map((key) => SECTION_LABELS.get(key) ?? key).join(", ");
 }
 
-// Also fetches the signed-in user's own id, so their row can be marked and
-// the modal can stop them disabling or deleting themselves.
+// Also fetches the signed-in user's own access: their id marks their row
+// and stops them disabling or deleting themselves, and their sections decide
+// whether a client login row can open the client's edit form.
 function loadAll() {
-  return Promise.all([fetchTeamUsers(), fetchRoles(), fetchMyAccess()]);
+  return Promise.all([fetchTeamUsers(), fetchRoles(), fetchClientLogins(), fetchMyAccess()]);
 }
 
 export function UsersPageClient() {
   const [tab, setTab] = useState<Tab>("users");
   const [users, setUsers] = useState<TeamUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [myUserId, setMyUserId] = useState<number | null>(null);
+  const [clientLogins, setClientLogins] = useState<ClientLogin[]>([]);
+  const [access, setAccess] = useState<MyAccess | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
   const [search, setSearch] = useState("");
+  // Client logins tab: the row whose Enable/Disable is in flight, the row
+  // whose client form is being fetched, and the last error from either.
+  const [togglingUserId, setTogglingUserId] = useState<number | null>(null);
+  const [openingUserId, setOpeningUserId] = useState<number | null>(null);
+  const [clientError, setClientError] = useState<string | null>(null);
 
-  function applyLoaded([nextUsers, nextRoles, access]: Awaited<ReturnType<typeof loadAll>>) {
+  const myUserId = access?.userId ?? null;
+  const canEditClients = access !== null && canAccess(access, "clients");
+  const currentTab = TABS.find((t) => t.key === tab) ?? TABS[0];
+
+  function applyLoaded([nextUsers, nextRoles, nextClientLogins, nextAccess]: Awaited<ReturnType<typeof loadAll>>) {
     setUsers(nextUsers);
     setRoles(nextRoles);
-    setMyUserId(access.userId);
+    setClientLogins(nextClientLogins);
+    setAccess(nextAccess);
     setLoadState("loaded");
   }
 
@@ -76,15 +109,62 @@ export function UsersPageClient() {
     };
   }, []);
 
-  function handleSaved() {
-    setModalState(null);
+  function reload() {
     loadAll()
       .then(applyLoaded)
       .catch(() => setLoadState("error"));
   }
 
+  function handleSaved() {
+    setModalState(null);
+    reload();
+  }
+
+  async function toggleClientLogin(login: ClientLogin) {
+    setTogglingUserId(login.userId);
+    setClientError(null);
+    try {
+      await setClientLoginActive(login.userId, !login.isActive);
+      setClientLogins((prev) =>
+        prev.map((item) => (item.userId === login.userId ? { ...item, isActive: !login.isActive } : item)),
+      );
+    } catch (caught) {
+      setClientError(caught instanceof UsersApiError ? caught.message : "Something went wrong. Please try again.");
+    } finally {
+      setTogglingUserId(null);
+    }
+  }
+
+  async function openClient(login: ClientLogin) {
+    setOpeningUserId(login.userId);
+    setClientError(null);
+    try {
+      const customer = await fetchCustomerDetail(login.mail);
+      setModalState({ kind: "client", customer });
+    } catch {
+      setClientError("Couldn't open this client. Please try again.");
+    } finally {
+      setOpeningUserId(null);
+    }
+  }
+
   const visibleUsers = users.filter((user) => matchesSearch(search, [user.name, user.mail, user.roleName]));
   const visibleRoles = roles.filter((role) => matchesSearch(search, [role.name, roleSectionsText(role)]));
+  const visibleClientLogins = clientLogins.filter((login) =>
+    matchesSearch(search, [login.registeredName, login.companyOrDepartment, login.mail]),
+  );
+
+  function statusMessages(noun: string, count: number) {
+    return (
+      <>
+        {loadState === "loading" && <p className={styles.pageSubtext}>Loading {noun}…</p>}
+        {loadState === "error" && <p className={styles.formError}>Couldn&apos;t load {noun}. Please try again.</p>}
+        {loadState === "loaded" && count === 0 && (
+          <p className={styles.pageSubtext}>{search.trim() !== "" ? `No ${noun} match your search.` : `No ${noun} yet.`}</p>
+        )}
+      </>
+    );
+  }
 
   return (
     <>
@@ -92,47 +172,45 @@ export function UsersPageClient() {
         <div>
           <h1 className={styles.pageHeading}>Users &amp; Roles</h1>
         </div>
-        <Button
-          type="button"
-          variant="primary"
-          onClick={() => setModalState(tab === "users" ? { kind: "user" } : { kind: "role" })}
-          disabled={loadState !== "loaded"}
-        >
-          {tab === "users" ? "+ Add new user" : "+ Add new role"}
-        </Button>
+        {/* Client logins are created with their client, so that tab has
+            no "add" of its own. */}
+        {tab !== "clients" && (
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => setModalState(tab === "users" ? { kind: "user" } : { kind: "role" })}
+            disabled={loadState !== "loaded"}
+          >
+            {tab === "users" ? "+ Add new user" : "+ Add new role"}
+          </Button>
+        )}
       </div>
 
       <div className={styles.filterToggleRow}>
         <TableSearchInput
           value={search}
           onChange={setSearch}
-          label={tab === "users" ? "Search users" : "Search roles"}
-          placeholder={tab === "users" ? "Search name, email or role…" : "Search role or section…"}
+          label={currentTab.search}
+          placeholder={currentTab.placeholder}
         />
 
         <div className={`${styles.viewToggle} ${styles.viewToggleEnd}`} role="tablist" aria-label="Users and roles">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "users"}
-            onClick={() => setTab("users")}
-            className={`${styles.viewToggleButton} ${tab === "users" ? styles.viewToggleButtonActive : ""}`}
-          >
-            Users
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "roles"}
-            onClick={() => setTab("roles")}
-            className={`${styles.viewToggleButton} ${tab === "roles" ? styles.viewToggleButtonActive : ""}`}
-          >
-            Roles
-          </button>
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              aria-selected={tab === t.key}
+              onClick={() => setTab(t.key)}
+              className={`${styles.viewToggleButton} ${tab === t.key ? styles.viewToggleButtonActive : ""}`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {tab === "users" ? (
+      {tab === "users" && (
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
@@ -160,13 +238,11 @@ export function UsersPageClient() {
               ))}
             </tbody>
           </table>
-          {loadState === "loading" && <p className={styles.pageSubtext}>Loading users…</p>}
-          {loadState === "error" && <p className={styles.formError}>Couldn&apos;t load users. Please try again.</p>}
-          {loadState === "loaded" && visibleUsers.length === 0 && (
-            <p className={styles.pageSubtext}>{search.trim() !== "" ? "No users match your search." : "No users yet."}</p>
-          )}
+          {statusMessages("users", visibleUsers.length)}
         </div>
-      ) : (
+      )}
+
+      {tab === "roles" && (
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
@@ -196,11 +272,76 @@ export function UsersPageClient() {
               ))}
             </tbody>
           </table>
-          {loadState === "loading" && <p className={styles.pageSubtext}>Loading roles…</p>}
-          {loadState === "error" && <p className={styles.formError}>Couldn&apos;t load roles. Please try again.</p>}
-          {loadState === "loaded" && visibleRoles.length === 0 && (
-            <p className={styles.pageSubtext}>{search.trim() !== "" ? "No roles match your search." : "No roles yet."}</p>
+          {statusMessages("roles", visibleRoles.length)}
+        </div>
+      )}
+
+      {tab === "clients" && (
+        <div className={styles.tableWrap}>
+          <p className={styles.pageSubtext}>
+            Logins to the client portal, where clients see their own invoices. They&apos;re created when a client is
+            added on Clients{canEditClients ? " — click a row to edit that client" : ""}.
+          </p>
+          {clientError && (
+            <p role="alert" aria-live="polite" className={styles.formError}>
+              {clientError}
+            </p>
           )}
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th className={styles.tableHeadCell}>S.No</th>
+                <th className={styles.tableHeadCell}>Client</th>
+                <th className={styles.tableHeadCell}>Department</th>
+                <th className={styles.tableHeadCell}>Email</th>
+                <th className={styles.tableHeadCell}>Last login</th>
+                <th className={styles.tableHeadCell}>Login</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleClientLogins.map((login, index) => (
+                <tr
+                  key={login.userId}
+                  onClick={canEditClients && openingUserId === null ? () => void openClient(login) : undefined}
+                  className={canEditClients ? styles.tableRow : undefined}
+                  aria-busy={openingUserId === login.userId}
+                >
+                  <td className={styles.tableCell}>{index + 1}</td>
+                  <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
+                    {login.registeredName || "—"}
+                    {login.clientDeleted ? (
+                      <span className={styles.inactiveBadge}>Client deleted</span>
+                    ) : (
+                      !login.isActive && <span className={styles.inactiveBadge}>Disabled</span>
+                    )}
+                  </td>
+                  <td className={styles.tableCell}>{login.companyOrDepartment || "—"}</td>
+                  <td className={styles.tableCell}>{login.mail}</td>
+                  <td className={styles.tableCell}>{login.lastLogin ? formatDateTime(login.lastLogin) : "Never"}</td>
+                  <td className={styles.tableCell}>
+                    {/* A deleted client is already locked out of the portal,
+                        so there is nothing for this button to change. */}
+                    {login.clientDeleted ? (
+                      "—"
+                    ) : (
+                      <button
+                        type="button"
+                        className={styles.linkButton}
+                        disabled={togglingUserId !== null}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void toggleClientLogin(login);
+                        }}
+                      >
+                        {togglingUserId === login.userId ? "Saving…" : login.isActive ? "Disable" : "Enable"}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {statusMessages("client logins", visibleClientLogins.length)}
         </div>
       )}
 
@@ -216,6 +357,15 @@ export function UsersPageClient() {
 
       {modalState?.kind === "role" && (
         <RoleFormModal initialRole={modalState.role} onClose={() => setModalState(null)} onSaved={handleSaved} />
+      )}
+
+      {modalState?.kind === "client" && (
+        <CustomerFormModal
+          mode="edit"
+          initialCustomer={modalState.customer}
+          onClose={() => setModalState(null)}
+          onSaved={handleSaved}
+        />
       )}
     </>
   );

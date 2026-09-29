@@ -1,7 +1,9 @@
 # Users & Roles module (/admin/users): team accounts that sign in to /admin,
 # and the roles that decide which admin sections each of them can open.
-# Client logins (UserRole.customer) are not listed here — they are created
-# and edited with their client on /admin/clients.
+# Client logins (UserRole.customer) are listed read-only in their own tab:
+# the only thing changed from here is whether the login is enabled. They are
+# created and otherwise edited with their client on /admin/clients, and
+# never get a role — roles are for the admin panel, not the client portal.
 #
 # Every endpoint needs Section.users. The system role (SYSTEM_ROLE_ID) can't
 # be edited or deleted, and every change is checked against
@@ -11,14 +13,25 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import require_section
 from app.core.security import hash_password
-from app.models import SYSTEM_ROLE_ID, Role, RoleIdCounter, Section, User, UserIdCounter, UserRole
+from app.models import (
+    SYSTEM_ROLE_ID,
+    CustomerDetails,
+    Role,
+    RoleIdCounter,
+    Section,
+    User,
+    UserIdCounter,
+    UserRole,
+)
 from app.schemas.users import (
     AddRoleRequest,
     AddTeamUserRequest,
+    ClientLoginItem,
     DeleteRoleRequest,
     DeleteTeamUserRequest,
     MessageResponse,
     RoleItem,
+    SetClientLoginActiveRequest,
     TeamUserItem,
     UpdateRoleRequest,
     UpdateTeamUserRequest,
@@ -280,3 +293,47 @@ async def delete_user(
     await _ensure_an_administrator_remains(user)
     await user.delete()
     return MessageResponse(message="user deleted successfully")
+
+
+# ---------------------------------------------------------------------------
+# Client logins
+# ---------------------------------------------------------------------------
+
+
+@router.get("/get_client_logins", response_model=list[ClientLoginItem])
+async def get_client_logins(
+    _: User | None = Depends(require_section(Section.users)),
+) -> list[ClientLoginItem]:
+    logins = await User.find(User.role == UserRole.customer).sort(+User.id).to_list()
+    clients_by_user_id = {client.user_id: client for client in await CustomerDetails.find_all().to_list()}
+
+    items = []
+    for login in logins:
+        client = clients_by_user_id.get(login.id)
+        items.append(
+            ClientLoginItem(
+                user_id=login.id,
+                mail=login.mail,
+                registered_name=client.registered_name if client else "",
+                company_or_department=client.company_or_department if client else "",
+                is_active=login.is_active,
+                # A login with no client row can't reach the portal either.
+                client_deleted=client is None or client.is_deleted,
+                last_login=login.last_login,
+            )
+        )
+    return items
+
+
+@router.post("/set_client_login_active", response_model=MessageResponse)
+async def set_client_login_active(
+    payload: SetClientLoginActiveRequest,
+    _: User | None = Depends(require_section(Section.users)),
+) -> MessageResponse:
+    login = await User.get(payload.user_id)
+    if login is None or login.role != UserRole.customer:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="client login not found")
+
+    login.is_active = payload.is_active
+    await login.save()
+    return MessageResponse(message="client login enabled" if payload.is_active else "client login disabled")

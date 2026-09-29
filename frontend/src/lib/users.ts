@@ -2,8 +2,10 @@
 // Team users and roles for /admin/users
 // ---------------------------------------------------------------------------
 // Backed by backend/app/api/routes/users.py. Team users are the accounts
-// that sign in to /admin; client logins are managed on /admin/clients and
-// never appear here. A role is a named set of sections (lib/access.ts) —
+// that sign in to /admin. Client logins (the /customer portal) are listed
+// too, but only their enabled/disabled state is changed from here — the
+// rest is edited with the client on /admin/clients, and they never get a
+// role. A role is a named set of sections (lib/access.ts) —
 // the built-in Administrator role (isSystem) has every section and can't
 // be edited or deleted.
 import { apiFetch } from "@/lib/api";
@@ -152,4 +154,47 @@ export function updateTeamUser(userId: number, payload: TeamUserPayload) {
 
 export function deleteTeamUser(userId: number) {
   return post("/admin/users/delete_user", { user_id: userId });
+}
+
+export type ClientLogin = {
+  userId: number;
+  mail: string;
+  registeredName: string;
+  companyOrDepartment: string;
+  isActive: boolean;
+  // Deleted on /admin/clients: the portal refuses it whatever isActive says.
+  clientDeleted: boolean;
+  lastLogin: string | null;
+};
+
+type ClientLoginItem = {
+  user_id: number;
+  mail: string;
+  registered_name: string;
+  company_or_department: string;
+  is_active: boolean;
+  client_deleted: boolean;
+  last_login: string | null;
+};
+
+export async function fetchClientLogins(): Promise<ClientLogin[]> {
+  const response = await apiFetch("/admin/users/get_client_logins");
+  if (!response.ok) {
+    throw new Error("Failed to load client logins");
+  }
+
+  const items: ClientLoginItem[] = await response.json();
+  return items.map((item) => ({
+    userId: item.user_id,
+    mail: item.mail,
+    registeredName: item.registered_name,
+    companyOrDepartment: item.company_or_department,
+    isActive: item.is_active,
+    clientDeleted: item.client_deleted,
+    lastLogin: item.last_login,
+  }));
+}
+
+export function setClientLoginActive(userId: number, isActive: boolean) {
+  return post("/admin/users/set_client_login_active", { user_id: userId, is_active: isActive });
 }

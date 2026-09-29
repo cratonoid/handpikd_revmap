@@ -78,3 +78,23 @@ class MyAccessResponse(BaseModel):
     # None means every section (the system role); otherwise exactly the
     # sections the admin sidebar should show.
     sections: list[Section] | None
+
+
+class ClientLoginItem(BaseModel):
+    # A client's portal login (UserRole.customer), listed read-only beside
+    # the team on /admin/users. Everything but is_active is edited with the
+    # client on /admin/clients.
+    user_id: int
+    mail: str
+    registered_name: str
+    company_or_department: str
+    is_active: bool
+    # A soft-deleted client can't use the portal whatever is_active says
+    # (require_customer_account in routes/customer_invoices.py).
+    client_deleted: bool
+    last_login: datetime | None
+
+
+class SetClientLoginActiveRequest(BaseModel):
+    user_id: int
+    is_active: bool
