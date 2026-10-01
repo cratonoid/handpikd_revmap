@@ -25,6 +25,7 @@ export const metadata: Metadata = {
   title: "Corporate Gifting Blog",
   description:
     "Expert insights, trends, and ideas on employee gifting, client appreciation, and premium corporate gifting strategies for Indian businesses.",
+  alternates: { canonical: "/blogs" },
 };
 
 export default function BlogsPage() {

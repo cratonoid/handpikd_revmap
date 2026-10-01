@@ -15,6 +15,7 @@ export const metadata: Metadata = {
   title: "Hamper Inquiry Form",
   description:
     "Tell us about your firm, occasion, quantity, and budget, then pick the categories you're interested in — Handpikd will put together hamper options that fit.",
+  alternates: { canonical: "/hamper-inquiry-form" },
 };
 
 export default function HamperInquiryFormPage() {

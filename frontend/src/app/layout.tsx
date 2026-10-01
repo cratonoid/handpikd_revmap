@@ -16,6 +16,9 @@
 
 import type { Metadata } from "next";
 import { Fraunces, Manrope } from "next/font/google";
+// Next.js's official wrapper around Google's gtag.js — loads the analytics
+// script after hydration so it doesn't slow down the first paint.
+import { GoogleAnalytics } from "@next/third-parties/google";
 // React context can't be created in a Server Component, so the cart's
 // provider is its own Client Component ("use client" at the top of
 // lib/cart.tsx) that this Server Component just renders around `children` —
@@ -57,6 +60,12 @@ const description =
 // card tags in the page <head>, without you having to write any <head> JSX
 // by hand.
 export const metadata: Metadata = {
+  // Base for every relative URL Next.js puts in a meta tag — each page's
+  // `alternates.canonical` (e.g. "/products") and the share image from
+  // src/app/opengraph-image.jpg both resolve against this. Pinned to the
+  // bare domain so pages served on www still name handpikd.co as the real
+  // address (nginx also redirects www there — see deploy/nginx.conf).
+  metadataBase: new URL("https://handpikd.co"),
   title: {
     default: title,
     // Individual pages can export their OWN `metadata.title` (see
@@ -86,7 +95,7 @@ export const metadata: Metadata = {
     description,
     siteName: "Handpikd",
     type: "website",
-    locale: "en_US",
+    locale: "en_IN",
   },
   twitter: {
     card: "summary_large_image",
@@ -101,12 +110,25 @@ export const metadata: Metadata = {
 // text. It has no visual effect on the page at all — it's purely for SEO.
 // The `@context`/`@type` keys are part of the schema.org standard vocabulary
 // that Google and other search engines know how to parse.
+//
+// `LocalBusiness` (rather than plain `Organization`) is what makes Google
+// treat this as a business with a physical Bangalore location, which feeds
+// the map/local results for searches like "corporate gifting bangalore".
 const organizationJsonLd = {
   "@context": "https://schema.org",
-  "@type": "Organization",
+  "@type": "LocalBusiness",
+  "@id": "https://handpikd.co/#business",
   name: "Handpikd",
   description,
+  url: "https://handpikd.co",
+  logo: "https://handpikd.co/logo.png",
+  image: "https://handpikd.co/site/service-hampers.jpg",
   email: "info@handpikd.co",
+  telephone: "+917411690399",
+  areaServed: [
+    { "@type": "City", name: "Bengaluru" },
+    { "@type": "Country", name: "India" },
+  ],
   address: {
     "@type": "PostalAddress",
     streetAddress: "2nd Cross Rd, SGN Layout, Vinobha Nagar, Sudhama Nagar",
@@ -120,6 +142,12 @@ const organizationJsonLd = {
   // web" presence to list here.
   sameAs: ["https://wa.me/917411690399"],
 };
+
+// GA4 measurement ID ("G-…"), baked in at build time like the other
+// NEXT_PUBLIC_ vars (see frontend/Dockerfile and docker-compose.yml). Only
+// the production build sets it, so `npm run dev` never sends local
+// browsing into the real analytics reports.
+const gaId = process.env.NEXT_PUBLIC_GA_ID;
 
 // Every layout/page component in the App Router receives a `children` prop
 // — it's however Next.js decides to fill in "everything below this level."
@@ -195,6 +223,7 @@ export default function RootLayout({
           <FloatingInquiryButton />
         </CartProvider>
       </body>
+      {gaId && <GoogleAnalytics gaId={gaId} />}
     </html>
   );
 }

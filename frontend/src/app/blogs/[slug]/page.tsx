@@ -48,7 +48,60 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: post.title,
     description: post.description,
+    alternates: { canonical: `/blogs/${post.slug}` },
+    // Overrides layout.tsx's site-wide Open Graph block, which would
+    // otherwise label every shared article with the homepage's title.
+    // Overriding it also drops the site-wide share image, so the one from
+    // src/app/opengraph-image.jpg is listed again explicitly.
+    openGraph: {
+      type: "article",
+      title: post.title,
+      description: post.description,
+      url: `/blogs/${post.slug}`,
+      siteName: "Handpikd",
+      locale: "en_IN",
+      publishedTime: post.isoDate,
+      images: ["/opengraph-image.jpg"],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: post.title,
+      description: post.description,
+      images: ["/opengraph-image.jpg"],
+    },
   };
+}
+
+// Article + breadcrumb structured data, rendered as JSON-LD next to the
+// article (same trust model as layout.tsx's: every value is hardcoded in
+// blogs-data.ts). The publisher points at layout.tsx's LocalBusiness entry
+// via its "@id" rather than repeating the business details.
+function blogPostJsonLd(post: NonNullable<ReturnType<typeof getBlogPost>>) {
+  const url = `https://handpikd.co/blogs/${post.slug}`;
+  return [
+    {
+      "@context": "https://schema.org",
+      "@type": "BlogPosting",
+      headline: post.title,
+      description: post.description,
+      datePublished: post.isoDate,
+      dateModified: post.isoDate,
+      mainEntityOfPage: url,
+      url,
+      image: "https://handpikd.co/opengraph-image.jpg",
+      author: { "@type": "Organization", name: "Handpikd", url: "https://handpikd.co" },
+      publisher: { "@id": "https://handpikd.co/#business" },
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Home", item: "https://handpikd.co" },
+        { "@type": "ListItem", position: 2, name: "Blogs", item: "https://handpikd.co/blogs" },
+        { "@type": "ListItem", position: 3, name: post.title, item: url },
+      ],
+    },
+  ];
 }
 
 // Renders a trusted HTML string (a paragraph or list item from
@@ -81,6 +134,11 @@ export default async function BlogPostPage({ params }: PageProps) {
     <>
       <Header />
       <main className={sharedStyles.pageMain}>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(blogPostJsonLd(post)) }}
+        />
+
         {/* Breadcrumb: Home -> Blogs -> current article. The final crumb is
             plain text (not a link) since it represents the page you're
             already on. */}

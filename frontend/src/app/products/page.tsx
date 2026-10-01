@@ -19,6 +19,7 @@ export const metadata: Metadata = {
   title: "Shop Corporate Gifts",
   description:
     "Browse Handpikd's corporate gifting catalogue — drinkware, tech accessories, stationery, and bags, filterable by category and price.",
+  alternates: { canonical: "/products" },
 };
 
 export default function ProductsPage() {

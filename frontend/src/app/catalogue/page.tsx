@@ -22,6 +22,7 @@ export const metadata: Metadata = {
   title: "Corporate Gift Catalogue",
   description:
     "Browse Handpikd's corporate gift catalogue — combo boxes, premium trophies, custom bottles, diaries, keychains, mugs, and pens, organized by category with full photo galleries.",
+  alternates: { canonical: "/catalogue" },
 };
 
 export default function CataloguePage() {

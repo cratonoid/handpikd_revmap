@@ -11,6 +11,7 @@
 // styling, and animation logic lives inside each section component. Keeping
 // this file simple makes the page's overall structure easy to scan at a
 // glance, and makes it trivial to reorder, add, or remove a whole section.
+import type { Metadata } from "next";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { Hero } from "@/components/home_page/hero";
@@ -22,6 +23,13 @@ import { Connect } from "@/components/home_page/connect";
 import styles from "@/styles/shared.module.css";
 import { SaleStrip } from "@/components/sale/sale-strip"; // SALE: remove after 5 Oct
 import { SaleBanner } from "@/components/sale/sale-banner"; // SALE: remove after 5 Oct
+
+// Title/description come from layout.tsx's defaults; only the canonical URL
+// is set here, since putting it in the layout would make every page that
+// doesn't override it claim to be the homepage.
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 export default function Home() {
   return (
