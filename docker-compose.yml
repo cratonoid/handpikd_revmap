@@ -32,6 +32,9 @@ services:
       args:
         NEXT_PUBLIC_API_BASE_URL: /api/v1
         NEXT_PUBLIC_MEDIA_BASE_URL: ""
+        # GA4 "handpikd" web stream (https://handpikd.co). Public by
+        # design — it appears in every page's HTML — so it's fine in git.
+        NEXT_PUBLIC_GA_ID: G-DW9TNLFM1C
     restart: unless-stopped
     expose:
       - "3000"
