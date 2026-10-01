@@ -337,6 +337,45 @@ SALES_ORDER_LAYOUT = [
     ]
 ]
 
+# Pooja Distributors' "TAX CREDIT INVOICE", and the three things about it that
+# defeat the rules above:
+#   - Its GST rate is printed as a bare "18" — in the item rows and in the
+#     HSN-wise summary — with the "%" only in the column headings. The only
+#     figure-and-percent on the page is the terms' "Interest @ 24%", which
+#     stops the document counting as one that states no rate at all.
+#   - An SKU column sits before the item name, and both wrap: the first half
+#     of each name shares its row with the SKU's head, the SKU's tail sits
+#     alone on the row below.
+#   - Its grand total is labelled "Net Invoice Value".
+POOJA_LAYOUT = [
+    [
+        (14, [(225, "TAX CREDIT INVOICE")]),
+        (31, [(34, "INVOICE NO: BL26002879"), (300, "DATE: 30/09/2026")]),
+        (43, [(34, "POOJA DISTRIBUTORS")]),
+        (97, [(34, "GSTIN No: 29AECPK7771A1ZJ , PAN No: AECPK7771A"), (300, "GSTIN No: " + OUR_GSTIN)]),
+        (
+            284,
+            [(31, "Sl.No."), (57, "SKUNO"), (140, "ITEMNAME"), (304, "HSNC"), (339, "MRP"), (368, "QTY"), (391, "RATE"), (423, "TOTAL"), (629, "%"), (647, "IGST")],
+        ),
+        (300, [(51, "BVNGBBLS55"), (120, "B-NEO GLASS BOTTLE SS LID")]),
+        (310, [(38, "1"), (120, "550 ML BLACK"), (299, "70134200"), (336, "495.00"), (371, "10"), (392, "251.69"), (426, "2516.90"), (530, "2516.9"), (629, "18"), (645, "453.04"), (678, "2969.94")]),
+        (320, [(70, "0")]),
+        (332, [(52, "BVCRYTPP10"), (120, "B-CRYSTO GLASS BOTTLE")]),
+        (342, [(38, "2"), (120, "1.0LTR PP LID"), (299, "70134200"), (336, "415.00"), (371, "10"), (393, "211.02"), (426, "2110.20"), (530, "2110.2"), (629, "18"), (645, "379.84"), (678, "2490.04")]),
+        (352, [(68, "00")]),
+        (364, [(51, "BGFGBJUG00")]),
+        (374, [(38, "3"), (120, "B-BREEZE GLASS JUG 1.35LTR"), (299, "70134200"), (336, "985.00"), (373, "3"), (392, "584.75"), (426, "1754.25"), (526, "1754.25"), (629, "18"), (645, "315.77"), (678, "2070.02")]),
+        (384, [(68, "01")]),
+        (396, [(120, "TOTALS"), (371, "23"), (426, "6381.35"), (526, "6381.35"), (644, "1148.65"), (678, "7530.00")]),
+        (410, [(389, "HSNCODE"), (478, "GST %"), (506, "Taxable Amount"), (636, "IGST")]),
+        (422, [(389, "70134200"), (483, "18"), (530, "6381.35"), (647, "1148.65"), (689, "7530.00")]),
+        (434, [(389, "TOTAL"), (530, "6381.35"), (647, "1148.65"), (689, "7530.00")]),
+        (446, [(389, "Net Invoice Value"), (689, "7530.00")]),
+        (700, [(34, "back.3.Interest @ 24% will be charged on all overdue bills.")]),
+    ]
+]
+
+
 def test_reads_an_invoice_with_every_column_in_the_item_row():
     extracted = extract_invoice_from_text(_pdf(KRAFT_LAYOUT), OUR_GSTIN)
 
@@ -593,6 +632,7 @@ def test_an_unreadable_layout_returns_none_for_the_claude_fallback():
         DMS_LAYOUT,
         CHAITHRA_LAYOUT,
         SALES_ORDER_LAYOUT,
+        POOJA_LAYOUT,
     ],
 )
 def test_every_line_item_carries_a_usable_quantity_and_rate(layout):
@@ -858,3 +898,52 @@ def test_a_stated_rate_is_still_required_of_every_line_that_prints_one():
     ]
 
     assert extract_invoice_from_text(_pdf(partly_stated), OUR_GSTIN) is None
+
+
+def test_reads_a_gst_rate_printed_without_a_percent_sign():
+    # The summary row's "18" is a rate only because 18% of its 6381.35 is its
+    # 1148.65; without that, the "Interest @ 24%" in the terms left every line
+    # without a rate and the whole invoice went to the Claude fallback.
+    extracted = extract_invoice_from_text(_pdf(POOJA_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    assert extracted.invoice_no == "BL26002879"
+    assert extracted.invoice_date.date().isoformat() == "2026-09-30"
+    assert extracted.vendor_gstin == "29AECPK7771A1ZJ"
+    assert [(item.hsn_code, item.quantity, item.rate, item.gst_perc) for item in extracted.line_items] == [
+        ("70134200", 10, 251.69, 18.0),
+        ("70134200", 10, 211.02, 18.0),
+        ("70134200", 3, 584.75, 18.0),
+    ]
+
+
+def test_a_name_wrapped_beside_an_sku_column_drops_the_sku():
+    # The first half of each name shares its row with the SKU's head, which
+    # sits left of the name column; the SKU's tail ("0", "00", "01") sits
+    # alone on the row below and is no part of any name.
+    extracted = extract_invoice_from_text(_pdf(POOJA_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    assert [item.description for item in extracted.line_items] == [
+        "B-NEO GLASS BOTTLE SS LID 550 ML BLACK",
+        "B-CRYSTO GLASS BOTTLE 1.0LTR PP LID",
+        "B-BREEZE GLASS JUG 1.35LTR",
+    ]
+
+
+def test_reads_a_grand_total_labelled_net_invoice_value():
+    extracted = extract_invoice_from_text(_pdf(POOJA_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    assert extracted.printed_total == 7530.00
+
+
+def test_a_bare_rate_in_an_item_row_is_not_read_as_one():
+    # Item rows carry enough figures for the arithmetic to find a coincidence
+    # — 10% of Pooja's 2516.9 is the 251.69 rate beside it — so a bare rate
+    # is only ever taken from a summary row keyed by its HSN code. Without
+    # that summary, the line has no stated rate and the invoice goes to Claude.
+    (page,) = POOJA_LAYOUT
+    without_summary = [[row for row in page if row[0] not in (410, 422, 434)]]
+
+    assert extract_invoice_from_text(_pdf(without_summary), OUR_GSTIN) is None

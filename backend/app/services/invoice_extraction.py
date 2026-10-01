@@ -69,7 +69,14 @@ _SERIAL_ONLY_RE = re.compile(r"\d+[.)]?")
 # thrown away.
 _SUMMARY_ROW_PREFIXES = ("total", "sub total", "subtotal", "grand total", "amount chargeable", "hsn")
 
-_TOTAL_LABEL_RE = re.compile(r"(?:grand\s+total|total\s+amount|amount\s+chargeable)", re.IGNORECASE)
+_TOTAL_LABEL_RE = re.compile(
+    r"(?:grand\s+total|total\s+amount|amount\s+chargeable|net\s+invoice\s+value)", re.IGNORECASE
+)
+
+# The rates GST is actually levied at. Only consulted where a rate is printed
+# as a bare number with no percent sign (see _bare_summary_gst_perc), where
+# the column alone can't tell a rate from any other small figure.
+_GST_RATES = frozenset({0.1, 0.25, 1.0, 1.5, 3.0, 5.0, 6.0, 12.0, 18.0, 28.0, 40.0})
 
 # The grand total of a Tally-style invoice, which labels it with a bare
 # "Total" that _TOTAL_LABEL_RE can't take (far too many rows open with that
@@ -410,11 +417,48 @@ def _hsn_gst_percentages(lines: list[str]) -> dict[str, float]:
     percentages: dict[str, float] = {}
     for line in lines:
         hsn = _HSN_RE.search(line)
-        percent = _PERCENT_RE.search(line)
-        if hsn is None or percent is None:
+        if hsn is None:
             continue
-        percentages.setdefault(hsn.group(1), float(percent.group(1)))
+        percent = _PERCENT_RE.search(line)
+        if percent is not None:
+            percentages.setdefault(hsn.group(1), float(percent.group(1)))
+            continue
+        bare = _bare_summary_gst_perc(line)
+        if bare is not None:
+            percentages.setdefault(*bare)
     return percentages
+
+
+def _bare_summary_gst_perc(line: str) -> tuple[str, float] | None:
+    """An HSN-wise summary row whose rate is printed without a percent sign.
+
+    Pooja Distributors print the rate as a bare "18" — in the item rows, and
+    in a summary row "70134200 18 6381.35 1148.65 7530.00" — with the "%" only
+    in the column heading, so nothing on the page reads as a rate to
+    _PERCENT_RE. A bare number is no evidence of anything on its own, so the
+    row has to prove it twice over: it opens with the HSN code (as a summary
+    row does and an item row, led by its serial, never does), and taking one
+    of its numbers as a rate turns another into a third — the tax in full, or
+    half of it where the summary splits CGST and SGST.
+
+    Item rows are deliberately left out even when they print the same bare
+    rate: they carry so many figures that the arithmetic finds coincidences
+    (Pooja's own "2516.9 ... 10 ... 251.69" reads as a 10% rate).
+    """
+    hsn = _HSN_RE.match(line.strip())
+    if hsn is None:
+        return None
+    numbers = [_to_number(match.group(0)) for match in _NUMBER_RE.finditer(line.strip()[hsn.end() :])]
+    for rate in numbers:
+        if rate not in _GST_RATES:
+            continue
+        for taxable in numbers:
+            if taxable <= rate:
+                continue
+            for tax in (taxable * rate / 100, taxable * rate / 200):
+                if any(abs(tax - other) <= _AMOUNT_TOLERANCE for other in numbers if other not in (taxable, rate)):
+                    return hsn.group(1), rate
+    return None
 
 
 def _row_gst_perc(line: str) -> float | None:
@@ -681,28 +725,38 @@ class _RowItem:
     item: ExtractedLineItem
     # Left edge of the row's description cell, and of its HSN cell. Together
     # they bound the column a wrapped name has to sit inside — see
-    # _is_wrapped_description.
+    # _wrapped_description.
     left: float
     right: float
 
 
-def _is_wrapped_description(row: Row, left: float, right: float) -> bool:
-    """True when this row is nothing but the tail (or head) of an item name.
+def _wrapped_description(row: Row, left: float, right: float) -> str | None:
+    """The part of this row that is the tail (or head) of an item name, if any.
 
     Judged on position rather than wording, because the fragments are
     ordinary prose that says nothing about itself: "Eco Solvent Print",
-    "Digital ID". What marks them is that EVERY cell of the row falls inside
-    the description column of the line item being read — a row of the table
-    proper always puts something in the columns to the right of it, and the
-    wrapped halves of a column header ("Taxable / amount") sit well to the
-    right of the description column entirely.
+    "Digital ID". What marks them is that NOTHING on the row reaches the HSN
+    column or beyond, and something sits inside the description column of the
+    line item being read — a row of the table proper always puts something in
+    the columns to the right of it, and the wrapped halves of a column header
+    ("Taxable / amount") sit well to the right of the description column
+    entirely.
+
+    Cells LEFT of the description column are allowed but dropped: Pooja
+    Distributors print an SKU column before the name, and wrap both, so the
+    first half of "B-NEO GLASS BOTTLE SS LID / 550 ML BLACK" shares its row
+    with the SKU "BVNGBBLS55". A row holding only such cells (the SKU's own
+    wrapped tail "0") has nothing in the band and stops the search.
     """
     text = row.text.strip()
     if not text or not row.cells:
-        return False
+        return None
     if any(text.lower().startswith(prefix) for prefix in _SUMMARY_ROW_PREFIXES):
-        return False
-    return all(left <= cell_left < right for cell_left, _word in row.cells)
+        return None
+    if any(cell_left >= right for cell_left, _word in row.cells):
+        return None
+    inside = [word for cell_left, word in row.cells if left <= cell_left]
+    return " ".join(inside) if inside else None
 
 
 def _with_wrapped_descriptions(rows: list[Row], found: list[_RowItem]) -> list[ExtractedLineItem]:
@@ -727,10 +781,10 @@ def _with_wrapped_descriptions(rows: list[Row], found: list[_RowItem]) -> list[E
             while (
                 0 <= index < len(rows)
                 and index not in claimed
-                and _is_wrapped_description(rows[index], row_item.left, row_item.right)
+                and (fragment := _wrapped_description(rows[index], row_item.left, row_item.right))
             ):
                 claimed.add(index)
-                collected.append(rows[index].text.strip())
+                collected.append(fragment)
                 index += step
         parts = [*reversed(before), row_item.item.description, *after]
         descriptions[row_item.index] = " ".join(part for part in parts if part)

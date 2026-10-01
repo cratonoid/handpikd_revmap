@@ -1,0 +1,116 @@
+/* ===========================================================================
+   TEMPORARY — 1–5 October sale styling (sale-strip.tsx, sale-banner.tsx)
+   ===========================================================================
+   Delete this file along with src/components/sale/ and public/sale/ once
+   the sale ends. */
+
+/* ---------------------------------------------------------------------------
+   Running strip
+   --------------------------------------------------------------------------- */
+.strip {
+  display: block;
+  overflow: hidden;
+  background-color: var(--color-charcoal);
+  color: var(--color-cream-deep);
+  text-decoration: none;
+}
+
+.stripTrack {
+  display: flex;
+  width: max-content;
+  animation: saleScroll 40s linear infinite;
+}
+
+/* Pause while hovered or keyboard-focused so the text can be read. */
+.strip:hover .stripTrack,
+.strip:focus-visible .stripTrack {
+  animation-play-state: paused;
+}
+
+.strip:focus-visible {
+  outline: 2px solid var(--color-cream-deep);
+  outline-offset: -2px;
+}
+
+.stripRow {
+  display: flex;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stripItem {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.55rem 1.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+  .stripItem {
+    font-size: 0.8125rem;
+  }
+}
+
+.stripStar {
+  color: #e8b931;
+}
+
+@keyframes saleScroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* With reduced motion the strip stops moving; the first messages stay
+   visible and the link still works. */
+@media (prefers-reduced-motion: reduce) {
+  .stripTrack {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Banner
+   --------------------------------------------------------------------------- */
+.bannerSection {
+  background-color: var(--color-cream);
+}
+
+.bannerLink {
+  display: block;
+}
+
+.bannerImage {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* CTA row directly under the banner — kept off the image so no artwork is
+   covered. Buttons go full width on phones (easy to tap), side by side and
+   centered from `sm` up. */
+.bannerCtaRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.25rem 1rem;
+}
+
+@media (min-width: 640px) {
+  .bannerCtaRow {
+    flex-direction: row;
+    justify-content: center;
+    gap: 1rem;
+    padding-block: 1.5rem;
+  }
+}
