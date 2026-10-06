@@ -12,6 +12,7 @@
 import { formatInr, type Product } from "@/lib/public-products";
 import { AddToCartButton } from "@/components/products/add-to-cart-button";
 import { ProductPhotoButton } from "@/components/products/product-photo-button";
+import { SaleRibbon } from "@/components/sale/sale-ribbon"; // SALE:
 import styles from "@/styles/products.module.css";
 
 export function ProductCard({ product }: { product: Product }) {
@@ -39,6 +40,8 @@ export function ProductCard({ product }: { product: Product }) {
             discount — `discountPct > 0 && (...)` renders nothing at all
             when the condition is false. */}
         {discountPct > 0 && <span className={styles.cardBadge}>-{discountPct}%</span>}
+        {/* SALE: festive ribbon (top-right, clear of the discount badge) */}
+        <SaleRibbon corner="right" />
       </div>
 
       <div className={styles.cardBody}>

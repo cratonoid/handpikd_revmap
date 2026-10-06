@@ -1,11 +1,22 @@
 /* ===========================================================================
-   TEMPORARY — 1–5 October sale styling (sale-strip.tsx, sale-banner.tsx)
+   Seasonal sale styling (src/components/sale/*)
    ===========================================================================
-   Delete this file along with src/components/sale/ and public/sale/ once
-   the sale ends. */
+   To remove the sale, delete this file with src/components/sale/ and undo
+   every `SALE:` line. Festive colors live here rather than in globals.css so nothing
+   outside the sale depends on them. */
+
+.stripWrap,
+.band,
+.ribbon,
+.heroBadge,
+.heroStamp {
+  --sale-gold: #e8b931;
+  --sale-marigold: #f2a516;
+  --sale-maroon: #7a1f1f;
+}
 
 /* ---------------------------------------------------------------------------
-   Running strip
+   Running strip (sale-strip.tsx)
    --------------------------------------------------------------------------- */
 .strip {
   display: block;
@@ -43,8 +54,8 @@
 .stripItem {
   display: flex;
   align-items: center;
-  gap: 1.25rem;
-  padding: 0.55rem 1.25rem;
+  gap: 0.875rem;
+  padding: 0.5rem 1.25rem;
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -58,8 +69,22 @@
   }
 }
 
-.stripStar {
-  color: #e8b931;
+.stripDiya {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
+}
+
+/* Toran edge: alternating marigold and maroon "flowers" in a single row,
+   drawn with one repeating radial gradient instead of an image. */
+.toran {
+  height: 6px;
+  background-color: var(--sale-maroon);
+  background-image:
+    radial-gradient(circle at 6px 0, var(--sale-marigold) 4px, transparent 4.5px),
+    radial-gradient(circle at 18px 0, var(--sale-gold) 4px, transparent 4.5px);
+  background-size: 24px 6px;
+  background-repeat: repeat-x;
 }
 
 @keyframes saleScroll {
@@ -80,37 +105,171 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Banner
+   Page band on /products and /catalogue (sale-band.tsx)
    --------------------------------------------------------------------------- */
-.bannerSection {
-  background-color: var(--color-cream);
+.band {
+  border-bottom: 1px solid var(--color-border);
+  background:
+    radial-gradient(circle at 8% 50%, color-mix(in srgb, var(--sale-marigold) 22%, transparent), transparent 40%),
+    radial-gradient(circle at 92% 50%, color-mix(in srgb, var(--sale-marigold) 22%, transparent), transparent 40%),
+    var(--color-cream-deep);
 }
 
-.bannerLink {
-  display: block;
-}
-
-.bannerImage {
-  display: block;
-  width: 100%;
-  height: auto;
-}
-
-/* CTA row directly under the banner — kept off the image so no artwork is
-   covered. Buttons go full width on phones (easy to tap), side by side and
-   centered from `sm` up. */
-.bannerCtaRow {
+.bandInner {
   display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 1.25rem 1rem;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-inline: auto;
+  max-width: 72rem;
+  padding: 1rem 1.25rem;
+  text-align: center;
+}
+
+.bandDiya {
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+}
+
+/* Second lamp only on wider screens, where there's room for symmetry. */
+.bandDiyaEnd {
+  display: none;
 }
 
 @media (min-width: 640px) {
-  .bannerCtaRow {
-    flex-direction: row;
-    justify-content: center;
-    gap: 1rem;
-    padding-block: 1.5rem;
+  .bandDiyaEnd {
+    display: block;
+  }
+}
+
+.bandText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.bandTitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--sale-maroon);
+}
+
+.bandOffer {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-charcoal);
+}
+
+.bandTagline {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: color-mix(in srgb, var(--color-ink) 75%, transparent);
+}
+
+@media (min-width: 640px) {
+  .bandTitle {
+    font-size: 1.375rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Card ribbon (sale-ribbon.tsx)
+   --------------------------------------------------------------------------- */
+.ribbon {
+  pointer-events: none;
+  position: absolute;
+  top: 0.75rem;
+  z-index: 1;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, var(--sale-gold), var(--sale-marigold));
+  padding: 0.25rem 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--sale-maroon);
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--color-charcoal) 18%, transparent);
+}
+
+.ribbonLeft {
+  left: 0.75rem;
+}
+
+.ribbonRight {
+  right: 0.75rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Homepage hero (hero-sale-touches.tsx)
+   --------------------------------------------------------------------------- */
+.heroBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--sale-marigold) 55%, transparent);
+  background-color: color-mix(in srgb, var(--sale-gold) 18%, var(--color-white));
+  padding: 0.375rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sale-maroon);
+}
+
+.heroBadgeDiya {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
+}
+
+/* Round gold sticker inside the top-left of the hero photo. */
+.heroStamp {
+  pointer-events: none;
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 6.5rem;
+  height: 6.5rem;
+  border-radius: 9999px;
+  border: 2px dashed color-mix(in srgb, var(--sale-maroon) 45%, transparent);
+  outline: 4px solid var(--sale-gold);
+  background: radial-gradient(circle at 35% 30%, #fbe7a1, var(--sale-gold) 70%);
+  color: var(--sale-maroon);
+  text-align: center;
+  line-height: 1.05;
+  transform: rotate(-10deg);
+  box-shadow: 0 8px 18px -6px color-mix(in srgb, var(--color-charcoal) 35%, transparent);
+}
+
+.heroStampSmall {
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.heroStampBig {
+  font-family: var(--font-display);
+  font-size: 1.625rem;
+  font-weight: 700;
+}
+
+@media (min-width: 640px) {
+  .heroStamp {
+    width: 7.5rem;
+    height: 7.5rem;
+  }
+
+  .heroStampBig {
+    font-size: 1.875rem;
   }
 }

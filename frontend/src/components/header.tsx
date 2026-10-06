@@ -22,6 +22,7 @@ import { Button } from "@/components/button";
 import { MenuIcon, ShoppingCartIcon, XMarkIcon } from "@/components/icons";
 import { useCart } from "@/lib/cart";
 import { siteConfig } from "@/lib/brand";
+import { SaleStrip } from "@/components/sale/sale-strip"; // SALE:
 import styles from "@/styles/shared.module.css";
 
 // Named constants instead of "magic numbers" scattered through the logic
@@ -107,112 +108,116 @@ export function Header() {
   const effectivelyHidden = hidden && !open;
 
   return (
-    <header
-      // The translate classes are what actually slide the header off-screen:
-      // `.headerHidden` moves it up by exactly its own height (out of view);
-      // `.headerVisible` is its normal resting position. Because both are
-      // paired with `transition: transform` on `.header`, switching between
-      // them animates smoothly instead of jumping.
-      className={`${styles.header} ${effectivelyHidden ? styles.headerHidden : styles.headerVisible}`}
-    >
-      <div
-        // The padding shrinks (`.headerInnerCompact` vs `.headerInnerNormal`)
-        // when `compact` is true, which is what makes the whole bar visually
-        // smaller once you've scrolled — `.headerInner`'s `transition:
-        // padding` animates that change smoothly.
-        className={`${styles.headerInner} ${compact ? styles.headerInnerCompact : styles.headerInnerNormal}`}
+    <>
+      {/* SALE: running sale strip above the header, on every page */}
+      <SaleStrip />
+      <header
+        // The translate classes are what actually slide the header off-screen:
+        // `.headerHidden` moves it up by exactly its own height (out of view);
+        // `.headerVisible` is its normal resting position. Because both are
+        // paired with `transition: transform` on `.header`, switching between
+        // them animates smoothly instead of jumping.
+        className={`${styles.header} ${effectivelyHidden ? styles.headerHidden : styles.headerVisible}`}
       >
-        <Link
-          href="/"
-          className={styles.logoLink}
-          onClick={() => setOpen(false)} // close the mobile menu if it happened to be open when the logo is clicked
+        <div
+          // The padding shrinks (`.headerInnerCompact` vs `.headerInnerNormal`)
+          // when `compact` is true, which is what makes the whole bar visually
+          // smaller once you've scrolled — `.headerInner`'s `transition:
+          // padding` animates that change smoothly.
+          className={`${styles.headerInner} ${compact ? styles.headerInnerCompact : styles.headerInnerNormal}`}
         >
-          {/* Passing `compact` straight through to <Logo> lets IT decide
-              how to shrink its own icon/text size — see logo.tsx. */}
-          <Logo compact={compact} />
-        </Link>
-
-        {/* Desktop navigation — hidden below the `lg` breakpoint, where the
-            hamburger menu (further down) takes over instead. */}
-        <nav className={styles.desktopNav} aria-label="Primary">
-          {siteConfig.navLinks.map((link) => (
-            <Link key={link.label} href={link.href} className={styles.navLink}>
-              {link.label}
-              {/* The little red underline that sweeps in on hover — see the
-                  `.navLink:hover .navLinkUnderline` rule in
-                  shared.module.css, the CSS Module equivalent of Tailwind's
-                  "group" pattern used elsewhere in the app. */}
-              <span className={styles.navLinkUnderline} />
-            </Link>
-          ))}
-        </nav>
-
-        {/* Everything on the right-hand end of the bar, grouped so the cart
-            icon sits next to the CTA on desktop and next to the hamburger
-            on mobile (where the CTA itself is hidden). */}
-        <div className={styles.headerActions}>
-          {/* The cart is reachable from EVERY page, not just /products —
-              a visitor who collected products and then browsed on to the
-              blog still needs a way back to send their inquiry. */}
           <Link
-            href="/cart"
-            onClick={() => setOpen(false)}
-            className={styles.cartLink}
-            aria-label={hydrated && totalItems > 0 ? `Cart, ${totalItems} items` : "Cart"}
+            href="/"
+            className={styles.logoLink}
+            onClick={() => setOpen(false)} // close the mobile menu if it happened to be open when the logo is clicked
           >
-            <ShoppingCartIcon className="h-5 w-5" />
-            {hydrated && totalItems > 0 && <span className={styles.cartBadge}>{totalItems}</span>}
+            {/* Passing `compact` straight through to <Logo> lets IT decide
+                how to shrink its own icon/text size — see logo.tsx. */}
+            <Logo compact={compact} />
           </Link>
 
-          <div className={styles.desktopCta}>
-            <Button href="/#connect" variant="primary">
+          {/* Desktop navigation — hidden below the `lg` breakpoint, where the
+              hamburger menu (further down) takes over instead. */}
+          <nav className={styles.desktopNav} aria-label="Primary">
+            {siteConfig.navLinks.map((link) => (
+              <Link key={link.label} href={link.href} className={styles.navLink}>
+                {link.label}
+                {/* The little red underline that sweeps in on hover — see the
+                    `.navLink:hover .navLinkUnderline` rule in
+                    shared.module.css, the CSS Module equivalent of Tailwind's
+                    "group" pattern used elsewhere in the app. */}
+                <span className={styles.navLinkUnderline} />
+              </Link>
+            ))}
+          </nav>
+
+          {/* Everything on the right-hand end of the bar, grouped so the cart
+              icon sits next to the CTA on desktop and next to the hamburger
+              on mobile (where the CTA itself is hidden). */}
+          <div className={styles.headerActions}>
+            {/* The cart is reachable from EVERY page, not just /products —
+                a visitor who collected products and then browsed on to the
+                blog still needs a way back to send their inquiry. */}
+            <Link
+              href="/cart"
+              onClick={() => setOpen(false)}
+              className={styles.cartLink}
+              aria-label={hydrated && totalItems > 0 ? `Cart, ${totalItems} items` : "Cart"}
+            >
+              <ShoppingCartIcon className="h-5 w-5" />
+              {hydrated && totalItems > 0 && <span className={styles.cartBadge}>{totalItems}</span>}
+            </Link>
+
+            <div className={styles.desktopCta}>
+              <Button href="/#connect" variant="primary">
+                Get Started
+              </Button>
+            </div>
+
+            {/* Hamburger / close toggle button — only visible below `lg`. */}
+            <button
+              type="button"
+              className={styles.mobileMenuButton}
+              aria-label={open ? "Close menu" : "Open menu"} // announced by screen readers instead of relying on the icon alone
+              aria-expanded={open} // tells assistive tech whether the menu this button controls is currently open
+              aria-controls="mobile-nav" // links this button to the panel it opens/closes, by id
+              onClick={() => setOpen((v) => !v)} // flip `open` to its opposite value
+            >
+              {open ? <XMarkIcon className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
+            </button>
+          </div>
+        </div>
+
+        {/* The mobile menu panel itself. `{open && (...)}` is a common React
+            pattern: if `open` is false, the whole expression evaluates to
+            `false`, and React renders nothing at all for it — the panel
+            isn't just hidden with CSS, it doesn't exist in the DOM until
+            `open` becomes true. */}
+        {open && (
+          <nav
+            id="mobile-nav" // matches the aria-controls value above
+            aria-label="Primary"
+            className={styles.mobileNav}
+          >
+            <ul className={styles.mobileNavList}>
+              {siteConfig.navLinks.map((link) => (
+                <li key={link.label} className={styles.mobileNavItem}>
+                  <Link
+                    href={link.href}
+                    onClick={() => setOpen(false)} // close the menu once a link is actually clicked
+                    className={styles.mobileNavLink}
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <Button href="/#connect" variant="primary" className={styles.mobileCta} onClick={() => setOpen(false)}>
               Get Started
             </Button>
-          </div>
-
-          {/* Hamburger / close toggle button — only visible below `lg`. */}
-          <button
-            type="button"
-            className={styles.mobileMenuButton}
-            aria-label={open ? "Close menu" : "Open menu"} // announced by screen readers instead of relying on the icon alone
-            aria-expanded={open} // tells assistive tech whether the menu this button controls is currently open
-            aria-controls="mobile-nav" // links this button to the panel it opens/closes, by id
-            onClick={() => setOpen((v) => !v)} // flip `open` to its opposite value
-          >
-            {open ? <XMarkIcon className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
-          </button>
-        </div>
-      </div>
-
-      {/* The mobile menu panel itself. `{open && (...)}` is a common React
-          pattern: if `open` is false, the whole expression evaluates to
-          `false`, and React renders nothing at all for it — the panel
-          isn't just hidden with CSS, it doesn't exist in the DOM until
-          `open` becomes true. */}
-      {open && (
-        <nav
-          id="mobile-nav" // matches the aria-controls value above
-          aria-label="Primary"
-          className={styles.mobileNav}
-        >
-          <ul className={styles.mobileNavList}>
-            {siteConfig.navLinks.map((link) => (
-              <li key={link.label} className={styles.mobileNavItem}>
-                <Link
-                  href={link.href}
-                  onClick={() => setOpen(false)} // close the menu once a link is actually clicked
-                  className={styles.mobileNavLink}
-                >
-                  {link.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-          <Button href="/#connect" variant="primary" className={styles.mobileCta} onClick={() => setOpen(false)}>
-            Get Started
-          </Button>
-        </nav>
-      )}
-    </header>
+          </nav>
+        )}
+      </header>
+    </>
   );
 }

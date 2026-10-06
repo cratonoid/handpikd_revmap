@@ -21,8 +21,6 @@ import { WhatWeOffer } from "@/components/home_page/what-we-offer";
 import { Testimonials } from "@/components/home_page/testimonials";
 import { Connect } from "@/components/home_page/connect";
 import styles from "@/styles/shared.module.css";
-import { SaleStrip } from "@/components/sale/sale-strip"; // SALE: remove after 5 Oct
-import { SaleBanner } from "@/components/sale/sale-banner"; // SALE: remove after 5 Oct
 
 // Title/description come from layout.tsx's defaults; only the canonical URL
 // is set here, since putting it in the layout would make every page that
@@ -38,8 +36,6 @@ export default function Home() {
     // siblings (Header, main, Footer) together WITHOUT adding an extra
     // wrapping <div> to the actual HTML output.
     <>
-      {/* SALE: remove after 5 Oct */}
-      <SaleStrip />
       <Header />
       {/* `.pageMain` (flex: 1 1 0%) makes <main> stretch to fill any
           leftover vertical space between the header and footer, so the
@@ -48,8 +44,6 @@ export default function Home() {
           because <body> in layout.tsx is `display: flex; flex-direction:
           column`.) */}
       <main className={styles.pageMain}>
-        {/* SALE: remove after 5 Oct */}
-        <SaleBanner />
         <Hero />
         <ClientMarquee />
         <WhatWeOffer />

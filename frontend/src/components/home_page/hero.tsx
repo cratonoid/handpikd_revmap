@@ -15,6 +15,7 @@ import Image from "next/image";
 import { Button } from "@/components/button";
 import { Reveal } from "@/components/reveal";
 import styles from "@/styles/home-page.module.css";
+import { HeroSaleBadge, HeroSaleStamp } from "@/components/sale/hero-sale-touches"; // SALE:
 
 export function Hero() {
   return (
@@ -33,10 +34,12 @@ export function Hero() {
           {/* Small "eyebrow" badge above the headline. Wrapped in <Reveal>
               so it fades/rises in on scroll — see reveal.tsx. */}
           <Reveal>
-            <span className={styles.heroBadge}>
-              <span className={styles.heroBadgeDot} />
-              Bangalore&apos;s Premier Corporate Gifting Company
-            </span>
+            {/* SALE: festive pill. After the sale, put the usual pill back:
+                <span className={styles.heroBadge}>
+                  <span className={styles.heroBadgeDot} />
+                  Bangalore&apos;s Premier Corporate Gifting Company
+                </span> */}
+            <HeroSaleBadge />
           </Reveal>
 
           {/* Plain, always-visible heading — deliberately NOT animated.
@@ -100,6 +103,8 @@ export function Hero() {
               sizes="(min-width: 1024px) 420px, (min-width: 640px) 60vw, 90vw"
               className={styles.heroImageFill}
             />
+            {/* SALE: gold sale stamp on the photo */}
+            <HeroSaleStamp />
           </div>
           {/* A small purely-decorative bordered square peeking out from
               behind the photo — hidden from screen readers since it

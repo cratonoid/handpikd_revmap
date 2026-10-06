@@ -17,6 +17,7 @@ import { Button } from "@/components/button";
 import { CataloguePageClient } from "@/components/catalogue/catalogue-page-client";
 import styles from "@/styles/catalogue.module.css";
 import sharedStyles from "@/styles/shared.module.css";
+import { SaleBand } from "@/components/sale/sale-band"; // SALE:
 
 export const metadata: Metadata = {
   title: "Corporate Gift Catalogue",
@@ -37,6 +38,9 @@ export default function CataloguePage() {
             engines) so the page still has a proper heading for
             accessibility/SEO even without a visible title band. */}
         <h1 className="sr-only">Corporate Gift Catalogue</h1>
+
+        {/* SALE: festive band */}
+        <SaleBand tagline="Browse our Diwali gifting collections" />
 
         <CataloguePageClient />
 
