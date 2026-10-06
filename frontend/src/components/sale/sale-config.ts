@@ -9,7 +9,7 @@
 // then undo every line marked `SALE:` (search the codebase for "SALE:").
 
 export const SALE_NAME = "Diwali Sale";
-export const SALE_OFFER = "Up to 20% off on all products";
+export const SALE_OFFER = "Up to 25% off on all products";
 
 // Phrases that scroll across the running strip, in order.
 export const SALE_STRIP_MESSAGES = [

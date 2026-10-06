@@ -21,7 +21,7 @@ export function HeroSaleStamp() {
     <div className={styles.heroStamp} aria-hidden="true">
       <span className={styles.heroStampSmall}>Diwali</span>
       <span className={styles.heroStampBig}>Sale</span>
-      <span className={styles.heroStampSmall}>Up to 20% off</span>
+      <span className={styles.heroStampSmall}>Up to 25% off</span>
     </div>
   );
 }
