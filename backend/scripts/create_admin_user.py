@@ -23,7 +23,7 @@ async def main() -> None:
         last_user = await User.find_all().sort(-User.id).first_or_none()
         next_id = (last_user.id + 1) if last_user else 1
 
-        user = User(id=next_id, mail=ADMIN_MAIL, password=hash_password(ADMIN_PASSWORD), role=UserRole.admin, role_id=SYSTEM_ROLE_ID)
+        user = User(id=next_id, mail=ADMIN_MAIL, password=hash_password(ADMIN_PASSWORD), role=UserRole.admin, role_ids=[SYSTEM_ROLE_ID])
         await user.insert()
         print(f"created: id={next_id} mail={ADMIN_MAIL} role=admin")
 

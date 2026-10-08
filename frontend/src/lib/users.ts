@@ -23,8 +23,10 @@ export type TeamUser = {
   id: number;
   name: string;
   mail: string;
-  roleId: number | null;
-  roleName: string;
+  // Parallel lists, in role id order. A user gets every section any of
+  // their roles grants.
+  roleIds: number[];
+  roleNames: string[];
   isActive: boolean;
   lastLogin: string | null;
 };
@@ -41,8 +43,8 @@ type TeamUserItem = {
   user_id: number;
   name: string;
   mail: string;
-  role_id: number | null;
-  role_name: string;
+  role_ids: number[];
+  role_names: string[];
   is_active: boolean;
   last_login: string | null;
 };
@@ -74,8 +76,8 @@ export async function fetchTeamUsers(): Promise<TeamUser[]> {
     id: item.user_id,
     name: item.name,
     mail: item.mail,
-    roleId: item.role_id,
-    roleName: item.role_name,
+    roleIds: item.role_ids,
+    roleNames: item.role_names,
     isActive: item.is_active,
     lastLogin: item.last_login,
   }));
@@ -130,7 +132,8 @@ export type TeamUserPayload = {
   mail: string;
   // Required when adding; "" when editing keeps the current password.
   password: string;
-  roleId: number;
+  // At least one.
+  roleIds: number[];
   isActive: boolean;
 };
 
@@ -139,7 +142,7 @@ function toUserBody(payload: TeamUserPayload) {
     name: payload.name,
     mail: payload.mail,
     password: payload.password,
-    role_id: payload.roleId,
+    role_ids: payload.roleIds,
     is_active: payload.isActive,
   };
 }

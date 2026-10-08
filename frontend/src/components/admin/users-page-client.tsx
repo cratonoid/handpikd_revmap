@@ -148,7 +148,7 @@ export function UsersPageClient() {
     }
   }
 
-  const visibleUsers = users.filter((user) => matchesSearch(search, [user.name, user.mail, user.roleName]));
+  const visibleUsers = users.filter((user) => matchesSearch(search, [user.name, user.mail, ...user.roleNames]));
   const visibleRoles = roles.filter((role) => matchesSearch(search, [role.name, roleSectionsText(role)]));
   const visibleClientLogins = clientLogins.filter((login) =>
     matchesSearch(search, [login.registeredName, login.companyOrDepartment, login.mail]),
@@ -218,7 +218,7 @@ export function UsersPageClient() {
                 <th className={styles.tableHeadCell}>S.No</th>
                 <th className={styles.tableHeadCell}>Name</th>
                 <th className={styles.tableHeadCell}>Email</th>
-                <th className={styles.tableHeadCell}>Role</th>
+                <th className={styles.tableHeadCell}>Roles</th>
                 <th className={styles.tableHeadCell}>Last login</th>
               </tr>
             </thead>
@@ -232,7 +232,7 @@ export function UsersPageClient() {
                     {!user.isActive && <span className={styles.inactiveBadge}>Disabled</span>}
                   </td>
                   <td className={styles.tableCell}>{user.mail}</td>
-                  <td className={styles.tableCell}>{user.roleName || "—"}</td>
+                  <td className={styles.tableCell}>{user.roleNames.join(", ") || "—"}</td>
                   <td className={styles.tableCell}>{user.lastLogin ? formatDateTime(user.lastLogin) : "Never"}</td>
                 </tr>
               ))}

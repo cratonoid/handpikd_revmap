@@ -37,8 +37,10 @@ class TeamUserItem(BaseModel):
     user_id: int
     name: str
     mail: str
-    role_id: int | None
-    role_name: str
+    # Parallel lists, in role id order; a role that no longer exists is left
+    # out of both.
+    role_ids: list[int]
+    role_names: list[str]
     is_active: bool
     last_login: datetime | None
 
@@ -47,7 +49,8 @@ class AddTeamUserRequest(BaseModel):
     name: str
     mail: str
     password: str
-    role_id: int
+    # At least one.
+    role_ids: list[int]
     is_active: bool = True
 
 
@@ -58,7 +61,7 @@ class UpdateTeamUserRequest(BaseModel):
     # Empty string means "leave the current password unchanged", same as
     # update_customer_details.
     password: str = ""
-    role_id: int
+    role_ids: list[int]
     is_active: bool = True
 
 
@@ -74,6 +77,7 @@ class MyAccessResponse(BaseModel):
     user_id: int
     name: str
     mail: str
+    # Every role's name, comma-separated, for the sidebar.
     role_name: str
     # None means every section (the system role); otherwise exactly the
     # sections the admin sidebar should show.

@@ -201,13 +201,22 @@ async def _seed_system_role() -> None:
 
 
 async def _backfill_admin_role_ids() -> None:
-    # Team accounts created before roles existed have no role_id, and
-    # require_section treats "no role" as "no sections". Every one of them
-    # had full access until now, so they keep it on the system role.
     db = get_db()
+    # Users used to hold a single role_id before they could have several.
+    # Carry it over into role_ids; the old field is left in place (unread)
+    # so rolling back doesn't find admins with no role and promote them all
+    # to Administrator below.
+    async for doc in db["user"].find(
+        {"role_ids": {"$exists": False}, "role_id": {"$ne": None}}, {"role_id": 1}
+    ):
+        await db["user"].update_one({"_id": doc["_id"]}, {"$set": {"role_ids": [doc["role_id"]]}})
+
+    # Team accounts created before roles existed have no role at all, and
+    # require_section treats "no role" as "no sections". Every one of them
+    # had full access until then, so they keep it on the system role.
     await db["user"].update_many(
-        {"role": "admin", "$or": [{"role_id": {"$exists": False}}, {"role_id": None}]},
-        {"$set": {"role_id": SYSTEM_ROLE_ID}},
+        {"role": "admin", "$or": [{"role_ids": {"$exists": False}}, {"role_ids": None}, {"role_ids": []}]},
+        {"$set": {"role_ids": [SYSTEM_ROLE_ID]}},
     )
 
 

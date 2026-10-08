@@ -71,15 +71,20 @@ async def get_authenticated_user(
 async def get_allowed_sections(user: User) -> set[Section] | None:
     """The admin sections a team account may open; None means all of them.
 
-    A missing role (never assigned, or pointing at a deleted one) grants
-    nothing rather than everything, so a mistake fails closed.
+    A user with several roles gets every section any of them grants, and
+    all of them if one is the system role. A missing role (never assigned,
+    or pointing at a deleted one) grants nothing rather than everything, so
+    a mistake fails closed.
     """
-    role = await Role.get(user.role_id) if user.role_id is not None else None
-    if role is None:
-        return set()
-    if role.is_system:
-        return None
-    return set(role.sections)
+    allowed: set[Section] = set()
+    for role_id in user.role_ids:
+        role = await Role.get(role_id)
+        if role is None:
+            continue
+        if role.is_system:
+            return None
+        allowed.update(role.sections)
+    return allowed
 
 
 async def require_staff(current_user: User | None = Depends(get_current_user)) -> User | None:

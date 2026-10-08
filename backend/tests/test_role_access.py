@@ -19,10 +19,10 @@ from app.models import SYSTEM_ROLE_ID, Section, UserRole
 
 
 class _StubUser:
-    def __init__(self, role: UserRole = UserRole.admin, role_id: int | None = 2) -> None:
+    def __init__(self, role: UserRole = UserRole.admin, role_ids: list[int] | None = None) -> None:
         self.id = 7
         self.role = role
-        self.role_id = role_id
+        self.role_ids = [2] if role_ids is None else role_ids
         self.is_active = True
 
 
@@ -41,7 +41,7 @@ def _stub_roles(monkeypatch: pytest.MonkeyPatch, roles: dict[int, _StubRole]) ->
 
 def test_system_role_grants_every_section(monkeypatch):
     _stub_roles(monkeypatch, {SYSTEM_ROLE_ID: _StubRole([], is_system=True)})
-    assert asyncio.run(deps.get_allowed_sections(_StubUser(role_id=SYSTEM_ROLE_ID))) is None
+    assert asyncio.run(deps.get_allowed_sections(_StubUser(role_ids=[SYSTEM_ROLE_ID]))) is None
 
 
 def test_custom_role_grants_only_its_sections(monkeypatch):
@@ -49,11 +49,21 @@ def test_custom_role_grants_only_its_sections(monkeypatch):
     assert asyncio.run(deps.get_allowed_sections(_StubUser())) == {Section.orders, Section.products}
 
 
-@pytest.mark.parametrize("role_id", [None, 99])
-def test_missing_role_grants_nothing(monkeypatch, role_id):
+def test_several_roles_grant_every_section_between_them(monkeypatch):
+    _stub_roles(monkeypatch, {2: _StubRole([Section.orders]), 3: _StubRole([Section.products, Section.orders])})
+    assert asyncio.run(deps.get_allowed_sections(_StubUser(role_ids=[2, 3]))) == {Section.orders, Section.products}
+
+
+def test_system_role_among_several_grants_every_section(monkeypatch):
+    _stub_roles(monkeypatch, {2: _StubRole([Section.orders]), SYSTEM_ROLE_ID: _StubRole([], is_system=True)})
+    assert asyncio.run(deps.get_allowed_sections(_StubUser(role_ids=[2, SYSTEM_ROLE_ID]))) is None
+
+
+@pytest.mark.parametrize("role_ids", [[], [99]])
+def test_missing_role_grants_nothing(monkeypatch, role_ids):
     # Never assigned, or pointing at a role that no longer exists: fail closed.
     _stub_roles(monkeypatch, {})
-    assert asyncio.run(deps.get_allowed_sections(_StubUser(role_id=role_id))) == set()
+    assert asyncio.run(deps.get_allowed_sections(_StubUser(role_ids=role_ids))) == set()
 
 
 def test_require_section_allows_any_listed_section(monkeypatch):
@@ -135,9 +145,9 @@ def test_password_minimum_length():
 
 
 def test_only_active_administrators_count_as_administrators():
-    admin = _StubUser(role_id=SYSTEM_ROLE_ID)
+    admin = _StubUser(role_ids=[2, SYSTEM_ROLE_ID])
     assert users._is_active_administrator(admin)
 
     admin.is_active = False
     assert not users._is_active_administrator(admin)
-    assert not users._is_active_administrator(_StubUser(role_id=2))
+    assert not users._is_active_administrator(_StubUser(role_ids=[2]))

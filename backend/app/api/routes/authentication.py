@@ -52,12 +52,12 @@ async def get_my_access(current_user: User = Depends(get_authenticated_user)) ->
             user_id=current_user.id, name=current_user.name, mail=current_user.mail, role_name="Customer", sections=[]
         )
 
-    role = await Role.get(current_user.role_id) if current_user.role_id is not None else None
+    roles = [role for role_id in current_user.role_ids if (role := await Role.get(role_id)) is not None]
     allowed = await get_allowed_sections(current_user)
     return MyAccessResponse(
         user_id=current_user.id,
         name=current_user.name,
         mail=current_user.mail,
-        role_name=role.name if role is not None else "",
+        role_name=", ".join(role.name for role in roles),
         sections=None if allowed is None else [section for section in Section if section in allowed],
     )

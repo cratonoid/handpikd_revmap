@@ -43,7 +43,7 @@ export function MultiSelectDropdown({
   selectedValues,
   onChange,
 }: {
-  label: string;
+  label: React.ReactNode;
   placeholder?: string;
   // Defaults preserve product-form-modal.tsx's category picker wording — new
   // call sites (e.g. the related purchase orders picker) pass their own.

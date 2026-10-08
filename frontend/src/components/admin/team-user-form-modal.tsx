@@ -3,9 +3,10 @@
 // ---------------------------------------------------------------------------
 // <TeamUserFormModal> — add/edit popup for the Users tab of /admin/users
 // ---------------------------------------------------------------------------
-// A team user is an /admin login with a role (see role-form-modal.tsx for
-// what a role grants). Adding needs a password; editing leaves it blank to
-// keep the current one, same as the client form.
+// A team user is an /admin login with one or more roles (see
+// role-form-modal.tsx for what a role grants) — they can open every section
+// any of their roles grants. Adding needs a password; editing leaves it
+// blank to keep the current one, same as the client form.
 //
 // "Active" unticked disables the account: it can't sign in, and any session
 // it already has ends on its next request. That's the reversible option;
@@ -15,6 +16,7 @@
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { XMarkIcon } from "@/components/icons";
+import { MultiSelectDropdown } from "@/components/admin/multi-select-dropdown";
 import { addTeamUser, deleteTeamUser, updateTeamUser, UsersApiError, type Role, type TeamUser } from "@/lib/users";
 import styles from "@/styles/dashboard.module.css";
 
@@ -38,7 +40,7 @@ export function TeamUserFormModal({
   const [name, setName] = useState(initialUser?.name ?? "");
   const [mail, setMail] = useState(initialUser?.mail ?? "");
   const [password, setPassword] = useState("");
-  const [roleId, setRoleId] = useState<string>(initialUser?.roleId != null ? String(initialUser.roleId) : "");
+  const [roleIds, setRoleIds] = useState<string[]>(initialUser?.roleIds.map(String) ?? []);
   const [isActive, setIsActive] = useState(initialUser?.isActive ?? true);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -65,8 +67,13 @@ export function TeamUserFormModal({
       form.reportValidity();
       return;
     }
+    // The dropdown isn't a native input, so checkValidity can't see it.
+    if (roleIds.length === 0) {
+      setError("Pick at least one role.");
+      return;
+    }
 
-    const payload = { name: name.trim(), mail: mail.trim(), password, roleId: Number(roleId), isActive };
+    const payload = { name: name.trim(), mail: mail.trim(), password, roleIds: roleIds.map(Number), isActive };
     void run(() => (initialUser ? updateTeamUser(initialUser.id, payload) : addTeamUser(payload)));
   }
 
@@ -146,23 +153,23 @@ export function TeamUserFormModal({
             </div>
 
             <div>
-              <label htmlFor="teamUserRole" className={styles.formLabel}>
-                Role<span className={styles.requiredMark}>*</span>
-              </label>
-              <select
-                id="teamUserRole"
-                required
-                value={roleId}
-                onChange={(e) => setRoleId(e.target.value)}
-                className={styles.formInput}
-              >
-                <option value="">Select a role…</option>
-                {roles.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.isSystem ? `${role.name} (all sections)` : role.name}
-                  </option>
-                ))}
-              </select>
+              <MultiSelectDropdown
+                label={
+                  <>
+                    Roles<span className={styles.requiredMark}>*</span>
+                  </>
+                }
+                placeholder="Select roles…"
+                searchPlaceholder="Search roles…"
+                emptyMessage="No roles match."
+                options={roles.map((role) => ({
+                  value: String(role.id),
+                  label: role.isSystem ? `${role.name} (all sections)` : role.name,
+                }))}
+                selectedValues={roleIds}
+                onChange={setRoleIds}
+              />
+              <p className={styles.pageSubtext}>They can open every section any of these roles grants.</p>
             </div>
 
             <div className={styles.formGridFullSpan}>

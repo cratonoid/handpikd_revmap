@@ -8,7 +8,7 @@ from beanie import Document
 class UserRole(str, Enum):
     # The kind of account, not its permissions. "admin" is any team member
     # who signs in to /admin — what they can open there is decided by their
-    # role_id (see app/models/role.py). "customer" is a client's login to
+    # role_ids (see app/models/role.py). "customer" is a client's login to
     # the /customer portal, created alongside the client on /admin/clients.
     # The value stays "admin" because it is stored on every existing user.
     admin = "admin"
@@ -20,10 +20,12 @@ class User(Document):
     mail: str
     password: str
     role: UserRole
-    # Team accounts only: the Role that decides which admin sections they
-    # can open. None on client logins. Existing admins are backfilled onto
-    # the system role by _backfill_admin_role_ids in app/core/db.py.
-    role_id: int | None = None
+    # Team accounts only: the Roles that decide which admin sections they
+    # can open — they get every section any of them grants. Empty on client
+    # logins. Accounts from before multiple roles (a single role_id) are
+    # moved onto this, and admins with no role at all onto the system role,
+    # by _backfill_admin_role_ids in app/core/db.py.
+    role_ids: list[int] = []
     # Display name for team accounts on /admin/users. Client logins leave it
     # blank — their name lives on CustomerDetails.
     name: str = ""

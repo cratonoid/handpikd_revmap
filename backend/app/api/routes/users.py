@@ -70,6 +70,18 @@ async def _get_role_or_404(role_id: int) -> Role:
     return role
 
 
+async def _clean_role_ids(role_ids: list[int]) -> list[int]:
+    # Deduped and kept in role id order, so a user's roles always list the
+    # same way. Every one must exist — a stale id would silently grant
+    # nothing (see get_allowed_sections).
+    cleaned = sorted(set(role_ids))
+    if not cleaned:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="pick at least one role")
+    for role_id in cleaned:
+        await _get_role_or_404(role_id)
+    return cleaned
+
+
 async def _get_team_user_or_404(user_id: int) -> User:
     user = await User.get(user_id)
     if user is None or user.role != UserRole.admin:
@@ -101,21 +113,22 @@ async def _ensure_mail_free(mail: str, excluding_user_id: int | None = None) -> 
 
 
 def _is_active_administrator(user: User) -> bool:
-    return user.role == UserRole.admin and user.is_active and user.role_id == SYSTEM_ROLE_ID
+    return user.role == UserRole.admin and user.is_active and SYSTEM_ROLE_ID in user.role_ids
 
 
 async def _ensure_an_administrator_remains(changing: User) -> None:
     """Refuse a change that would leave no active user on the system role.
 
     Called before `changing` stops being an active Administrator (disabled,
-    moved to another role, or deleted). Without it, the last such user could
-    take away the only access to this page there is.
+    taken off the Administrator role, or deleted). Without it, the last such
+    user could take away the only access to this page there is.
     """
     if not _is_active_administrator(changing):
         return
     others = await User.find(
         User.role == UserRole.admin,
-        User.role_id == SYSTEM_ROLE_ID,
+        # Matches any user whose role_ids list contains the system role.
+        {"role_ids": SYSTEM_ROLE_ID},
         User.is_active == True,  # noqa: E712 — Beanie builds a query from this
         User.id != changing.id,
     ).count()
@@ -139,8 +152,8 @@ async def get_roles(
     team = await User.find(User.role == UserRole.admin).to_list()
     counts: dict[int, int] = {}
     for user in team:
-        if user.role_id is not None:
-            counts[user.role_id] = counts.get(user.role_id, 0) + 1
+        for role_id in user.role_ids:
+            counts[role_id] = counts.get(role_id, 0) + 1
 
     return [
         RoleItem(
@@ -194,9 +207,9 @@ async def delete_role(
     if role.is_system:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="the Administrator role can't be deleted")
 
-    # Deleting a role in use would leave its users with no sections at all
+    # Deleting a role in use would quietly take sections away from its users
     # (see get_allowed_sections) — make the admin move them first instead.
-    in_use = await User.find(User.role == UserRole.admin, User.role_id == role.id).count()
+    in_use = await User.find(User.role == UserRole.admin, {"role_ids": role.id}).count()
     if in_use:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="this role is still assigned to users")
 
@@ -215,18 +228,21 @@ async def get_users(
 ) -> list[TeamUserItem]:
     users = await User.find(User.role == UserRole.admin).sort(+User.id).to_list()
     role_names = {role.id: role.name for role in await Role.find_all().to_list()}
-    return [
-        TeamUserItem(
-            user_id=user.id,
-            name=user.name,
-            mail=user.mail,
-            role_id=user.role_id,
-            role_name=role_names.get(user.role_id, "") if user.role_id is not None else "",
-            is_active=user.is_active,
-            last_login=user.last_login,
+    items = []
+    for user in users:
+        role_ids = [role_id for role_id in sorted(user.role_ids) if role_id in role_names]
+        items.append(
+            TeamUserItem(
+                user_id=user.id,
+                name=user.name,
+                mail=user.mail,
+                role_ids=role_ids,
+                role_names=[role_names[role_id] for role_id in role_ids],
+                is_active=user.is_active,
+                last_login=user.last_login,
+            )
         )
-        for user in users
-    ]
+    return items
 
 
 @router.post("/add_user", response_model=MessageResponse)
@@ -237,7 +253,7 @@ async def add_user(
     mail = _clean_mail(payload.mail)
     _check_password(payload.password)
     await _ensure_mail_free(mail)
-    await _get_role_or_404(payload.role_id)
+    role_ids = await _clean_role_ids(payload.role_ids)
 
     user_id = await get_next_id(UserIdCounter, "next_user_id", User)
     await User(
@@ -246,7 +262,7 @@ async def add_user(
         mail=mail,
         password=hash_password(payload.password),
         role=UserRole.admin,
-        role_id=payload.role_id,
+        role_ids=role_ids,
         is_active=payload.is_active,
     ).insert()
     return MessageResponse(message="user added successfully")
@@ -260,20 +276,20 @@ async def update_user(
     user = await _get_team_user_or_404(payload.user_id)
     mail = _clean_mail(payload.mail)
     await _ensure_mail_free(mail, excluding_user_id=user.id)
-    await _get_role_or_404(payload.role_id)
+    role_ids = await _clean_role_ids(payload.role_ids)
     if payload.password:
         _check_password(payload.password)
 
     if current_user is not None and current_user.id == user.id and not payload.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="you can't disable your own account")
 
-    stays_administrator = payload.is_active and payload.role_id == SYSTEM_ROLE_ID
+    stays_administrator = payload.is_active and SYSTEM_ROLE_ID in role_ids
     if not stays_administrator:
         await _ensure_an_administrator_remains(user)
 
     user.name = payload.name.strip()
     user.mail = mail
-    user.role_id = payload.role_id
+    user.role_ids = role_ids
     user.is_active = payload.is_active
     if payload.password:
         user.password = hash_password(payload.password)
