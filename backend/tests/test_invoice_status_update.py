@@ -15,6 +15,7 @@
 # deliberately don't have (same approach as
 # test_purchase_order_duplicate_guard.py).
 import asyncio
+from datetime import date, datetime
 
 import pytest
 from fastapi import HTTPException
@@ -35,6 +36,7 @@ class _StubInvoice:
         self.type = invoice_type
         self.status = status
         self.is_deleted = is_deleted
+        self.paid_on = None
         # The figures update_invoice_details would recompute, and this
         # endpoint must not.
         self.total_amount_before_tax = 1000.0
@@ -153,3 +155,61 @@ def test_re_saving_the_same_status_leaves_the_points_alone(invoice, points_syncs
     _run(InvoiceStatus.paid)
 
     assert points_syncs == []
+
+
+# ---------------------------------------------------------------------------
+# The payment date (InvoiceDetails.paid_on)
+# ---------------------------------------------------------------------------
+
+_TODAY = date(2026, 10, 9)
+
+
+@pytest.fixture
+def fixed_today(monkeypatch):
+    monkeypatch.setattr(invoices, "today", lambda: _TODAY)
+
+
+def _run_with_date(status: InvoiceStatus, paid_on: date | None):
+    return asyncio.run(
+        invoices.update_invoice_status(UpdateInvoiceStatusRequest(id=3, status=status, paid_on=paid_on), None)
+    )
+
+
+def test_marking_paid_records_today_as_the_payment_date(invoice, fixed_today):
+    response = _run(InvoiceStatus.paid)
+
+    assert invoice.paid_on == datetime(2026, 10, 9)
+    assert response.paid_on == _TODAY
+
+
+def test_a_payment_date_can_be_entered_by_hand(invoice, fixed_today):
+    _run_with_date(InvoiceStatus.paid, date(2026, 10, 2))
+
+    assert invoice.paid_on == datetime(2026, 10, 2)
+
+
+def test_re_marking_paid_keeps_the_date_already_entered(invoice, fixed_today):
+    invoice.status = InvoiceStatus.paid
+    invoice.paid_on = datetime(2026, 10, 2)
+
+    _run(InvoiceStatus.paid)
+
+    assert invoice.paid_on == datetime(2026, 10, 2)
+
+
+def test_going_back_to_unpaid_clears_the_payment_date(invoice, fixed_today):
+    invoice.status = InvoiceStatus.paid
+    invoice.paid_on = datetime(2026, 10, 2)
+
+    response = _run(InvoiceStatus.unpaid)
+
+    assert invoice.paid_on is None
+    assert response.paid_on is None
+
+
+def test_a_future_payment_date_is_refused(invoice, fixed_today):
+    with pytest.raises(HTTPException) as error:
+        _run_with_date(InvoiceStatus.paid, date(2026, 10, 10))
+
+    assert error.value.status_code == 400
+    assert invoice.saves == 0

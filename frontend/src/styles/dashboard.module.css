@@ -5335,3 +5335,14 @@ select.formInput:disabled {
   margin-top: -0.25rem;
   text-align: right;
 }
+
+/* The "Paid on" date in each row of the sales invoices table
+   (invoices-tab.tsx): a compact inline field rather than a full form input,
+   so the row keeps its height. */
+.paidOnInput {
+  width: auto;
+  min-width: 9rem;
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+  font-size: 0.8125rem;
+}

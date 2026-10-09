@@ -28,6 +28,7 @@ import { Button } from "@/components/button";
 import {
   addDaysToDatetimeLocalValue,
   fromDatetimeLocalValue,
+  nowAsDateValue,
   nowAsDatetimeLocalValue,
   toDatetimeLocalValue,
 } from "@/lib/datetime-input";
@@ -88,6 +89,16 @@ export function InvoiceFormModal({
   const [transport, setTransport] = useState(initialInvoice?.transport ?? "Hand Delivery");
   const [notes, setNotes] = useState(initialInvoice?.notes ?? "");
   const [invoiceStatus, setInvoiceStatus] = useState<InvoiceStatus>(initialInvoice?.status ?? "unpaid");
+  // "YYYY-MM-DD", only shown and sent while the status is paid. Filled with
+  // today when the status is switched to paid, then editable. Blank on an
+  // invoice marked paid before the date was recorded — saving it blank
+  // stamps today, same as the backend does.
+  const [paidOn, setPaidOn] = useState(initialInvoice?.paidOn ?? "");
+
+  function handleInvoiceStatusChange(next: InvoiceStatus) {
+    setInvoiceStatus(next);
+    if (next === "paid" && !paidOn) setPaidOn(nowAsDateValue());
+  }
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -149,6 +160,7 @@ export function InvoiceFormModal({
             transport,
             notes,
             status: invoiceStatus,
+            paidOn: paidOn || null,
             isDeleted: isDeletedValue,
           })
         : await createInvoice({
@@ -311,8 +323,24 @@ export function InvoiceFormModal({
                 showStatusFilter={false}
                 options={INVOICE_STATUS_OPTIONS}
                 selectedValue={invoiceStatus}
-                onChange={(value) => setInvoiceStatus(value as InvoiceStatus)}
+                onChange={(value) => handleInvoiceStatusChange(value as InvoiceStatus)}
               />
+            )}
+
+            {isEdit && invoiceStatus === "paid" && (
+              <div>
+                <label htmlFor="paidOn" className={styles.formLabel}>
+                  Paid on
+                </label>
+                <input
+                  id="paidOn"
+                  type="date"
+                  max={nowAsDateValue()}
+                  value={paidOn}
+                  onChange={(e) => setPaidOn(e.target.value)}
+                  className={styles.formInput}
+                />
+              </div>
             )}
 
             <div>

@@ -31,6 +31,9 @@ export type Invoice = {
   onlineOrOffline: OnlineOrOffline;
   transport: string;
   status: InvoiceStatus;
+  // "YYYY-MM-DD" the payment came in; null while unpaid, and on invoices
+  // marked paid before the date was recorded. See InvoiceDetails.paid_on.
+  paidOn: string | null;
   productIds: number[];
   quantities: number[];
   rates: number[];
@@ -60,6 +63,7 @@ type InvoiceDetailItem = {
   online_or_offline: OnlineOrOffline;
   transport: string;
   status: InvoiceStatus;
+  paid_on?: string | null;
   product_ids: number[];
   quantities: number[];
   rates: number[];
@@ -86,6 +90,7 @@ function toInvoice(item: InvoiceDetailItem): Invoice {
     onlineOrOffline: item.online_or_offline,
     transport: item.transport,
     status: item.status,
+    paidOn: item.paid_on ?? null,
     productIds: item.product_ids,
     quantities: item.quantities,
     rates: item.rates,
@@ -143,34 +148,44 @@ export type UpdateInvoicePayload = {
   transport: string;
   notes: string;
   status: InvoiceStatus;
+  // Only read when status is "paid"; null keeps the date on file, or takes
+  // today if there is none.
+  paidOn: string | null;
   isDeleted: boolean;
 };
 
-// Backs the status dropdown in each row of the sales invoices table. Its own
-// endpoint rather than a full update_invoice_details round trip: that one
-// re-snapshots the totals off the linked sales orders and re-decides the
-// invoice's tax context against the client's current state, neither of which
-// recording a payment should do to a document already sent out.
+// Backs the status dropdown and the "Paid on" date in each row of the sales
+// invoices table. Its own endpoint rather than a full update_invoice_details
+// round trip: that one re-snapshots the totals off the linked sales orders
+// and re-decides the invoice's tax context against the client's current
+// state, neither of which recording a payment should do to a document
+// already sent out.
 //
-// Resolves to null on success, or the message to show on failure — the
-// caller has a row to roll back, so it needs the reason rather than a
-// boolean.
-export async function updateInvoiceStatus(id: number, status: InvoiceStatus): Promise<string | null> {
+// Marking an invoice paid without a paidOn records today; going back to
+// unpaid clears the date. Resolves to the payment date the invoice ended up
+// with, or to the message to show on failure — the caller has a row to roll
+// back, so it needs the reason rather than a boolean.
+export async function updateInvoiceStatus(
+  id: number,
+  status: InvoiceStatus,
+  paidOn: string | null = null,
+): Promise<{ paidOn: string | null } | { error: string }> {
   try {
     const response = await apiFetch("/admin/update_invoice_status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status }),
+      body: JSON.stringify({ id, status, paid_on: paidOn }),
     });
 
-    if (response.ok) {
-      return null;
-    }
-
     const body = await response.json().catch(() => null);
-    return typeof body?.detail === "string" ? body.detail : "Couldn't update the status. Please try again.";
+    if (response.ok) {
+      return { paidOn: body?.paid_on ?? null };
+    }
+    return {
+      error: typeof body?.detail === "string" ? body.detail : "Couldn't update the status. Please try again.",
+    };
   } catch {
-    return "Couldn't reach the server. Please try again.";
+    return { error: "Couldn't reach the server. Please try again." };
   }
 }
 
@@ -186,6 +201,7 @@ export async function updateInvoice(payload: UpdateInvoicePayload): Promise<Resp
       transport: payload.transport,
       notes: payload.notes,
       status: payload.status,
+      paid_on: payload.status === "paid" ? payload.paidOn : null,
       is_deleted: payload.isDeleted,
     }),
   });

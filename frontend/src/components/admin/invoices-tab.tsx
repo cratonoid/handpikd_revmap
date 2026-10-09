@@ -46,6 +46,7 @@ import { customerLabel, fetchCustomerList, type CustomerOption } from "@/lib/cus
 import { byNewestFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
 import { formatDate } from "@/lib/format-date";
+import { nowAsDateValue } from "@/lib/datetime-input";
 
 type ModalState = { mode: "add" } | { mode: "edit"; invoice: Invoice } | null;
 type LoadState = "loading" | "loaded";
@@ -185,26 +186,42 @@ export function InvoicesTab() {
   // payment state has nothing behind it that can refuse on business grounds,
   // so in practice only an unreachable server or a since-voided invoice
   // brings a row back.
-  async function handleStatusChange(invoice: Invoice, nextStatus: InvoiceStatus) {
-    if (nextStatus === invoice.status) return;
-
-    const previousStatus = invoice.status;
-    const applyStatus = (status: InvoiceStatus) =>
+  //
+  // Marking paid records today as the payment date (the backend picks it, so
+  // the row takes the date from its reply); the "Paid on" cell then lets the
+  // admin correct it. Both go through here.
+  async function savePaymentState(invoice: Invoice, nextStatus: InvoiceStatus, nextPaidOn: string | null) {
+    const previous = { status: invoice.status, paidOn: invoice.paidOn };
+    const applyRow = (changes: Pick<Invoice, "status" | "paidOn">) =>
       setInvoices((current) =>
-        current.map((row) => (row.id === invoice.id ? { ...row, status } : row)),
+        current.map((row) => (row.id === invoice.id ? { ...row, ...changes } : row)),
       );
 
     setStatusError(null);
     setStatusSavingId(invoice.id);
-    applyStatus(nextStatus);
+    applyRow({ status: nextStatus, paidOn: nextStatus === "paid" ? (nextPaidOn ?? invoice.paidOn) : null });
 
-    const error = await updateInvoiceStatus(invoice.id, nextStatus);
+    const result = await updateInvoiceStatus(invoice.id, nextStatus, nextPaidOn);
 
     setStatusSavingId(null);
-    if (error) {
-      applyStatus(previousStatus);
-      setStatusError(error);
+    if ("error" in result) {
+      applyRow(previous);
+      setStatusError(result.error);
+    } else {
+      applyRow({ status: nextStatus, paidOn: result.paidOn });
     }
+  }
+
+  function handleStatusChange(invoice: Invoice, nextStatus: InvoiceStatus) {
+    if (nextStatus === invoice.status) return;
+    void savePaymentState(invoice, nextStatus, null);
+  }
+
+  function handlePaidOnChange(invoice: Invoice, nextPaidOn: string) {
+    // A cleared field isn't a date to save — the payment date only goes
+    // away by marking the invoice unpaid.
+    if (!nextPaidOn || nextPaidOn === invoice.paidOn) return;
+    void savePaymentState(invoice, "paid", nextPaidOn);
   }
 
   function handleCompanyDetailsSaved() {
@@ -357,6 +374,7 @@ export function InvoicesTab() {
               </th>
               {invoiceType === "proforma" && <th className={styles.tableHeadCell}>Due date</th>}
               {invoiceType === "standard" && <th className={styles.tableHeadCell}>Status</th>}
+              {invoiceType === "standard" && <th className={styles.tableHeadCell}>Paid on</th>}
               <th className={styles.tableHeadCell}>Amount</th>
               <th className={styles.tableHeadCell}>PDF</th>
             </tr>
@@ -396,8 +414,28 @@ export function InvoicesTab() {
                         options={STATUS_OPTIONS}
                         label={`Payment status for invoice ${invoice.invoiceNoDisplay}`}
                         disabled={statusSavingId === invoice.id}
-                        onChange={(nextStatus) => void handleStatusChange(invoice, nextStatus)}
+                        onChange={(nextStatus) => handleStatusChange(invoice, nextStatus)}
                       />
+                    </td>
+                  )}
+                  {invoiceType === "standard" && (
+                    <td className={styles.tableCell}>
+                      {invoice.status === "paid" ? (
+                        <input
+                          type="date"
+                          value={invoice.paidOn ?? ""}
+                          max={nowAsDateValue()}
+                          disabled={statusSavingId === invoice.id}
+                          onChange={(e) => handlePaidOnChange(invoice, e.target.value)}
+                          // The row opens the edit form on double-click;
+                          // working the date picker mustn't.
+                          onDoubleClick={(e) => e.stopPropagation()}
+                          aria-label={`Payment date for invoice ${invoice.invoiceNoDisplay}`}
+                          className={`${styles.formInput} ${styles.paidOnInput}`}
+                        />
+                      ) : (
+                        "—"
+                      )}
                     </td>
                   )}
                   <td className={styles.tableCell}>₹{invoice.totalAmountAfterTax.toFixed(2)}</td>

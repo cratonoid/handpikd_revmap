@@ -48,7 +48,7 @@ from app.schemas.invoices import (
 )
 from app.api.routes.sales_orders import delivery_tax_amount
 from app.services.counters import get_next_id, get_next_scoped_id
-from app.services.customer_points import sync_invoice_reward
+from app.services.customer_points import sync_invoice_reward, today
 from app.services.gst import TaxKind, resolve_state_code, split_tax, state_name_for_code, tax_kind_for
 from app.services.invoice_numbering import (
     financial_year_start_year,
@@ -139,6 +139,30 @@ async def resolve_invoice_customer_id(invoice: InvoiceDetails) -> int | None:
 
     sales_orders = await _get_sales_orders_or_404(invoice.sales_ids)
     return sales_orders[0].cust_id if sales_orders else None
+
+
+def _apply_payment_state(invoice: InvoiceDetails, status_value: InvoiceStatus, paid_on: date | None) -> None:
+    """Set the invoice's status and keep its payment date in step with it.
+
+    Paid: the date given, else the one already on file, else today — so
+    flipping an invoice to paid records the day without anyone typing it,
+    and re-saving a paid invoice never moves a date already entered. Unpaid:
+    no payment date at all.
+    """
+    if status_value == InvoiceStatus.paid:
+        if paid_on is not None:
+            # "Today" is Indian time (see customer_points.today), not the
+            # server's clock, which may still be on yesterday.
+            if paid_on > today():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, detail="the payment date can't be in the future"
+                )
+            invoice.paid_on = datetime.combine(paid_on, time.min)
+        elif invoice.paid_on is None:
+            invoice.paid_on = datetime.combine(today(), time.min)
+    else:
+        invoice.paid_on = None
+    invoice.status = status_value
 
 
 def _earns_points(invoice: InvoiceDetails) -> bool:
@@ -438,6 +462,7 @@ def _to_invoice_detail_item(
         online_or_offline=invoice.online_or_offline,
         transport=invoice.transport,
         status=invoice.status,
+        paid_on=invoice.paid_on.date() if invoice.paid_on else None,
         product_ids=[item.product_id for item in proforma_summaries],
         quantities=[item.quantity for item in proforma_summaries],
         rates=[item.rate for item in proforma_summaries],
@@ -517,7 +542,7 @@ async def update_invoice_details(
     invoice.online_or_offline = payload.online_or_offline
     invoice.transport = payload.transport
     invoice.notes = payload.notes
-    invoice.status = payload.status
+    _apply_payment_state(invoice, payload.status, payload.paid_on)
     invoice.is_deleted = payload.is_deleted
     await invoice.save()
     await _sync_points_if_payment_changed(invoice, earned_before)
@@ -561,11 +586,14 @@ async def update_invoice_status(
         )
 
     earned_before = _earns_points(invoice)
-    invoice.status = payload.status
+    _apply_payment_state(invoice, payload.status, payload.paid_on)
     await invoice.save()
     await _sync_points_if_payment_changed(invoice, earned_before)
 
-    return UpdateInvoiceStatusResponse(message="invoice status updated successfully")
+    return UpdateInvoiceStatusResponse(
+        message="invoice status updated successfully",
+        paid_on=invoice.paid_on.date() if invoice.paid_on else None,
+    )
 
 
 @router.post("/update_proforma_invoice_details", response_model=UpdateProformaInvoiceDetailsResponse)

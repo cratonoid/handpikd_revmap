@@ -74,7 +74,7 @@ class InvoiceDetails(Document):
     total_sgst_amount: float = 0.0
     type: InvoiceType
     # The Indian financial year (stored as the year it starts in: 2026 for
-    # FY 2026-27) whose series this invoice's invoice_no was drawn from �
+    # FY 2026-27) whose series this invoice's invoice_no was drawn from �
     # standard invoices only, since they alone are numbered per financial
     # year (H/26-27/12, see services/invoice_numbering.py). Frozen here at
     # creation time rather than re-derived from `date`, which stays editable:
@@ -85,6 +85,12 @@ class InvoiceDetails(Document):
     online_or_offline: OnlineOrOffline
     transport: str = ""  # e.g. "Hand Delivery" — shipping mode, invoice-specific.
     status: InvoiceStatus = InvoiceStatus.unpaid
+    # The day the payment came in, stored as midnight (Mongo has no plain
+    # date type). Filled with today automatically when the invoice is marked
+    # paid, editable afterwards, and cleared when it goes back to unpaid —
+    # so it is set exactly when status is paid. None on invoices marked paid
+    # before this field existed, until someone enters the date.
+    paid_on: datetime | None = None
     description: str = ""  # Scope/description shown on a proforma invoice PDF; unused by standard invoices.
     # Free-text note for this one invoice, printed on the PDF (above Terms
     # and Conditions on a standard invoice, above the "Please Note" block on

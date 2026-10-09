@@ -1,5 +1,5 @@
 # Request/response bodies for the invoices module's endpoints.
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, model_validator
 
@@ -46,6 +46,8 @@ class InvoiceDetailItem(BaseModel):
     online_or_offline: OnlineOrOffline
     transport: str
     status: InvoiceStatus
+    # When the payment came in — see InvoiceDetails.paid_on.
+    paid_on: date | None = None
     # Parallel arrays, one entry per line item — populated for proforma
     # invoices (own line items, see ProformaInvoiceSummary), empty for
     # standard invoices (whose line items live on the linked SalesOrders'
@@ -77,6 +79,10 @@ class UpdateInvoiceDetailsRequest(BaseModel):
     # invoice is always created as InvoiceStatus.unpaid (see
     # create_new_invoice, which leaves the model default in place).
     status: InvoiceStatus
+    # The payment date, read only when status is paid. Blank keeps the date
+    # already on file, or takes today if there is none (see
+    # _apply_payment_state in routes/invoices.py).
+    paid_on: date | None = None
     is_deleted: bool = False
 
 
@@ -91,10 +97,17 @@ class UpdateInvoiceDetailsResponse(BaseModel):
 class UpdateInvoiceStatusRequest(BaseModel):
     id: int
     status: InvoiceStatus
+    # As on UpdateInvoiceDetailsRequest: blank keeps the date on file or
+    # takes today. The table's "Paid on" cell sends status paid plus the
+    # date the admin picked.
+    paid_on: date | None = None
 
 
 class UpdateInvoiceStatusResponse(BaseModel):
     message: str
+    # The payment date the invoice ended up with, so the table can show the
+    # one the server picked without reloading.
+    paid_on: date | None = None
 
 
 class CreateNewProformaInvoiceRequest(BaseModel):
