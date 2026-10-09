@@ -71,6 +71,9 @@ export type SalesOrderCosting = {
   // sheet, but its footer totals have to account for it — see
   // computeOrderTotals.
   overallDiscount: number;
+  // Loyalty points redeemed on the order form — a second order-level
+  // discount the footer takes off alongside overallDiscount.
+  pointsRedeemed: number;
   // Likewise entered on the order form and read-only here (see
   // SalesOrders.delivery_charge), and likewise something the footer totals
   // have to account for — it is billed on top of the lines below, so
@@ -112,6 +115,7 @@ type SalesOrderCostingResponse = {
   date: string;
   order_status_name: string;
   overall_discount: number;
+  points_redeemed?: number;
   delivery_charge: number;
   delivery_tax_perc: number;
   lines: SalesOrderCostingLineItem[];
@@ -141,6 +145,7 @@ export async function fetchSalesOrderCosting(salesOrderId: number): Promise<Sale
     orderStatusName: item.order_status_name,
     // ?? 0 for orders raised before order-level discounts existed.
     overallDiscount: item.overall_discount ?? 0,
+    pointsRedeemed: item.points_redeemed ?? 0,
     // ...and before delivery charges did.
     deliveryCharge: item.delivery_charge ?? 0,
     deliveryTaxPerc: item.delivery_tax_perc ?? 0,

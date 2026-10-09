@@ -55,6 +55,10 @@ class SalesOrderCostingResponse(BaseModel):
     # order form, not on this sheet — but the sheet's footer totals have to
     # subtract it or they would disagree with the order's headline figures.
     overall_discount: float
+    # Loyalty points redeemed on the order form (SalesOrders.points_redeemed)
+    # — a second order-level discount the footer totals take off alongside
+    # overall_discount.
+    points_redeemed: int = 0
     # Likewise read-only here and likewise entered on the order form (see
     # SalesOrders.delivery_charge): billed on top of the line items, so this
     # sheet's footer has to add it or it would understate the order's own

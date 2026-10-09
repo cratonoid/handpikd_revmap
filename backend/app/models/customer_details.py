@@ -18,7 +18,12 @@ class CustomerDetails(Document):
     # services/gst.py's resolve_state_code falls back to the GSTIN for those.
     state_code: str = ""
     state_name: str = ""
-    points: int
+    # Legacy: the client's points before they were held as expiring lots in
+    # #customer_points_lot. No longer read or written — any balance left
+    # here is moved into an opening-balance lot at startup and zeroed (see
+    # _backfill_customer_points_lots in core/db.py). The live balance is
+    # services/customer_points.py's available_points.
+    points: int = 0
     is_deleted: bool = False
 
     class Settings:

@@ -28,6 +28,11 @@
 //     totals shown here mirror that allocation rather than subtracting it
 //     from a finished total — see _allocate_overall_discount in
 //     backend/app/api/routes/sales_orders.py.
+//   - The client's loyalty points can be redeemed (points_redeemed) as a
+//     second order-level discount, one rupee per point, applied together
+//     with overall_discount. Capped at 5% of the order's subtotal and at
+//     what the client has available — both checked here for the admin's
+//     sake and enforced by the backend (see services/customer_points.py).
 //   - An optional delivery charge (delivery_charge) with its own GST %, on
 //     top of the line items. Unlike the discount it is NOT spread across
 //     them: freight is a separate service supply, so it stays a figure of
@@ -46,13 +51,14 @@
 //     GET /admin/get_unbilled_purchase_order_list. Two fields rather than one
 //     because the two kinds of order live in different collections whose ids
 //     overlap; editing an order on either raises the same po_updated_flag.
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue } from "@/lib/datetime-input";
 import type { SalesOrder } from "@/lib/sales-orders";
 import { customerLabel, type CustomerOption } from "@/lib/customers";
+import { fetchCustomerPoints, MAX_REDEMPTION_RATE, maxRedeemablePoints } from "@/lib/customer-points";
 import type { Product } from "@/lib/products";
 import type { PurchaseOrderOption } from "@/lib/purchase-orders";
 import type { UnbilledPurchaseOrderOption } from "@/lib/unbilled-purchase-orders";
@@ -152,6 +158,14 @@ export function SalesOrderFormModal({
   const [overallDiscount, setOverallDiscount] = useState(
     initialOrder?.overallDiscount ? String(initialOrder.overallDiscount) : "",
   );
+  const [pointsRedeemed, setPointsRedeemed] = useState(
+    initialOrder?.pointsRedeemed ? String(initialOrder.pointsRedeemed) : "",
+  );
+  // What a client can put towards THIS order: their live balance, plus
+  // whatever this order already holds from them (re-saving hands those back
+  // first). Tagged with the client it was fetched for, so switching client
+  // reads as "loading" until the new figure lands.
+  const [fetchedPoints, setFetchedPoints] = useState<{ custId: string; available: number } | null>(null);
   const [deliveryCharge, setDeliveryCharge] = useState(
     initialOrder?.deliveryCharge ? String(initialOrder.deliveryCharge) : "",
   );
@@ -168,6 +182,26 @@ export function SalesOrderFormModal({
 
   const isEdit = mode === "edit";
   const title = isEdit ? "Edit sales order" : "New sales order";
+  const editingOrderId = isEdit ? initialOrder?.id : undefined;
+
+  useEffect(() => {
+    if (!custId) return;
+    let cancelled = false;
+    fetchCustomerPoints(Number(custId), editingOrderId)
+      .then((points) => {
+        if (!cancelled) setFetchedPoints({ custId, available: points.availablePoints + points.orderHeldPoints });
+      })
+      .catch(() => {
+        // Left unknown: the field still works, and the backend has the
+        // final say on whether the client has the points.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [custId, editingOrderId]);
+
+  // null while loading, or with no client picked.
+  const pointsAvailable = fetchedPoints && fetchedPoints.custId === custId ? fetchedPoints.available : null;
 
   // Name plus department, because the registered name on its own doesn't
   // identify a client here: the same company appears once per department,
@@ -249,6 +283,12 @@ export function SalesOrderFormModal({
   const lineValues = lineItems.map((item) => lineItemTotals(item).lineBeforeTax);
   const subtotalBeforeDiscount = lineValues.reduce((sum, lineValue) => sum + lineValue, 0);
   const overallDiscountAmount = Number(overallDiscount) || 0;
+  const pointsAmount = Number(pointsRedeemed) || 0;
+  const maxPointsForOrder = maxRedeemablePoints(subtotalBeforeDiscount);
+  const pointsOfferable = pointsAvailable === null ? 0 : Math.min(pointsAvailable, maxPointsForOrder);
+  // The discount and the points come off the subtotal together, exactly as
+  // the backend applies them.
+  const orderDiscountAmount = overallDiscountAmount + pointsAmount;
 
   // Mirrors _allocate_overall_discount in backend/app/api/routes/
   // sales_orders.py: one order-level figure split across the lines in
@@ -256,9 +296,9 @@ export function SalesOrderFormModal({
   // each line's tax lands on its own discounted share and the totals shown
   // here are the ones the backend will store.
   const discountShares = lineValues.map((lineValue) => {
-    if (!overallDiscountAmount || lineValues.length === 0) return 0;
-    if (!subtotalBeforeDiscount) return overallDiscountAmount / lineValues.length;
-    return overallDiscountAmount * (lineValue / subtotalBeforeDiscount);
+    if (!orderDiscountAmount || lineValues.length === 0) return 0;
+    if (!subtotalBeforeDiscount) return orderDiscountAmount / lineValues.length;
+    return orderDiscountAmount * (lineValue / subtotalBeforeDiscount);
   });
 
   // Added on top of the goods rather than spread across them, and taxed in
@@ -350,6 +390,7 @@ export function SalesOrderFormModal({
       tax_percs: taxPercs,
       notes,
       overall_discount: overallDiscountAmount,
+      points_redeemed: pointsAmount,
       delivery_charge: deliveryChargeAmount,
       delivery_tax_perc: deliveryChargeAmount ? Number(deliveryTaxPerc) || 0 : 0,
       description,
@@ -396,7 +437,19 @@ export function SalesOrderFormModal({
 
     // The backend rejects this too (it would push the totals, and the tax,
     // negative) — caught here so the admin sees it without a round trip.
-    if (overallDiscountAmount > subtotalBeforeDiscount) {
+    if (pointsAmount > maxPointsForOrder) {
+      setError(
+        `At most ${maxPointsForOrder} points can be redeemed on this order (${MAX_REDEMPTION_RATE * 100}% of its subtotal).`,
+      );
+      return;
+    }
+
+    if (pointsAvailable !== null && pointsAmount > pointsAvailable) {
+      setError(`This client only has ${pointsAvailable} points available.`);
+      return;
+    }
+
+    if (orderDiscountAmount > subtotalBeforeDiscount) {
       setError("The discount can't be more than the order's subtotal.");
       return;
     }
@@ -667,6 +720,44 @@ export function SalesOrderFormModal({
           </div>
 
           <div className={styles.orderDiscountRow}>
+            <div className={styles.orderDiscountField}>
+              <label htmlFor="points-redeemed" className={styles.formLabel}>
+                Redeem points (₹1 each)
+              </label>
+              <input
+                id="points-redeemed"
+                type="text"
+                inputMode="numeric"
+                placeholder="0"
+                value={pointsRedeemed}
+                onChange={(e) => setPointsRedeemed(e.target.value.replace(/\D/g, ""))}
+                disabled={!custId}
+                className={styles.formInput}
+              />
+            </div>
+          </div>
+
+          {custId && (
+            <p className={`${styles.formHint} ${styles.orderPointsHint}`}>
+              {pointsAvailable === null
+                ? "Loading the client's points…"
+                : `${pointsAvailable} points available · up to ${maxPointsForOrder} on this order (${MAX_REDEMPTION_RATE * 100}% of the subtotal).`}
+              {pointsOfferable > 0 && (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    onClick={() => setPointsRedeemed(String(pointsOfferable))}
+                    className={styles.linkButton}
+                  >
+                    Use {pointsOfferable}
+                  </button>
+                </>
+              )}
+            </p>
+          )}
+
+          <div className={styles.orderDiscountRow}>
             <div className={styles.orderChargeFields}>
               <div>
                 <label htmlFor="delivery-charge" className={styles.formLabel}>
@@ -710,20 +801,26 @@ export function SalesOrderFormModal({
           </p>
 
           <div className={styles.totalsRow}>
+            {orderDiscountAmount > 0 && (
+              <div className={styles.totalsRowItem}>
+                {/* The goods' subtotal, which is what the discount and the
+                    points are taken off — delivery is added after it, and
+                    gets its own figure below. */}
+                <p className={styles.totalsRowLabel}>Subtotal</p>
+                <p className={styles.totalsRowValue}>₹{subtotalBeforeDiscount.toFixed(2)}</p>
+              </div>
+            )}
             {overallDiscountAmount > 0 && (
-              <>
-                <div className={styles.totalsRowItem}>
-                  {/* The goods' subtotal, which is what the discount is
-                      taken off — delivery is added after it, and gets its
-                      own figure below. */}
-                  <p className={styles.totalsRowLabel}>Subtotal</p>
-                  <p className={styles.totalsRowValue}>₹{subtotalBeforeDiscount.toFixed(2)}</p>
-                </div>
-                <div className={styles.totalsRowItem}>
-                  <p className={styles.totalsRowLabel}>Discount</p>
-                  <p className={styles.totalsRowValue}>−₹{overallDiscountAmount.toFixed(2)}</p>
-                </div>
-              </>
+              <div className={styles.totalsRowItem}>
+                <p className={styles.totalsRowLabel}>Discount</p>
+                <p className={styles.totalsRowValue}>−₹{overallDiscountAmount.toFixed(2)}</p>
+              </div>
+            )}
+            {pointsAmount > 0 && (
+              <div className={styles.totalsRowItem}>
+                <p className={styles.totalsRowLabel}>Points</p>
+                <p className={styles.totalsRowValue}>−₹{pointsAmount.toFixed(2)}</p>
+              </div>
             )}
             {deliveryChargeAmount > 0 && (
               <div className={styles.totalsRowItem}>

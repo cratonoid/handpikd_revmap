@@ -1,5 +1,9 @@
 # Request/response bodies for the admin module's customer details endpoints.
-from pydantic import BaseModel, model_validator
+from datetime import date, datetime
+
+from pydantic import BaseModel, Field, model_validator
+
+from app.models import PointsSource
 
 
 class AddCustomerDetailsRequest(BaseModel):
@@ -20,7 +24,12 @@ class AddCustomerDetailsRequest(BaseModel):
     # always re-derived from the code rather than trusted.
     state_code: str = ""
     state_name: str = ""
-    points: int
+    # Starting points, granted as the client's first points lot. 0 grants
+    # nothing.
+    points: int = Field(default=0, ge=0)
+    # When those starting points expire. Blank means the standard three
+    # weeks from today (services/customer_points.py's default_expiry).
+    points_expires_on: date | None = None
     is_deleted: bool = False
     contact_name: list[str]
     contact_phone: list[str]
@@ -36,9 +45,14 @@ class AddCustomerDetailsRequest(BaseModel):
 
 class AddCustomerDetailsResponse(BaseModel):
     message: str
+    # The new CustomerDetails.id, so the client form can manage the new
+    # client's points without reloading the table first.
+    customer_id: int | None = None
 
 
 class CustomerDetailItem(BaseModel):
+    # The CustomerDetails.id — what the points endpoints below are keyed on.
+    customer_id: int
     mail: str
     password: str
     registered_name: str
@@ -47,6 +61,9 @@ class CustomerDetailItem(BaseModel):
     company_gst: str = ""
     state_code: str = ""
     state_name: str = ""
+    # The client's live points balance: unspent points on lots that haven't
+    # expired or been revoked. Read-only — points are added and withdrawn
+    # through the points endpoints, not by editing this figure.
     points: int
     is_deleted: bool = False
     contact_name: list[str]
@@ -76,7 +93,8 @@ class UpdateCustomerDetailsRequest(BaseModel):
     # always re-derived from the code rather than trusted.
     state_code: str = ""
     state_name: str = ""
-    points: int
+    # No points field: the balance is the sum of the client's points lots,
+    # changed only through add_customer_points/revoke_customer_points_lot.
     is_deleted: bool = False
     contact_name: list[str]
     contact_phone: list[str]
@@ -108,3 +126,50 @@ class CustomerListItem(BaseModel):
     # may be blank on older clients.
     company_or_department: str = ""
     is_deleted: bool
+
+
+class CustomerPointsLotItem(BaseModel):
+    id: int
+    points: int
+    used: int
+    # What's left of the lot, whether or not it still counts — see status.
+    remaining: int
+    expires_on: date
+    created_at: datetime
+    source: PointsSource
+    invoice_id: int | None = None
+    note: str = ""
+    # "active" (counts towards the balance), "expired" (its expiry date has
+    # been reached), "revoked" (withdrawn) or "used" (fully spent).
+    status: str
+
+
+class CustomerPointsResponse(BaseModel):
+    cust_id: int
+    available_points: int
+    # Points the sales order passed as ?sales_order_id= already holds from
+    # this client — on top of available_points when that order is re-saved,
+    # since they go back into the pot first. 0 without the parameter, or
+    # when the order belongs to another client.
+    order_held_points: int = 0
+    lots: list[CustomerPointsLotItem]
+
+
+class AddCustomerPointsRequest(BaseModel):
+    cust_id: int
+    points: int = Field(gt=0)
+    # Blank means the standard three weeks from today.
+    expires_on: date | None = None
+    note: str = ""
+
+
+class AddCustomerPointsResponse(BaseModel):
+    message: str
+
+
+class RevokeCustomerPointsLotRequest(BaseModel):
+    lot_id: int
+
+
+class RevokeCustomerPointsLotResponse(BaseModel):
+    message: str

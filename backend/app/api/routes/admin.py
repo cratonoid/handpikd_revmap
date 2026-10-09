@@ -11,6 +11,9 @@ from app.models import (
     CustomerIdCounter,
     CustomerPocDetails,
     CustomerPocIdCounter,
+    CustomerPointsLot,
+    PointsSource,
+    SalesOrders,
     User,
     UserIdCounter,
     UserRole,
@@ -18,12 +21,27 @@ from app.models import (
 from app.schemas.admin import (
     AddCustomerDetailsRequest,
     AddCustomerDetailsResponse,
+    AddCustomerPointsRequest,
+    AddCustomerPointsResponse,
     CustomerDetailItem,
     CustomerListItem,
+    CustomerPointsLotItem,
+    CustomerPointsResponse,
+    RevokeCustomerPointsLotRequest,
+    RevokeCustomerPointsLotResponse,
     UpdateCustomerDetailsRequest,
     UpdateCustomerDetailsResponse,
 )
 from app.services.counters import get_next_id
+from app.services.customer_points import (
+    available_points,
+    default_expiry,
+    get_customer_lots,
+    grant_points,
+    is_live,
+    remaining_points,
+    today,
+)
 from app.services.gst import resolve_party_state
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -67,17 +85,25 @@ async def add_customer_details(
         company_gst=payload.company_gst,
         state_code=state_code,
         state_name=state_name,
-        points=payload.points,
         is_deleted=payload.is_deleted,
     )
     await customer.insert()
+
+    if payload.points:
+        await grant_points(
+            customer_id,
+            payload.points,
+            payload.points_expires_on or default_expiry(),
+            PointsSource.manual,
+            note="Starting points",
+        )
 
     for contact_name, contact_phone in zip(payload.contact_name, payload.contact_phone):
         poc_id = await get_next_id(CustomerPocIdCounter, "next_customer_poc_id", CustomerPocDetails)
         poc = CustomerPocDetails(id=poc_id, customer_id=customer_id, contact_name=contact_name, contact_phone=contact_phone)
         await poc.insert()
 
-    return AddCustomerDetailsResponse(message="customer details added successfully")
+    return AddCustomerDetailsResponse(message="customer details added successfully", customer_id=customer_id)
 
 
 @router.get("/get_customer_list", response_model=list[CustomerListItem])
@@ -117,6 +143,7 @@ async def _get_customer_detail_by_mail(mail: str) -> CustomerDetailItem:
     pocs = await CustomerPocDetails.find(CustomerPocDetails.customer_id == customer.id).to_list()
 
     return CustomerDetailItem(
+        customer_id=customer.id,
         mail=user.mail,
         password=user.password,
         registered_name=customer.registered_name,
@@ -125,7 +152,7 @@ async def _get_customer_detail_by_mail(mail: str) -> CustomerDetailItem:
         company_gst=customer.company_gst,
         state_code=customer.state_code,
         state_name=customer.state_name,
-        points=customer.points,
+        points=available_points(await get_customer_lots(customer.id), today()),
         is_deleted=customer.is_deleted,
         contact_name=[poc.contact_name for poc in pocs],
         contact_phone=[poc.contact_phone for poc in pocs],
@@ -157,6 +184,12 @@ async def get_customer_details(
     for poc in pocs:
         pocs_by_customer_id.setdefault(poc.customer_id, []).append(poc)
 
+    lots = await CustomerPointsLot.find(In(CustomerPointsLot.cust_id, customer_ids)).to_list()
+    lots_by_customer_id: dict[int, list[CustomerPointsLot]] = {}
+    for lot in lots:
+        lots_by_customer_id.setdefault(lot.cust_id, []).append(lot)
+    on = today()
+
     response = []
     for customer in customers:
         user = users_by_id.get(customer.user_id)
@@ -165,6 +198,7 @@ async def get_customer_details(
         customer_pocs = pocs_by_customer_id.get(customer.id, [])
         response.append(
             CustomerDetailItem(
+                customer_id=customer.id,
                 mail=user.mail,
                 password=user.password,
                 registered_name=customer.registered_name,
@@ -173,7 +207,7 @@ async def get_customer_details(
                 company_gst=customer.company_gst,
                 state_code=customer.state_code,
                 state_name=customer.state_name,
-                points=customer.points,
+                points=available_points(lots_by_customer_id.get(customer.id, []), on),
                 is_deleted=customer.is_deleted,
                 contact_name=[poc.contact_name for poc in customer_pocs],
                 contact_phone=[poc.contact_phone for poc in customer_pocs],
@@ -221,7 +255,6 @@ async def update_customer_details(
     customer.address = payload.address
     customer.company_gst = payload.company_gst
     customer.state_code, customer.state_name = party_state_or_400(payload.state_code, payload.company_gst)
-    customer.points = payload.points
     customer.is_deleted = payload.is_deleted
     await customer.save()
 
@@ -232,3 +265,98 @@ async def update_customer_details(
         await poc.insert()
 
     return UpdateCustomerDetailsResponse(message="customer updated successfully")
+
+
+# ---------------------------------------------------------------------------
+# Loyalty points — see services/customer_points.py for the rules
+# ---------------------------------------------------------------------------
+
+
+def _lot_status(lot: CustomerPointsLot, on) -> str:
+    if lot.is_revoked:
+        return "revoked"
+    if not is_live(lot, on):
+        return "expired"
+    if remaining_points(lot) == 0:
+        return "used"
+    return "active"
+
+
+@router.get("/get_customer_points", response_model=CustomerPointsResponse)
+async def get_customer_points(
+    cust_id: int,
+    sales_order_id: int | None = None,
+    # Staff-wide rather than clients-only: the sales order form reads the
+    # balance to offer points as a discount.
+    _: User | None = Depends(require_staff),
+) -> CustomerPointsResponse:
+    customer = await CustomerDetails.get(cust_id)
+    if customer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="customer not found")
+
+    on = today()
+    lots = await get_customer_lots(cust_id)
+
+    order_held_points = 0
+    if sales_order_id is not None:
+        order = await SalesOrders.get(sales_order_id)
+        if order is not None and order.cust_id == cust_id:
+            order_held_points = sum(allocation.points for allocation in order.points_allocations)
+
+    return CustomerPointsResponse(
+        cust_id=cust_id,
+        available_points=available_points(lots, on),
+        order_held_points=order_held_points,
+        # Newest expiry first: what the admin is looking for is what's live.
+        lots=[
+            CustomerPointsLotItem(
+                id=lot.id,
+                points=lot.points,
+                used=lot.used,
+                remaining=remaining_points(lot),
+                expires_on=lot.expires_at.date(),
+                created_at=lot.created_at,
+                source=lot.source,
+                invoice_id=lot.invoice_id,
+                note=lot.note,
+                status=_lot_status(lot, on),
+            )
+            for lot in reversed(lots)
+        ],
+    )
+
+
+@router.post("/add_customer_points", response_model=AddCustomerPointsResponse)
+async def add_customer_points(
+    payload: AddCustomerPointsRequest,
+    _: User | None = Depends(require_section(Section.clients)),
+) -> AddCustomerPointsResponse:
+    customer = await CustomerDetails.get(payload.cust_id)
+    if customer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="customer not found")
+
+    expires_on = payload.expires_on or default_expiry()
+    if expires_on <= today():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="the expiry date must be after today, or the points would be worth nothing",
+        )
+
+    await grant_points(payload.cust_id, payload.points, expires_on, PointsSource.manual, note=payload.note.strip())
+    return AddCustomerPointsResponse(message="points added successfully")
+
+
+@router.post("/revoke_customer_points_lot", response_model=RevokeCustomerPointsLotResponse)
+async def revoke_customer_points_lot(
+    payload: RevokeCustomerPointsLotRequest,
+    _: User | None = Depends(require_section(Section.clients)),
+) -> RevokeCustomerPointsLotResponse:
+    # For points added by mistake. Whatever orders already spent from the
+    # lot stays spent — only the remainder stops counting.
+    lot = await CustomerPointsLot.get(payload.lot_id)
+    if lot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="points not found")
+
+    lot.is_revoked = True
+    await lot.save()
+    return RevokeCustomerPointsLotResponse(message="points withdrawn")

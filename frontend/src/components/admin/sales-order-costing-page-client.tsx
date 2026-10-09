@@ -194,7 +194,8 @@ export function SalesOrderCostingPageClient({ salesOrderId }: { salesOrderId: nu
     () =>
       computeOrderTotals(
         lines.map(toCostingLine),
-        order?.overallDiscount ?? 0,
+        // Redeemed points come off exactly like the discount does.
+        (order?.overallDiscount ?? 0) + (order?.pointsRedeemed ?? 0),
         order?.deliveryCharge ?? 0,
         order?.deliveryTaxPerc ?? 0,
       ),
@@ -314,6 +315,14 @@ export function SalesOrderCostingPageClient({ salesOrderId }: { salesOrderId: nu
           This order has a {currency(order.overallDiscount)} discount on its net amount, entered on the order form
           rather than here. It is split across the products below in proportion to their value, and the totals at the
           foot of this page already account for it.
+        </p>
+      )}
+
+      {order.pointsRedeemed > 0 && (
+        <p className={styles.costingDefaultsNotice}>
+          The client redeemed {order.pointsRedeemed} points ({currency(order.pointsRedeemed)}) on this order, entered on
+          the order form. They come off the products below the same way as a discount, and the totals at the foot of
+          this page already account for them.
         </p>
       )}
 

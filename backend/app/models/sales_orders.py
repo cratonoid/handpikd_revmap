@@ -2,6 +2,15 @@
 from datetime import datetime
 
 from beanie import Document
+from pydantic import BaseModel
+
+
+class PointsAllocation(BaseModel):
+    # How many of the order's redeemed points came out of which
+    # CustomerPointsLot, so they can be handed back to the same lots when the
+    # redemption is reduced or the order is deleted.
+    lot_id: int  # FK -> CustomerPointsLot.id
+    points: int
 
 
 class SalesOrders(Document):
@@ -20,6 +29,16 @@ class SalesOrders(Document):
     # already NET of it — nothing downstream (invoices, #sales_summary, the
     # costing sheet) has to subtract it again.
     overall_discount: float = 0.0
+    # The client's loyalty points spent on this order, at one rupee each.
+    # Applied exactly like overall_discount — the two are added together and
+    # split across the line items before tax — but kept as a figure of its
+    # own because, unlike a plain discount, it draws down the client's
+    # balance (see services/customer_points.py). Capped at 5% of the order's
+    # net subtotal when it is entered.
+    points_redeemed: int = 0
+    # Which point lots points_redeemed was taken from. Empty while the order
+    # is soft-deleted: deleting an order hands its points back.
+    points_allocations: list[PointsAllocation] = []
     # A delivery/freight charge billed TO the customer, on top of the line
     # items. Not to be confused with SalesOrderCosting.delivery, which is
     # what delivery COST us on a given product line and never reaches the

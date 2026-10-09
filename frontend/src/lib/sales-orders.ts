@@ -46,6 +46,10 @@ export type SalesOrder = {
   // _allocate_overall_discount in backend/app/api/routes/sales_orders.py) —
   // so nothing here should ever subtract it a second time.
   overallDiscount: number;
+  // Client loyalty points spent on the order, one rupee each — a second
+  // order-level discount, applied together with overallDiscount and likewise
+  // already inside the totals below. See backend/app/models/sales_orders.py.
+  pointsRedeemed: number;
   // Delivery billed to the customer, and the GST % it carries. Also already
   // inside the three totals below — the backend adds it on top of the line
   // items and taxes it in its own right (see SalesOrders.delivery_charge).
@@ -85,6 +89,7 @@ type SalesOrderDetailItem = {
   tax_percs: number[];
   notes?: string[];
   overall_discount: number;
+  points_redeemed?: number;
   delivery_charge: number;
   delivery_tax_perc: number;
   total_amount_before_tax: number;
@@ -113,6 +118,7 @@ function toSalesOrder(item: SalesOrderDetailItem): SalesOrder {
     notes: item.notes ?? item.product_ids.map(() => ""),
     // ?? 0 for orders raised before order-level discounts existed.
     overallDiscount: item.overall_discount ?? 0,
+    pointsRedeemed: item.points_redeemed ?? 0,
     // ?? 0 for orders raised before delivery charges existed.
     deliveryCharge: item.delivery_charge ?? 0,
     deliveryTaxPerc: item.delivery_tax_perc ?? 0,

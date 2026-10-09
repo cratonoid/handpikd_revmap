@@ -9,6 +9,8 @@ from app.models.customer_details import CustomerDetails
 from app.models.customer_id_counter import CustomerIdCounter
 from app.models.customer_poc_details import CustomerPocDetails
 from app.models.customer_poc_id_counter import CustomerPocIdCounter
+from app.models.customer_points_lot import CustomerPointsLot, PointsSource
+from app.models.customer_points_lot_id_counter import CustomerPointsLotIdCounter
 from app.models.database_contact import ContactType, DatabaseContact, LeadStatus, OutreachChannel
 from app.models.database_contact_id_counter import DatabaseContactIdCounter
 from app.models.email_attachment import EmailAttachment
@@ -67,7 +69,7 @@ from app.models.role_id_counter import RoleIdCounter
 from app.models.sales_order_costing import PrintingCost, SalesOrderCosting
 from app.models.sales_order_costing_id_counter import SalesOrderCostingIdCounter
 from app.models.sales_order_id_counter import SalesOrderIdCounter
-from app.models.sales_orders import SalesOrders
+from app.models.sales_orders import PointsAllocation, SalesOrders
 from app.models.sales_summary import SalesSummary
 from app.models.sales_summary_id_counter import SalesSummaryIdCounter
 from app.models.standard_invoice_no_counter_master import StandardInvoiceNoCounterMaster
@@ -93,6 +95,9 @@ __all__ = [
     "CustomerIdCounter",
     "CustomerPocDetails",
     "CustomerPocIdCounter",
+    "CustomerPointsLot",
+    "CustomerPointsLotIdCounter",
+    "PointsSource",
     "ContactType",
     "LeadStatus",
     "OutreachChannel",
@@ -166,6 +171,7 @@ __all__ = [
     "SalesOrderCosting",
     "SalesOrderCostingIdCounter",
     "SalesOrderIdCounter",
+    "PointsAllocation",
     "SalesOrders",
     "SalesSummary",
     "SalesSummaryIdCounter",

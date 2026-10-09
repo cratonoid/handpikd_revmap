@@ -19,6 +19,8 @@ from app.models import (
     CustomerIdCounter,
     CustomerPocDetails,
     CustomerPocIdCounter,
+    CustomerPointsLot,
+    CustomerPointsLotIdCounter,
     DatabaseContact,
     DatabaseContactIdCounter,
     EmailAttachment,
@@ -401,6 +403,29 @@ async def _backfill_inventory_history_transaction_date() -> None:
         )
 
 
+async def _backfill_customer_points_lots() -> None:
+    # Points used to be a single number on CustomerDetails with no expiry.
+    # Now every point belongs to a lot that expires (see
+    # models/customer_points_lot.py), so any balance still sitting on the old
+    # field is moved into a lot of its own — given the standard three weeks
+    # from the day it moves, the same as points added by hand — and the old
+    # field is zeroed, which is what keeps this from running twice.
+    from app.models import PointsSource
+    from app.services.customer_points import default_expiry, grant_points
+
+    db = get_db()
+    legacy = await db["customer_details"].find({"points": {"$gt": 0}}, {"_id": 1, "points": 1}).to_list(length=None)
+    for row in legacy:
+        await grant_points(
+            row["_id"],
+            int(row["points"]),
+            default_expiry(),
+            PointsSource.opening_balance,
+            note="Balance carried over from before points expired",
+        )
+        await db["customer_details"].update_one({"_id": row["_id"]}, {"$set": {"points": 0}})
+
+
 async def connect_to_mongo() -> None:
     global client
     client = AsyncMongoClient(settings.mongodb_uri)
@@ -415,6 +440,8 @@ async def connect_to_mongo() -> None:
             CustomerIdCounter,
             CustomerPocDetails,
             CustomerPocIdCounter,
+            CustomerPointsLot,
+            CustomerPointsLotIdCounter,
             VendorDetails,
             VendorIdCounter,
             VendorPocDetails,
@@ -502,6 +529,7 @@ async def connect_to_mongo() -> None:
     await _backfill_purchase_summary_gst()
     await _backfill_inventory_history_transaction_date()
     await _backfill_expense_dates()
+    await _backfill_customer_points_lots()
 
 
 async def close_mongo_connection() -> None:

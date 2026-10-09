@@ -20,6 +20,7 @@ from app.models import (
     CustomerPocDetails,
     InvoiceDetails,
     InvoiceIdCounter,
+    InvoiceStatus,
     InvoiceType,
     OnlineOrOffline,
     ProductDetails,
@@ -47,6 +48,7 @@ from app.schemas.invoices import (
 )
 from app.api.routes.sales_orders import delivery_tax_amount
 from app.services.counters import get_next_id, get_next_scoped_id
+from app.services.customer_points import sync_invoice_reward
 from app.services.gst import TaxKind, resolve_state_code, split_tax, state_name_for_code, tax_kind_for
 from app.services.invoice_numbering import (
     financial_year_start_year,
@@ -137,6 +139,20 @@ async def resolve_invoice_customer_id(invoice: InvoiceDetails) -> int | None:
 
     sales_orders = await _get_sales_orders_or_404(invoice.sales_ids)
     return sales_orders[0].cust_id if sales_orders else None
+
+
+def _earns_points(invoice: InvoiceDetails) -> bool:
+    return invoice.status == InvoiceStatus.paid and not invoice.is_deleted
+
+
+async def _sync_points_if_payment_changed(invoice: InvoiceDetails, earned_before: bool) -> None:
+    # A paid invoice earns its client 5% of it in points (see
+    # services/customer_points.py). Only synced when the save actually moved
+    # the invoice into or out of "paid and live": re-saving an invoice that
+    # was already paid must not reinstate a reward an admin has since
+    # withdrawn from the client's form.
+    if _earns_points(invoice) != earned_before:
+        await sync_invoice_reward(invoice, lambda: resolve_invoice_customer_id(invoice))
 
 
 async def _validate_customer_exists(cust_id: int) -> None:
@@ -487,6 +503,7 @@ async def update_invoice_details(
     # invoice_fy_start_year is deliberately left alone: the number has
     # already been issued out of that year's series, so correcting the date
     # (even across 1 April) must not restate it as another year's invoice.
+    earned_before = _earns_points(invoice)
     invoice.date = payload.date
     invoice.total_amount_before_tax = total_before_tax
     invoice.total_tax_amount = total_tax
@@ -503,6 +520,7 @@ async def update_invoice_details(
     invoice.status = payload.status
     invoice.is_deleted = payload.is_deleted
     await invoice.save()
+    await _sync_points_if_payment_changed(invoice, earned_before)
 
     return UpdateInvoiceDetailsResponse(message="invoice updated successfully")
 
@@ -522,10 +540,12 @@ async def update_invoice_status(
     has reviewed the invoice on the form; neither is something recording a
     payment should quietly do to a document already sent out.
 
-    Unlike its sales order counterpart, nothing else moves here - payment
-    state has no side effects on stock or on any other collection. What it
-    does feed is the accounts module, which reads outstanding/overdue
-    straight off this field (see routes/accounts.py).
+    Unlike its sales order counterpart, stock doesn't move here. What
+    payment state does feed is the accounts module, which reads
+    outstanding/overdue straight off this field (see routes/accounts.py),
+    and the client's loyalty points: marking an invoice paid earns them 5%
+    of it, and putting it back to unpaid withdraws whatever of that is
+    still unspent (see services/customer_points.py).
     """
     invoice = await InvoiceDetails.get(payload.id)
     if invoice is None or invoice.is_deleted:
@@ -540,8 +560,10 @@ async def update_invoice_status(
             detail="a proforma invoice has no payment status",
         )
 
+    earned_before = _earns_points(invoice)
     invoice.status = payload.status
     await invoice.save()
+    await _sync_points_if_payment_changed(invoice, earned_before)
 
     return UpdateInvoiceStatusResponse(message="invoice status updated successfully")
 

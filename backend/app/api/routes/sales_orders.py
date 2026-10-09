@@ -42,6 +42,13 @@ from app.schemas.sales_orders import (
     UpdateSalesOrderStatusResponse,
 )
 from app.services.counters import get_next_id
+from app.services.customer_points import (
+    MAX_REDEMPTION_RATE,
+    max_redeemable_points,
+    reconcile_order_points,
+    redeem_points,
+    today,
+)
 from app.services.invoice_totals import refresh_invoice_totals_for_sales_orders
 from app.services.inventory import (
     STOCK_OUT,
@@ -214,6 +221,13 @@ def _allocate_overall_discount(overall_discount: float, net_line_values: list[fl
     return [overall_discount * (line_value / total_value) for line_value in net_line_values]
 
 
+def _net_subtotal(quantities: list[int], rates: list[float], discounts: list[float] | None) -> float:
+    # The goods' subtotal after the costing sheet's per-line discounts but
+    # before anything order-level (the overall discount, redeemed points).
+    line_discounts = discounts if discounts is not None else [0.0] * len(quantities)
+    return sum(quantity * rate - discount for quantity, rate, discount in zip(quantities, rates, line_discounts))
+
+
 def _reject_overall_discount_above_subtotal(
     overall_discount: float,
     quantities: list[int],
@@ -224,19 +238,42 @@ def _reject_overall_discount_above_subtotal(
     # sheet's own discounts would push the totals — and the tax — negative.
     # Checked against the same net subtotal the discount is applied to, so
     # discounting an order down to exactly zero is still allowed.
+    #
+    # Callers pass the overall discount and any redeemed points together:
+    # both come off the same subtotal.
     if not overall_discount:
         return
 
-    line_discounts = discounts if discounts is not None else [0.0] * len(quantities)
-    net_subtotal = sum(
-        quantity * rate - discount for quantity, rate, discount in zip(quantities, rates, line_discounts)
-    )
+    net_subtotal = _net_subtotal(quantities, rates, discounts)
     if overall_discount > net_subtotal:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
                 f"discount ({overall_discount:.2f}) is larger than the order's net amount "
                 f"({net_subtotal:.2f})"
+            ),
+        )
+
+
+def _reject_points_above_limit(
+    points_redeemed: int,
+    quantities: list[int],
+    rates: list[float],
+    discounts: list[float] | None,
+) -> None:
+    # A client can put points towards at most 5% of an order, measured on
+    # the same net subtotal the discount comes off.
+    if not points_redeemed:
+        return
+
+    net_subtotal = _net_subtotal(quantities, rates, discounts)
+    limit = max_redeemable_points(net_subtotal)
+    if points_redeemed > limit:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"at most {limit} points can be redeemed on this order "
+                f"({MAX_REDEMPTION_RATE:.0%} of its net amount, {net_subtotal:.2f})"
             ),
         )
 
@@ -519,20 +556,26 @@ async def create_new_sales_order(
 
     # No discounts term: a sales order can only be costed once it exists,
     # so a brand-new one never has #sales_order_costing rows. The order's own
-    # overall discount does come off the form, though.
+    # overall discount does come off the form, though, and so do any points
+    # redeemed — both off the same subtotal.
+    _reject_points_above_limit(payload.points_redeemed, payload.quantities, payload.rates, None)
     _reject_overall_discount_above_subtotal(
-        payload.overall_discount, payload.quantities, payload.rates, None
+        payload.overall_discount + payload.points_redeemed, payload.quantities, payload.rates, None
     )
     line_subtotals, tax_amounts, total_before_tax, total_tax, total_after_tax = (
         _compute_line_items_and_totals(
             payload.quantities,
             payload.rates,
             payload.tax_percs,
-            overall_discount=payload.overall_discount,
+            overall_discount=payload.overall_discount + payload.points_redeemed,
             delivery_charge=payload.delivery_charge,
             delivery_tax_perc=payload.delivery_tax_perc,
         )
     )
+
+    # Last check before anything is written, since it can still fail (not
+    # enough points) — and it takes the points, so nothing after it may.
+    points_allocations = await redeem_points(payload.cust_id, payload.points_redeemed, today())
 
     order_status_id = await _get_new_status_id()
     order_no = await get_next_id(OrderNoCounterMaster, "next_order_no", SalesOrders)
@@ -545,6 +588,8 @@ async def create_new_sales_order(
         cust_id=payload.cust_id,
         date=payload.date,
         overall_discount=payload.overall_discount,
+        points_redeemed=payload.points_redeemed,
+        points_allocations=points_allocations,
         delivery_charge=payload.delivery_charge,
         delivery_tax_perc=payload.delivery_tax_perc,
         total_amount_before_tax=total_before_tax,
@@ -609,6 +654,7 @@ async def get_sales_order_details(
                 tax_percs=[item.tax_perc for item in line_items],
                 notes=[item.note for item in line_items],
                 overall_discount=order.overall_discount,
+                points_redeemed=order.points_redeemed,
                 delivery_charge=order.delivery_charge,
                 delivery_tax_perc=order.delivery_tax_perc,
                 total_amount_before_tax=order.total_amount_before_tax,
@@ -651,8 +697,12 @@ async def update_sales_order_details(
     discounts = await _stored_line_discounts(
         sales_order.id, line_item_ids, payload.product_ids, payload.quantities, payload.rates
     )
+    # The cap only binds a live order: a deleted one holds no points (see
+    # below), so there's nothing to cap.
+    if not payload.is_deleted:
+        _reject_points_above_limit(payload.points_redeemed, payload.quantities, payload.rates, discounts)
     _reject_overall_discount_above_subtotal(
-        payload.overall_discount, payload.quantities, payload.rates, discounts
+        payload.overall_discount + payload.points_redeemed, payload.quantities, payload.rates, discounts
     )
     line_subtotals, tax_amounts, total_before_tax, total_tax, total_after_tax = (
         _compute_line_items_and_totals(
@@ -660,7 +710,7 @@ async def update_sales_order_details(
             payload.rates,
             payload.tax_percs,
             discounts,
-            payload.overall_discount,
+            payload.overall_discount + payload.points_redeemed,
             payload.delivery_charge,
             payload.delivery_tax_perc,
         )
@@ -682,10 +732,23 @@ async def update_sales_order_details(
         )
         await _reject_stock_going_negative(stock_deltas)
 
+    # After every other check, since this one moves the client's balance. A
+    # deleted order hands its points back (and keeps points_redeemed, so
+    # restoring it claims them again); switching the order to another client
+    # moves the redemption to that client's points.
+    sales_order.points_allocations = await reconcile_order_points(
+        sales_order.points_allocations,
+        sales_order.cust_id,
+        payload.cust_id,
+        0 if payload.is_deleted else payload.points_redeemed,
+        today(),
+    )
+
     sales_order.order_status_id = payload.order_status_id
     sales_order.cust_id = payload.cust_id
     sales_order.date = payload.date
     sales_order.overall_discount = payload.overall_discount
+    sales_order.points_redeemed = payload.points_redeemed
     sales_order.delivery_charge = payload.delivery_charge
     sales_order.delivery_tax_perc = payload.delivery_tax_perc
     sales_order.total_amount_before_tax = total_before_tax
@@ -909,6 +972,7 @@ async def get_sales_order_costing(
         # Entered on the order form, shown read-only in this sheet's footer
         # so its totals reconcile with the order's.
         overall_discount=sales_order.overall_discount,
+        points_redeemed=sales_order.points_redeemed,
         delivery_charge=sales_order.delivery_charge,
         delivery_tax_perc=sales_order.delivery_tax_perc,
         lines=lines,
@@ -1010,7 +1074,11 @@ async def update_sales_order_costing(
     # The order's overall discount isn't editable here, but it still has to
     # be carried into the recompute — leaving it out would silently drop it
     # from the order's totals the first time this sheet is saved.
-    _reject_overall_discount_above_subtotal(sales_order.overall_discount, quantities, rates, discounts)
+    # Redeemed points ride along with it for the same reason. Their 5% cap
+    # isn't re-checked here: it was enforced when the points were entered on
+    # the order form, and a costing save shouldn't fail over it.
+    order_discount = sales_order.overall_discount + sales_order.points_redeemed
+    _reject_overall_discount_above_subtotal(order_discount, quantities, rates, discounts)
     # The delivery charge isn't editable on this sheet (it belongs to the
     # order form), but re-deriving the order's totals without it would drop
     # it from the order the moment anyone saved the costing.
@@ -1019,7 +1087,7 @@ async def update_sales_order_costing(
         rates,
         tax_percs,
         discounts,
-        sales_order.overall_discount,
+        order_discount,
         sales_order.delivery_charge,
         sales_order.delivery_tax_perc,
     )

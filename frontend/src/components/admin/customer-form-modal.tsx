@@ -18,11 +18,19 @@
 // The delete/restore button reuses the same update_customer_details call
 // with every other field held as-is and just `is_deleted` flipped — a soft
 // delete, not a real removal, so it also works as an "undelete".
+//
+// Points: a new client can be given starting points with an expiry date
+// (three weeks out by default). After that the balance isn't a field on
+// this form at all — it is the sum of the client's points lots, each with
+// its own expiry, managed in <CustomerPointsSection> in edit mode.
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
 import type { Customer, Contact } from "@/lib/customers";
+import { POINTS_VALIDITY_DAYS } from "@/lib/customer-points";
+import { addDaysToDateValue, nowAsDateValue } from "@/lib/datetime-input";
 import { XMarkIcon } from "@/components/icons";
+import { CustomerPointsSection } from "@/components/admin/customer-points-section";
 import { GstStateSelect, useGstState } from "@/components/admin/gst-state-select";
 import { stateNameForCode } from "@/lib/gst";
 import styles from "@/styles/dashboard.module.css";
@@ -56,7 +64,12 @@ export function CustomerFormModal({
     initialCustomer?.stateCode ?? "",
     initialCustomer?.companyGst ?? "",
   );
-  const [points, setPoints] = useState(initialCustomer?.points ?? 0);
+  // Starting points (add mode only), held as text so the field can be left
+  // empty for none.
+  const [startingPoints, setStartingPoints] = useState("");
+  const [pointsExpiresOn, setPointsExpiresOn] = useState(() =>
+    addDaysToDateValue(nowAsDateValue(), POINTS_VALIDITY_DAYS),
+  );
   const [contacts, setContacts] = useState<Contact[]>(
     initialCustomer?.contacts && initialCustomer.contacts.length > 0
       ? initialCustomer.contacts
@@ -105,7 +118,7 @@ export function CustomerFormModal({
       address,
       company_gst: companyGst,
       state_code: stateCode,
-      points,
+      ...(isEdit ? {} : { points: Number(startingPoints) || 0, points_expires_on: pointsExpiresOn || null }),
       is_deleted: isDeletedValue,
       contact_name: contacts.map((c) => c.name),
       contact_phone: contacts.map((c) => c.phone),
@@ -134,8 +147,11 @@ export function CustomerFormModal({
         return;
       }
 
+      const body = isEdit ? null : await response.json().catch(() => null);
+
       onSaved(
         {
+          id: initialCustomer?.id ?? body?.customer_id ?? 0,
           mail: submittedMail,
           registeredName,
           companyOrDepartment,
@@ -143,7 +159,7 @@ export function CustomerFormModal({
           companyGst,
           stateCode,
           stateName: stateNameForCode(stateCode),
-          points,
+          points: initialCustomer?.points ?? (Number(startingPoints) || 0),
           isDeleted: isDeletedValue,
           contacts,
         },
@@ -279,20 +295,40 @@ export function CustomerFormModal({
                 and leaving this blank is what makes it fall back to IGST. */}
             <GstStateSelect id="customerState" value={stateCode} onChange={setStateCode} />
 
-            <div>
-              <label htmlFor="points" className={styles.formLabel}>
-                Starting points<span className={styles.requiredMark}>*</span>
-              </label>
-              <input
-                id="points"
-                type="number"
-                min={0}
-                required
-                value={points}
-                onChange={(e) => setPoints(Number(e.target.value))}
-                className={styles.formInput}
-              />
-            </div>
+            {!isEdit && (
+              <>
+                <div>
+                  <label htmlFor="points" className={styles.formLabel}>
+                    Starting points
+                  </label>
+                  <input
+                    id="points"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={startingPoints}
+                    onChange={(e) => setStartingPoints(e.target.value.replace(/\D/g, ""))}
+                    className={styles.formInput}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="pointsExpiresOn" className={styles.formLabel}>
+                    Points expire on
+                  </label>
+                  <input
+                    id="pointsExpiresOn"
+                    type="date"
+                    min={addDaysToDateValue(nowAsDateValue(), 1)}
+                    required={Number(startingPoints) > 0}
+                    disabled={!(Number(startingPoints) > 0)}
+                    value={pointsExpiresOn}
+                    onChange={(e) => setPointsExpiresOn(e.target.value)}
+                    className={styles.formInput}
+                  />
+                </div>
+              </>
+            )}
 
             <div className={styles.formGridFullSpan}>
               <label htmlFor="address" className={styles.formLabel}>
@@ -351,6 +387,8 @@ export function CustomerFormModal({
               </div>
             ))}
           </div>
+
+          {isEdit && initialCustomer?.id ? <CustomerPointsSection custId={initialCustomer.id} /> : null}
 
           {error && (
             <p role="alert" aria-live="polite" className={styles.formError}>

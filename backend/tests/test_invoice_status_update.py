@@ -56,7 +56,21 @@ class _StubInvoices:
 
 
 @pytest.fixture
-def invoice(monkeypatch):
+def points_syncs(monkeypatch):
+    # The loyalty-points side effect (services/customer_points.py) needs a
+    # database, so it is recorded here instead of run. Each entry is the
+    # invoice's status at the moment it was synced.
+    calls = []
+
+    async def _record(invoice, _resolve_cust_id):
+        calls.append(invoice.status)
+
+    monkeypatch.setattr(invoices, "sync_invoice_reward", _record)
+    return calls
+
+
+@pytest.fixture
+def invoice(monkeypatch, points_syncs):
     stub = _StubInvoice()
     _StubInvoices.invoice = stub
     monkeypatch.setattr(invoices, "InvoiceDetails", _StubInvoices)
@@ -115,3 +129,27 @@ def test_a_voided_invoice_is_not_found(invoice):
 
     assert error.value.status_code == 404
     assert invoice.saves == 0
+
+
+def test_marking_an_invoice_paid_syncs_the_clients_points(invoice, points_syncs):
+    _run(InvoiceStatus.paid)
+
+    assert points_syncs == [InvoiceStatus.paid]
+
+
+def test_putting_it_back_to_unpaid_syncs_them_again(invoice, points_syncs):
+    invoice.status = InvoiceStatus.paid
+
+    _run(InvoiceStatus.unpaid)
+
+    assert points_syncs == [InvoiceStatus.unpaid]
+
+
+def test_re_saving_the_same_status_leaves_the_points_alone(invoice, points_syncs):
+    # A paid invoice re-marked paid must not reinstate a reward an admin has
+    # since withdrawn from the client's form.
+    invoice.status = InvoiceStatus.paid
+
+    _run(InvoiceStatus.paid)
+
+    assert points_syncs == []

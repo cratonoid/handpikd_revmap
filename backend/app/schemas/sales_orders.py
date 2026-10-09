@@ -22,6 +22,10 @@ class CreateNewSalesOrderRequest(BaseModel):
     # Flat discount off the order's whole net (pre-tax) amount — see
     # SalesOrders.overall_discount. Optional: an order without one submits 0.
     overall_discount: float = Field(default=0.0, ge=0)
+    # Client loyalty points spent on the order, one rupee each — see
+    # SalesOrders.points_redeemed. At most 5% of the order's net amount, and
+    # no more than the client has available.
+    points_redeemed: int = Field(default=0, ge=0)
     # Delivery charged to the customer, plus the GST % it carries — see
     # SalesOrders.delivery_charge. Both optional: an order with no delivery
     # submits 0 for each, which is exactly what an order raised before this
@@ -72,6 +76,7 @@ class SalesOrderDetailItem(BaseModel):
     # Per-line remark, "" where none was left — see SalesSummary.note.
     notes: list[str]
     overall_discount: float
+    points_redeemed: int = 0
     delivery_charge: float
     delivery_tax_perc: float
     total_amount_before_tax: float
@@ -112,6 +117,10 @@ class UpdateSalesOrderDetailsRequest(BaseModel):
     # Flat discount off the order's whole net (pre-tax) amount — see
     # SalesOrders.overall_discount. Optional: an order without one submits 0.
     overall_discount: float = Field(default=0.0, ge=0)
+    # Client loyalty points spent on the order, one rupee each — see
+    # SalesOrders.points_redeemed. At most 5% of the order's net amount, and
+    # no more than the client has available.
+    points_redeemed: int = Field(default=0, ge=0)
     # Delivery charged to the customer, plus the GST % it carries — see
     # SalesOrders.delivery_charge. Both optional: an order with no delivery
     # submits 0 for each, which is exactly what an order raised before this

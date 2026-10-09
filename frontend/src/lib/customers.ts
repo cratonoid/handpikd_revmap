@@ -2,10 +2,9 @@
 // Customer data for the /admin/clients table
 // ---------------------------------------------------------------------------
 // Fetches from GET /admin/get_customer_details (backend/app/api/routes/admin.py),
-// which returns every customer as a flat list. There's no numeric id exposed
-// to the frontend (CustomerDetailItem has none), so `mail` is the unique key
-// used for both the table's React key and matching a row back to a customer
-// for editing.
+// which returns every customer as a flat list. `mail` is the unique key used
+// for both the table's React key and matching a row back to a customer for
+// editing; `id` is only for the points endpoints (lib/customer-points.ts).
 import { apiFetch } from "@/lib/api";
 
 export type Contact = {
@@ -14,6 +13,8 @@ export type Contact = {
 };
 
 export type Customer = {
+  // CustomerDetails.id — what the points endpoints are keyed on.
+  id: number;
   mail: string;
   registeredName: string;
   companyOrDepartment: string;
@@ -26,6 +27,8 @@ export type Customer = {
   // field existed — lib/gst.ts's resolveStateCode falls back to the GSTIN.
   stateCode: string;
   stateName: string;
+  // Live points balance: unspent points that haven't expired. Read-only —
+  // points are added and withdrawn through lib/customer-points.ts.
   points: number;
   isDeleted: boolean;
   contacts: Contact[];
@@ -33,6 +36,7 @@ export type Customer = {
 
 // Shape returned by the backend's CustomerDetailItem schema.
 type CustomerDetailItem = {
+  customer_id: number;
   mail: string;
   password: string;
   registered_name: string;
@@ -49,6 +53,7 @@ type CustomerDetailItem = {
 
 function toCustomer(item: CustomerDetailItem): Customer {
   return {
+    id: item.customer_id,
     mail: item.mail,
     registeredName: item.registered_name,
     companyOrDepartment: item.company_or_department,
