@@ -132,3 +132,48 @@ export function addCustomerPoints(
 export function revokeCustomerPointsLot(lotId: number): Promise<string | null> {
   return postForError("/admin/revoke_customer_points_lot", { lot_id: lotId });
 }
+
+// One row of the Clients page's Points view (client-points-tab.tsx).
+export type CustomerPointsSummary = {
+  custId: number;
+  customerName: string;
+  companyOrDepartment: string;
+  isDeleted: boolean;
+  availablePoints: number;
+  // The soonest date any live points expire ("YYYY-MM-DD"), and how many go
+  // then. null / 0 when the client has no live points.
+  nextExpiryOn: string | null;
+  nextExpiryPoints: number;
+  // Every point the client has ever spent on sales orders.
+  redeemedPoints: number;
+};
+
+type CustomerPointsSummaryItem = {
+  cust_id: number;
+  customer_name: string;
+  company_or_department: string;
+  is_deleted: boolean;
+  available_points: number;
+  next_expiry_on: string | null;
+  next_expiry_points: number;
+  redeemed_points: number;
+};
+
+export async function fetchCustomerPointsSummary(): Promise<CustomerPointsSummary[]> {
+  const response = await apiFetch("/admin/get_customer_points_summary");
+  if (!response.ok) {
+    throw new Error("Failed to load points");
+  }
+
+  const items: CustomerPointsSummaryItem[] = await response.json();
+  return items.map((item) => ({
+    custId: item.cust_id,
+    customerName: item.customer_name,
+    companyOrDepartment: item.company_or_department ?? "",
+    isDeleted: item.is_deleted,
+    availablePoints: item.available_points,
+    nextExpiryOn: item.next_expiry_on,
+    nextExpiryPoints: item.next_expiry_points,
+    redeemedPoints: item.redeemed_points,
+  }));
+}

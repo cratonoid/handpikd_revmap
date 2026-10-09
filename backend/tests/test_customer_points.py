@@ -309,3 +309,35 @@ def test_unpaid_and_proforma_invoices_earn_nothing(store):
     _sync(_Invoice(invoice_type=InvoiceType.proforma))
 
     assert store.granted == []
+
+
+# ---------------------------------------------------------------------------
+# The Clients page's Points view (summarize_points in routes/admin.py)
+# ---------------------------------------------------------------------------
+
+
+def test_the_summary_reports_the_next_batch_to_expire(store):
+    from app.api.routes.admin import summarize_points
+
+    store.add(1, 100, TODAY + timedelta(days=9), used=20)
+    store.add(1, 30, TODAY + timedelta(days=2), used=5)
+    store.add(1, 15, TODAY + timedelta(days=2))
+    store.add(1, 50, TODAY)  # expired: neither available nor "next"
+    store.add(1, 40, TODAY + timedelta(days=1), used=40)  # spent: nothing left to expire
+
+    summary = summarize_points(1, list(store.lots.values()), TODAY)
+
+    assert summary["available_points"] == 120
+    assert summary["next_expiry_on"] == TODAY + timedelta(days=2)
+    assert summary["next_expiry_points"] == 40
+    assert summary["redeemed_points"] == 65
+
+
+def test_a_client_with_no_points_has_no_next_expiry():
+    from app.api.routes.admin import summarize_points
+
+    summary = summarize_points(1, [], TODAY)
+
+    assert summary["available_points"] == 0
+    assert summary["next_expiry_on"] is None
+    assert summary["next_expiry_points"] == 0

@@ -10,10 +10,19 @@
 // row's data. Both modes save through the same modal, which POSTs to
 // add_customer_details / update_customer_details (backend/app/api/routes/
 // admin.py) respectively.
+//
+// A Clients / Points pill beside the heading switches to the loyalty points
+// view (components/admin/client-points-tab.tsx), where every client's
+// balance is listed and points are added or withdrawn. The search box is
+// shared, so a client looked up on one view stays looked up on the other.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
+import { ClientPointsTab } from "@/components/admin/client-points-tab";
 import { CustomerFormModal } from "@/components/admin/customer-form-modal";
-import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
+import {
+  matchesSearch,
+  TableSearchInput,
+} from "@/components/admin/table-search-input";
 import { fetchCustomers, type Customer } from "@/lib/customers";
 import { stateNameForCode } from "@/lib/gst";
 import styles from "@/styles/dashboard.module.css";
@@ -21,8 +30,10 @@ import styles from "@/styles/dashboard.module.css";
 type ModalState = { mode: "add" } | { mode: "edit"; customer: Customer } | null;
 type LoadState = "loading" | "loaded" | "error";
 type View = "active" | "deleted";
+type Section = "clients" | "points";
 
 export function ClientsPageClient() {
+  const [section, setSection] = useState<Section>("clients");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [modalState, setModalState] = useState<ModalState>(null);
@@ -81,97 +92,155 @@ export function ClientsPageClient() {
 
   return (
     <>
-      <div className={styles.pageHeaderRow}>
-        <div>
-          <h1 className={styles.pageHeading}>Clients</h1>
-        </div>
-        <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
-          + Add new customer
-        </Button>
-      </div>
-
-      <div className={styles.filterToggleRow}>
-        <TableSearchInput
-          value={search}
-          onChange={setSearch}
-          label="Search clients"
-          placeholder="Search name, department, GST or email…"
-        />
-
-        <div className={`${styles.viewToggle} ${styles.viewToggleEnd}`} role="tablist" aria-label="Client status">
+      <div className={styles.pageHeaderWithTabs}>
+        <h1 className={styles.pageHeading}>Clients</h1>
+        <div
+          className={styles.viewToggle}
+          role="tablist"
+          aria-label="Clients section"
+        >
           <button
             type="button"
             role="tab"
-            aria-selected={view === "active"}
-            onClick={() => setView("active")}
-            className={`${styles.viewToggleButton} ${view === "active" ? styles.viewToggleButtonActive : ""}`}
+            aria-selected={section === "clients"}
+            onClick={() => setSection("clients")}
+            className={`${styles.viewToggleButton} ${section === "clients" ? styles.viewToggleButtonActive : ""}`}
           >
-            Active clients
+            Clients
           </button>
           <button
             type="button"
             role="tab"
-            aria-selected={view === "deleted"}
-            onClick={() => setView("deleted")}
-            className={`${styles.viewToggleButton} ${view === "deleted" ? styles.viewToggleButtonActive : ""}`}
+            aria-selected={section === "points"}
+            onClick={() => setSection("points")}
+            className={`${styles.viewToggleButton} ${section === "points" ? styles.viewToggleButtonActive : ""}`}
           >
-            Deleted clients
+            Points
           </button>
         </div>
+        {section === "clients" && (
+          <div className={styles.pageHeaderAction}>
+            <Button
+              type="button"
+              variant="primary"
+              onClick={() => setModalState({ mode: "add" })}
+            >
+              + Add new customer
+            </Button>
+          </div>
+        )}
       </div>
 
-      <div className={styles.tableWrap}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th className={styles.tableHeadCell}>S.No</th>
-              <th className={styles.tableHeadCell}>Customer</th>
-              <th className={styles.tableHeadCell}>Department</th>
-              <th className={styles.tableHeadCell}>GST number</th>
-              <th className={styles.tableHeadCell}>State</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleCustomers.map((customer, index) => (
-              <tr
-                key={customer.mail}
-                onClick={() => setModalState({ mode: "edit", customer })}
-                className={styles.tableRow}
+      {section === "points" ? (
+        <ClientPointsTab search={search} onSearchChange={setSearch} />
+      ) : (
+        <>
+          <div className={styles.filterToggleRow}>
+            <TableSearchInput
+              value={search}
+              onChange={setSearch}
+              label="Search clients"
+              placeholder="Search name, department, GST or email…"
+            />
+
+            <div
+              className={`${styles.viewToggle} ${styles.viewToggleEnd}`}
+              role="tablist"
+              aria-label="Client status"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === "active"}
+                onClick={() => setView("active")}
+                className={`${styles.viewToggleButton} ${view === "active" ? styles.viewToggleButtonActive : ""}`}
               >
-                <td className={styles.tableCell}>{index + 1}</td>
-                <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{customer.registeredName}</td>
-                <td className={styles.tableCell}>{customer.companyOrDepartment}</td>
-                {/* GST is optional (not every client is registered), so an
+                Active clients
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === "deleted"}
+                onClick={() => setView("deleted")}
+                className={`${styles.viewToggleButton} ${view === "deleted" ? styles.viewToggleButtonActive : ""}`}
+              >
+                Deleted clients
+              </button>
+            </div>
+          </div>
+
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th className={styles.tableHeadCell}>S.No</th>
+                  <th className={styles.tableHeadCell}>Customer</th>
+                  <th className={styles.tableHeadCell}>Department</th>
+                  <th className={styles.tableHeadCell}>GST number</th>
+                  <th className={styles.tableHeadCell}>State</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleCustomers.map((customer, index) => (
+                  <tr
+                    key={customer.mail}
+                    onClick={() => setModalState({ mode: "edit", customer })}
+                    className={styles.tableRow}
+                  >
+                    <td className={styles.tableCell}>{index + 1}</td>
+                    <td
+                      className={`${styles.tableCell} ${styles.tableCellPrimary}`}
+                    >
+                      {customer.registeredName}
+                    </td>
+                    <td className={styles.tableCell}>
+                      {customer.companyOrDepartment}
+                    </td>
+                    {/* GST is optional (not every client is registered), so an
                     empty cell would read as a rendering fault — same em-dash
                     placeholder the other admin tables use for a missing
                     value. */}
-                <td className={styles.tableCell}>{customer.companyGst || "—"}</td>
-                {/* Decides SGST + CGST vs IGST on this client's invoices, so it
+                    <td className={styles.tableCell}>
+                      {customer.companyGst || "—"}
+                    </td>
+                    {/* Decides SGST + CGST vs IGST on this client's invoices, so it
                     is worth seeing at a glance next to the GST number. */}
-                <td className={styles.tableCell}>
-                  {customer.stateName || stateNameForCode(customer.companyGst.slice(0, 2)) || "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {loadState === "loading" && <p className={styles.pageSubtext}>Loading customers…</p>}
-        {loadState === "error" && <p className={styles.formError}>Couldn&apos;t load customers. Please try again.</p>}
-        {loadState === "loaded" && visibleCustomers.length === 0 && (
-          <p className={styles.pageSubtext}>
-            {search.trim() !== ""
-              ? "No customers match your search."
-              : view === "deleted"
-                ? "No deleted customers."
-                : "No active customers."}
-          </p>
-        )}
-      </div>
+                    <td className={styles.tableCell}>
+                      {customer.stateName ||
+                        stateNameForCode(customer.companyGst.slice(0, 2)) ||
+                        "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {loadState === "loading" && (
+              <p className={styles.pageSubtext}>Loading customers…</p>
+            )}
+            {loadState === "error" && (
+              <p className={styles.formError}>
+                Couldn&apos;t load customers. Please try again.
+              </p>
+            )}
+            {loadState === "loaded" && visibleCustomers.length === 0 && (
+              <p className={styles.pageSubtext}>
+                {search.trim() !== ""
+                  ? "No customers match your search."
+                  : view === "deleted"
+                    ? "No deleted customers."
+                    : "No active customers."}
+              </p>
+            )}
+          </div>
+        </>
+      )}
 
       {modalState && (
         <CustomerFormModal
           mode={modalState.mode}
-          initialCustomer={modalState.mode === "edit" ? modalState.customer : undefined}
+          initialCustomer={
+            modalState.mode === "edit" ? modalState.customer : undefined
+          }
           onClose={() => setModalState(null)}
           onSaved={handleSaved}
         />

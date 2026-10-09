@@ -173,3 +173,18 @@ class RevokeCustomerPointsLotRequest(BaseModel):
 
 class RevokeCustomerPointsLotResponse(BaseModel):
     message: str
+
+
+class CustomerPointsSummaryItem(BaseModel):
+    # One row of the Clients page's Points view.
+    cust_id: int
+    customer_name: str
+    company_or_department: str = ""
+    is_deleted: bool = False
+    available_points: int
+    # The soonest date any of the client's live points expire, and how many
+    # expire then. None/0 when the client has no live points.
+    next_expiry_on: date | None = None
+    next_expiry_points: int = 0
+    # Every point the client has spent on sales orders, ever.
+    redeemed_points: int = 0

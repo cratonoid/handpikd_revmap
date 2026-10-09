@@ -5346,3 +5346,16 @@ select.formInput:disabled {
   padding-bottom: 0.3rem;
   font-size: 0.8125rem;
 }
+
+/* "Expiring next" on the Clients page's Points view, when the batch goes
+   within a week (client-points-tab.tsx) — worth a reminder to the client. */
+.pointsExpiringSoon {
+  font-weight: 600;
+  color: var(--color-red);
+}
+
+/* A trailing button in .pageHeaderWithTabs (the Clients page's "+ Add new
+   customer"), pushed to the far end of the heading row. */
+.pageHeaderAction {
+  margin-left: auto;
+}

@@ -27,6 +27,7 @@ from app.schemas.admin import (
     CustomerListItem,
     CustomerPointsLotItem,
     CustomerPointsResponse,
+    CustomerPointsSummaryItem,
     RevokeCustomerPointsLotRequest,
     RevokeCustomerPointsLotResponse,
     UpdateCustomerDetailsRequest,
@@ -280,6 +281,45 @@ def _lot_status(lot: CustomerPointsLot, on) -> str:
     if remaining_points(lot) == 0:
         return "used"
     return "active"
+
+
+def summarize_points(cust_id: int, lots: list[CustomerPointsLot], on) -> dict:
+    """Balance, next expiry and lifetime redemptions for one client's lots."""
+    live = [lot for lot in lots if is_live(lot, on) and remaining_points(lot) > 0]
+    next_expiry = min((lot.expires_at.date() for lot in live), default=None)
+    return {
+        "cust_id": cust_id,
+        "available_points": available_points(lots, on),
+        "next_expiry_on": next_expiry,
+        "next_expiry_points": sum(
+            remaining_points(lot) for lot in live if lot.expires_at.date() == next_expiry
+        ),
+        "redeemed_points": sum(lot.used for lot in lots),
+    }
+
+
+@router.get("/get_customer_points_summary", response_model=list[CustomerPointsSummaryItem])
+async def get_customer_points_summary(
+    _: User | None = Depends(require_section(Section.clients)),
+) -> list[CustomerPointsSummaryItem]:
+    # Backs the Clients page's Points view: every client, with or without
+    # points, in two reads rather than one per client.
+    customers = await CustomerDetails.find_all().to_list()
+    lots = await CustomerPointsLot.find_all().to_list()
+    lots_by_customer_id: dict[int, list[CustomerPointsLot]] = {}
+    for lot in lots:
+        lots_by_customer_id.setdefault(lot.cust_id, []).append(lot)
+
+    on = today()
+    return [
+        CustomerPointsSummaryItem(
+            customer_name=customer.registered_name,
+            company_or_department=customer.company_or_department,
+            is_deleted=customer.is_deleted,
+            **summarize_points(customer.id, lots_by_customer_id.get(customer.id, []), on),
+        )
+        for customer in customers
+    ]
 
 
 @router.get("/get_customer_points", response_model=CustomerPointsResponse)

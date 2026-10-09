@@ -1,16 +1,16 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// <CustomerPointsSection> — a client's loyalty points, on the client form
+// <CustomerPointsSection> — one client's loyalty points ledger
 // ---------------------------------------------------------------------------
-// Shown in customer-form-modal.tsx's edit mode. Every point belongs to a lot
-// with its own expiry date (see lib/customer-points.ts), so this lists them
-// rather than showing one editable number: the balance is whatever is left
-// on the lots that haven't expired.
+// Opened from the Clients page's Points view (client-points-tab.tsx). Every
+// point belongs to a lot with its own expiry date (see
+// lib/customer-points.ts), so this lists them rather than showing one
+// editable number: the balance is whatever is left on the lots that haven't
+// expired.
 //
 // Adding and withdrawing points save straight away through their own
-// endpoints — they are not part of the client form's Save, so cancelling the
-// form doesn't undo them.
+// endpoints — there is no separate Save to confirm them.
 import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import { addDaysToDateValue, nowAsDateValue } from "@/lib/datetime-input";
 import { formatDate } from "@/lib/format-date";

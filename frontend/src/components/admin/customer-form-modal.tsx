@@ -22,7 +22,8 @@
 // Points: a new client can be given starting points with an expiry date
 // (three weeks out by default). After that the balance isn't a field on
 // this form at all — it is the sum of the client's points lots, each with
-// its own expiry, managed in <CustomerPointsSection> in edit mode.
+// its own expiry, managed from the Clients page's Points view
+// (client-points-tab.tsx). Edit mode just shows the balance.
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
@@ -30,7 +31,6 @@ import type { Customer, Contact } from "@/lib/customers";
 import { POINTS_VALIDITY_DAYS } from "@/lib/customer-points";
 import { addDaysToDateValue, nowAsDateValue } from "@/lib/datetime-input";
 import { XMarkIcon } from "@/components/icons";
-import { CustomerPointsSection } from "@/components/admin/customer-points-section";
 import { GstStateSelect, useGstState } from "@/components/admin/gst-state-select";
 import { stateNameForCode } from "@/lib/gst";
 import styles from "@/styles/dashboard.module.css";
@@ -388,7 +388,12 @@ export function CustomerFormModal({
             ))}
           </div>
 
-          {isEdit && initialCustomer?.id ? <CustomerPointsSection custId={initialCustomer.id} /> : null}
+          {isEdit && (
+            <p className={styles.formHint}>
+              {(initialCustomer?.points ?? 0).toLocaleString("en-IN")} points available. Points are added and
+              withdrawn from the Points view on the Clients page.
+            </p>
+          )}
 
           {error && (
             <p role="alert" aria-live="polite" className={styles.formError}>
