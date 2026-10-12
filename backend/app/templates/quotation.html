@@ -297,6 +297,7 @@
         <th style="text-align: left;">Description</th>
         <th>Unit Price</th>
         <th>Disc.</th>
+        <th>Rate</th>
         <th>Qty</th>
         <th>GST</th>
         <th>Total</th>
@@ -309,7 +310,9 @@
         <td>{{ item.sr_no }}</td>
         <td class="desc"><span class="name">{{ item.product_name }}</span></td>
         <td>{{ money(item.unit_price) }}</td>
-        <td>{{ "%.0f"|format(item.discount_perc) }}%</td>
+        {% set disc = item.discount_perc|round(2) %}
+        <td>{{ ("%.0f" if disc == disc|round(0) else "%.2f")|format(disc) }}%</td>
+        <td>{{ money(item.rate) }}</td>
         <td>{{ item.quantity }}</td>
         <td>{{ "%.0f"|format(item.tax_perc) }}%</td>
         <td>{{ money(item.total) }}</td>
@@ -317,14 +320,14 @@
       {% if item.image_data_uri %}
       <tr class="{{ shade }}">
         <td></td>
-        <td colspan="6" class="item-image-cell"><img src="{{ item.image_data_uri }}" alt="" /></td>
+        <td colspan="7" class="item-image-cell"><img src="{{ item.image_data_uri }}" alt="" /></td>
       </tr>
       {% endif %}
       {% endfor %}
     </tbody>
     <tfoot>
       <tr class="grand-row">
-        <td colspan="6">GRAND TOTAL</td>
+        <td colspan="7">GRAND TOTAL</td>
         <td>{{ money(total_amount_after_tax) }}</td>
       </tr>
     </tfoot>
