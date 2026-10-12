@@ -163,7 +163,8 @@ export function CustomerPointsSection({ custId }: { custId: number }) {
       </div>
       <p className={styles.formHint}>
         Points expire on the date picked — three weeks from today unless you change it — and are worth nothing from
-        that day on. Paid invoices add 5% of their total automatically.
+        that day on. Paid invoices add 5% of their total before tax automatically, expiring three weeks after the
+        invoice date.
       </p>
 
       {error && (

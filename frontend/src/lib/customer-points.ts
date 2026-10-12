@@ -6,7 +6,8 @@
 // backend/app/services/customer_points.py for the rules:
 //   - points expire three weeks after they start unless another date is
 //     picked, and are worth nothing from their expiry date on;
-//   - a standard invoice marked paid earns its client 5% of it;
+//   - a standard invoice marked paid earns its client 5% of its total before
+//     tax, expiring three weeks from the invoice date;
 //   - a sales order can spend at most 5% of its net amount in points, one
 //     rupee per point.
 // Read on the client form (customer-form-modal.tsx) and on the sales order

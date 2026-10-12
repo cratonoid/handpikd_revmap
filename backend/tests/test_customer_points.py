@@ -133,8 +133,8 @@ def test_the_balance_is_unspent_points_on_live_lots_only(store):
 
 
 def test_an_invoice_earns_five_percent_rounded_down():
-    assert customer_points.invoice_reward_points(1180.0) == 59
-    assert customer_points.invoice_reward_points(1199.80) == 59
+    assert customer_points.invoice_reward_points(1000.0) == 50
+    assert customer_points.invoice_reward_points(1019.80) == 50
 
 
 def test_an_order_can_take_at_most_five_percent_rounded_down():
@@ -260,6 +260,8 @@ class _Invoice:
         self.status = status
         self.is_deleted = is_deleted
         self.date = datetime(2026, 10, 1, 11, 30)
+        # 1000 of goods plus 18% GST: only the 1000 earns points.
+        self.total_amount_before_tax = 1000.0
         self.total_amount_after_tax = 1180.0
 
 
@@ -271,10 +273,11 @@ def _sync(invoice):
     asyncio.run(customer_points.sync_invoice_reward(invoice, _client_one))
 
 
-def test_a_paid_invoice_earns_five_percent_expiring_three_weeks_from_its_date(store):
+def test_a_paid_invoice_earns_five_percent_before_tax_expiring_three_weeks_from_its_date(store):
+    # Raised 1 Oct, so the points lapse on 22 Oct whenever it gets paid.
     _sync(_Invoice())
 
-    assert store.granted == [{"cust_id": 1, "points": 59, "expires_on": date(2026, 10, 22), "invoice_id": 7}]
+    assert store.granted == [{"cust_id": 1, "points": 50, "expires_on": date(2026, 10, 22), "invoice_id": 7}]
 
 
 def test_an_invoice_only_ever_earns_once(store):

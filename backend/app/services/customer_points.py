@@ -10,8 +10,11 @@
 #   - A lot is worth nothing from its expiry date on. Nothing has to run on
 #     that day — expiry is decided whenever the balance is read.
 #   - Marking a standard invoice paid earns INVOICE_REWARD_RATE (5%) of its
-#     total, after tax, as points. Taking the payment back off (unpaid, or
-#     voiding the invoice) withdraws whatever of them is still unspent.
+#     total BEFORE tax as points — GST is collected for the government, not
+#     spent with us, so it earns nothing — expiring three weeks from the date
+#     the invoice was raised (not the day it was paid). Taking the payment
+#     back off (unpaid, or voiding the invoice) withdraws whatever of them is
+#     still unspent.
 #   - A sales order can spend at most MAX_REDEMPTION_RATE (5%) of its net
 #     subtotal in points. Points are drawn from the lots closest to expiry
 #     first, so a client never loses points that could have been spent.
@@ -80,8 +83,11 @@ def max_redeemable_points(net_subtotal: float) -> int:
     return _floor_points(net_subtotal * MAX_REDEMPTION_RATE)
 
 
-def invoice_reward_points(total_amount_after_tax: float) -> int:
-    return _floor_points(total_amount_after_tax * INVOICE_REWARD_RATE)
+def invoice_reward_points(total_amount_before_tax: float) -> int:
+    # Before tax, which on a sales invoice already has any order discount
+    # and redeemed points taken off, and includes the delivery charge billed
+    # alongside the goods (see SalesOrders.total_amount_before_tax).
+    return _floor_points(total_amount_before_tax * INVOICE_REWARD_RATE)
 
 
 async def get_customer_lots(cust_id: int) -> list[CustomerPointsLot]:
@@ -247,7 +253,7 @@ async def sync_invoice_reward(
 
     if earns:
         if lot is None:
-            points = invoice_reward_points(invoice.total_amount_after_tax)
+            points = invoice_reward_points(invoice.total_amount_before_tax)
             cust_id = await resolve_cust_id() if points > 0 else None
             if cust_id is None:
                 return
