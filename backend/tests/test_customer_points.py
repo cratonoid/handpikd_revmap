@@ -344,3 +344,48 @@ def test_a_client_with_no_points_has_no_next_expiry():
     assert summary["available_points"] == 0
     assert summary["next_expiry_on"] is None
     assert summary["next_expiry_points"] == 0
+
+
+# ---------------------------------------------------------------------------
+# The client portal dashboard (get_my_points in routes/customer_invoices.py)
+# ---------------------------------------------------------------------------
+
+
+def test_the_client_sees_their_balance_and_days_until_the_next_expiry(store, monkeypatch):
+    from app.api.routes import customer_invoices
+
+    async def lots_for(cust_id):
+        return [lot for lot in store.lots.values() if lot.cust_id == cust_id]
+
+    monkeypatch.setattr(customer_invoices, "get_customer_lots", lots_for)
+    monkeypatch.setattr(customer_invoices, "today", lambda: TODAY)
+    store.add(1, 100, TODAY + timedelta(days=9))
+    store.add(1, 30, TODAY + timedelta(days=4), used=10)
+    store.add(2, 500, TODAY + timedelta(days=1))  # another client's
+
+    class _Customer:
+        id = 1
+
+    balance = asyncio.run(customer_invoices.get_my_points(_Customer()))
+
+    assert balance.available_points == 120
+    assert balance.next_expiry_on == TODAY + timedelta(days=4)
+    assert balance.next_expiry_points == 20
+    assert balance.next_expiry_in_days == 4
+
+
+def test_a_client_with_no_points_has_no_days_until_expiry(monkeypatch):
+    from app.api.routes import customer_invoices
+
+    async def no_lots(_cust_id):
+        return []
+
+    monkeypatch.setattr(customer_invoices, "get_customer_lots", no_lots)
+
+    class _Customer:
+        id = 1
+
+    balance = asyncio.run(customer_invoices.get_my_points(_Customer()))
+
+    assert balance.available_points == 0
+    assert balance.next_expiry_in_days is None

@@ -268,3 +268,36 @@ export async function downloadMyInvoicePdf(invoiceId: number, invoiceNoDisplay: 
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+// The signed-in client's loyalty points, for the dashboard
+// (GET /customer/get_my_points). nextExpiryOn is "YYYY-MM-DD", the first day
+// those points are worth nothing; nextExpiryInDays is counted on Indian time
+// by the backend. Both null when the client has no live points.
+export type MyPoints = {
+  availablePoints: number;
+  nextExpiryOn: string | null;
+  nextExpiryPoints: number;
+  nextExpiryInDays: number | null;
+};
+
+type MyPointsResponse = {
+  available_points: number;
+  next_expiry_on: string | null;
+  next_expiry_points: number;
+  next_expiry_in_days: number | null;
+};
+
+export async function fetchMyPoints(): Promise<MyPoints> {
+  const response = await apiFetch("/customer/get_my_points");
+  if (!response.ok) {
+    throw new Error("Failed to load points");
+  }
+
+  const item: MyPointsResponse = await response.json();
+  return {
+    availablePoints: item.available_points,
+    nextExpiryOn: item.next_expiry_on,
+    nextExpiryPoints: item.next_expiry_points,
+    nextExpiryInDays: item.next_expiry_in_days,
+  };
+}

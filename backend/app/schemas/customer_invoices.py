@@ -5,7 +5,7 @@
 # is shown what appears on their own document (numbers, dates, line items,
 # the GST split) and nothing about how it was assembled internally —
 # sales_ids, quotation_id, cust_id and is_deleted all stay on the admin side.
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -76,3 +76,16 @@ class CustomerInvoiceDetail(CustomerInvoiceListItem):
     billed_to_name: str
     billed_to_address: str
     billed_to_gstin: str
+
+
+class CustomerPointsBalance(BaseModel):
+    # The client's own loyalty points, for the portal dashboard. Unlike the
+    # admin view, no lot-by-lot history — just what they can spend and what
+    # goes first.
+    available_points: int
+    # The soonest date any of their live points expire (the first day they
+    # are worth nothing), how many go then, and how many days away that is.
+    # None/0 when they have no live points.
+    next_expiry_on: date | None = None
+    next_expiry_points: int = 0
+    next_expiry_in_days: int | None = None

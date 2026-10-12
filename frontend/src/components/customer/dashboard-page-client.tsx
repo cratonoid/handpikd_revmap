@@ -13,14 +13,20 @@
 // The figures are deliberately about status rather than sales volume: a
 // client opening their portal wants to know whether they owe anything, not
 // how much they have spent with us.
+//
+// Alongside them, the client's loyalty points and how soon the next batch
+// expires (GET /customer/get_my_points), loaded separately so a failure
+// there doesn't blank the invoice figures.
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   fetchMyInvoices,
+  fetchMyPoints,
   formatAmount,
   summariseInvoiceStatus,
   type CustomerInvoice,
   type InvoiceStatus,
+  type MyPoints,
 } from "@/lib/customer-invoices";
 import styles from "@/styles/dashboard.module.css";
 import { formatDate } from "@/lib/format-date";
@@ -41,9 +47,24 @@ const STATUS_COLOR: Record<InvoiceStatus, string> = {
 
 const RECENT_LIMIT = 5;
 
+// Same threshold the admin's Points view flags a batch at.
+const EXPIRING_SOON_DAYS = 7;
+
+// "20 expire in 4 days". A live batch is always at least a day out: its
+// expiry date is the first day it's worth nothing.
+function expiryCaption(points: MyPoints): string {
+  if (points.nextExpiryInDays === null) return "None due to expire";
+  const count = points.nextExpiryPoints.toLocaleString("en-IN");
+  const when =
+    points.nextExpiryInDays === 1 ? "tomorrow" : `in ${points.nextExpiryInDays} days`;
+  return `${count} expire ${when}`;
+}
+
 export function CustomerDashboardPageClient() {
   const [invoices, setInvoices] = useState<CustomerInvoice[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [points, setPoints] = useState<MyPoints | null>(null);
+  const [pointsFailed, setPointsFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +78,14 @@ export function CustomerDashboardPageClient() {
       })
       .catch(() => {
         if (!cancelled) setLoadState("failed");
+      });
+
+    fetchMyPoints()
+      .then((data) => {
+        if (!cancelled) setPoints(data);
+      })
+      .catch(() => {
+        if (!cancelled) setPointsFailed(true);
       });
 
     return () => {
@@ -74,11 +103,20 @@ export function CustomerDashboardPageClient() {
       label: "Overdue",
       value: ready ? formatAmount(summary.overdueAmount) : "—",
       caption: ready ? `${summary.overdueCount} past its due date` : null,
+      urgent: false,
     },
     {
       label: "Paid",
       value: ready ? formatAmount(summary.paidAmount) : "—",
       caption: ready ? `${summary.paidCount} invoice(s) settled` : null,
+      urgent: false,
+    },
+    {
+      label: "Points",
+      value: points ? points.availablePoints.toLocaleString("en-IN") : "—",
+      caption: points ? expiryCaption(points) : pointsFailed ? "Couldn't load your points" : null,
+      urgent:
+        points?.nextExpiryInDays != null && points.nextExpiryInDays <= EXPIRING_SOON_DAYS,
     },
   ];
 
@@ -104,7 +142,11 @@ export function CustomerDashboardPageClient() {
           <div key={stat.label} className={styles.statCard}>
             <p className={styles.statLabel}>{stat.label}</p>
             <p className={styles.statValue}>{stat.value}</p>
-            {stat.caption && <p className={styles.statCaption}>{stat.caption}</p>}
+            {stat.caption && (
+              <p className={`${styles.statCaption} ${stat.urgent ? styles.pointsExpiringSoon : ""}`}>
+                {stat.caption}
+              </p>
+            )}
           </div>
         ))}
       </div>

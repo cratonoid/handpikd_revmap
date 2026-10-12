@@ -1,5 +1,6 @@
 # Client portal: the invoice screens a signed-in customer sees for their own
-# account — the list, one invoice's line items and GST split, and the PDF.
+# account — the list, one invoice's line items and GST split, and the PDF —
+# plus their loyalty points balance for the dashboard.
 #
 # Everything here is scoped to the CustomerDetails row behind the signed-in
 # User (require_customer_account below). That scoping is the whole point of
@@ -16,6 +17,7 @@ from beanie.operators import In, Or
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from app.api.deps import get_authenticated_user
+from app.api.routes.admin import summarize_points
 from app.api.routes.invoices import (
     DELIVERY_LINE_LABEL,
     DELIVERY_SAC_CODE,
@@ -40,7 +42,9 @@ from app.schemas.customer_invoices import (
     CustomerInvoiceDetail,
     CustomerInvoiceLineItem,
     CustomerInvoiceListItem,
+    CustomerPointsBalance,
 )
+from app.services.customer_points import get_customer_lots, today
 from app.services.invoice_numbering import format_sales_invoice_no
 
 router = APIRouter(prefix="/customer", tags=["customer-invoices"])
@@ -278,3 +282,22 @@ async def get_my_invoice_pdf(
     invoice = await _get_owned_invoice_or_404(invoice_id, customer)
     pdf_bytes, filename = await build_invoice_pdf(invoice)
     return pdf_response(pdf_bytes, filename)
+
+
+@router.get("/get_my_points", response_model=CustomerPointsBalance)
+async def get_my_points(
+    customer: CustomerDetails = Depends(require_customer_account),
+) -> CustomerPointsBalance:
+    # Same figures the admin's Points view shows for this client, so the two
+    # can't disagree. "Today" is the business's (Indian) date, the one expiry
+    # is decided on, which is why the day count is worked out here rather
+    # than in the browser.
+    on = today()
+    summary = summarize_points(customer.id, await get_customer_lots(customer.id), on)
+    next_expiry_on = summary["next_expiry_on"]
+    return CustomerPointsBalance(
+        available_points=summary["available_points"],
+        next_expiry_on=next_expiry_on,
+        next_expiry_points=summary["next_expiry_points"],
+        next_expiry_in_days=(next_expiry_on - on).days if next_expiry_on is not None else None,
+    )
