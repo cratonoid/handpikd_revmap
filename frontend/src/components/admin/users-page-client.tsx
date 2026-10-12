@@ -54,6 +54,19 @@ const TABS: { key: Tab; label: string; search: string; placeholder: string }[] =
 
 const SECTION_LABELS = new Map(ADMIN_SECTIONS.map((section) => [section.key, section.label]));
 
+// The last sign-in's time, with the device and IP it came from underneath so
+// an unfamiliar one stands out.
+function LastLoginCell({ at, device, ip }: { at: string | null; device: string | null; ip: string | null }) {
+  if (!at) return <td className={styles.tableCell}>Never</td>;
+  const origin = [device, ip].filter(Boolean).join(" · ");
+  return (
+    <td className={styles.tableCell}>
+      {formatDateTime(at)}
+      {origin && <div className={styles.lastLoginOrigin}>{origin}</div>}
+    </td>
+  );
+}
+
 function roleSectionsText(role: Role): string {
   if (role.isSystem) return "All sections";
   if (role.sections.length === 0) return "No sections";
@@ -233,7 +246,7 @@ export function UsersPageClient() {
                   </td>
                   <td className={styles.tableCell}>{user.mail}</td>
                   <td className={styles.tableCell}>{user.roleNames.join(", ") || "—"}</td>
-                  <td className={styles.tableCell}>{user.lastLogin ? formatDateTime(user.lastLogin) : "Never"}</td>
+                  <LastLoginCell at={user.lastLogin} device={user.lastLoginDevice} ip={user.lastLoginIp} />
                 </tr>
               ))}
             </tbody>
@@ -317,7 +330,7 @@ export function UsersPageClient() {
                   </td>
                   <td className={styles.tableCell}>{login.companyOrDepartment || "—"}</td>
                   <td className={styles.tableCell}>{login.mail}</td>
-                  <td className={styles.tableCell}>{login.lastLogin ? formatDateTime(login.lastLogin) : "Never"}</td>
+                  <LastLoginCell at={login.lastLogin} device={login.lastLoginDevice} ip={login.lastLoginIp} />
                   <td className={styles.tableCell}>
                     {/* A deleted client is already locked out of the portal,
                         so there is nothing for this button to change. */}

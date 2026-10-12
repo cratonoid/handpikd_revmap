@@ -2015,6 +2015,13 @@ select.formInput:disabled {
   color: color-mix(in srgb, var(--color-ink) 70%, transparent);
 }
 
+/* Device and IP under a Last login time on /admin/users. */
+.lastLoginOrigin {
+  margin-top: 0.15rem;
+  font-size: 0.8125rem;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+}
+
 .inactiveBadge {
   margin-left: 0.5rem;
   border-radius: 9999px;

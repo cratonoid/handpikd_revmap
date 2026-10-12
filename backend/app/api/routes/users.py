@@ -240,6 +240,8 @@ async def get_users(
                 role_names=[role_names[role_id] for role_id in role_ids],
                 is_active=user.is_active,
                 last_login=user.last_login,
+                last_login_ip=user.last_login_ip,
+                last_login_device=user.last_login_device,
             )
         )
     return items
@@ -336,6 +338,8 @@ async def get_client_logins(
                 # A login with no client row can't reach the portal either.
                 client_deleted=client is None or client.is_deleted,
                 last_login=login.last_login,
+                last_login_ip=login.last_login_ip,
+                last_login_device=login.last_login_device,
             )
         )
     return items

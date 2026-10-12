@@ -33,6 +33,12 @@ class User(Document):
     # working (see _user_from_credentials in app/api/deps.py).
     is_active: bool = True
     last_login: datetime | None = None
+    # Where that last sign-in came from, so someone can spot a login that
+    # wasn't theirs: the client's IP (as nginx saw it) and a "Chrome on
+    # Windows"-style label from the User-Agent. Browsers never reveal the
+    # machine's own name, so this is as close to "which device" as it gets.
+    last_login_ip: str | None = None
+    last_login_device: str | None = None
 
     class Settings:
         name = "user"

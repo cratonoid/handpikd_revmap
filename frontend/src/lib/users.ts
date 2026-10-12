@@ -29,6 +29,9 @@ export type TeamUser = {
   roleNames: string[];
   isActive: boolean;
   lastLogin: string | null;
+  // Where the last sign-in came from, e.g. "Chrome on Windows" and its IP.
+  lastLoginDevice: string | null;
+  lastLoginIp: string | null;
 };
 
 type RoleItem = {
@@ -47,6 +50,8 @@ type TeamUserItem = {
   role_names: string[];
   is_active: boolean;
   last_login: string | null;
+  last_login_ip: string | null;
+  last_login_device: string | null;
 };
 
 export async function fetchRoles(): Promise<Role[]> {
@@ -80,6 +85,8 @@ export async function fetchTeamUsers(): Promise<TeamUser[]> {
     roleNames: item.role_names,
     isActive: item.is_active,
     lastLogin: item.last_login,
+    lastLoginDevice: item.last_login_device,
+    lastLoginIp: item.last_login_ip,
   }));
 }
 
@@ -168,6 +175,9 @@ export type ClientLogin = {
   // Deleted on /admin/clients: the portal refuses it whatever isActive says.
   clientDeleted: boolean;
   lastLogin: string | null;
+  // Where the last sign-in came from, e.g. "Chrome on Windows" and its IP.
+  lastLoginDevice: string | null;
+  lastLoginIp: string | null;
 };
 
 type ClientLoginItem = {
@@ -178,6 +188,8 @@ type ClientLoginItem = {
   is_active: boolean;
   client_deleted: boolean;
   last_login: string | null;
+  last_login_ip: string | null;
+  last_login_device: string | null;
 };
 
 export async function fetchClientLogins(): Promise<ClientLogin[]> {
@@ -195,6 +207,8 @@ export async function fetchClientLogins(): Promise<ClientLogin[]> {
     isActive: item.is_active,
     clientDeleted: item.client_deleted,
     lastLogin: item.last_login,
+    lastLoginDevice: item.last_login_device,
+    lastLoginIp: item.last_login_ip,
   }));
 }
 

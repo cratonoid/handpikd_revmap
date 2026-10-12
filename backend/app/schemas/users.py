@@ -43,6 +43,8 @@ class TeamUserItem(BaseModel):
     role_names: list[str]
     is_active: bool
     last_login: datetime | None
+    last_login_ip: str | None
+    last_login_device: str | None
 
 
 class AddTeamUserRequest(BaseModel):
@@ -97,6 +99,8 @@ class ClientLoginItem(BaseModel):
     # (require_customer_account in routes/customer_invoices.py).
     client_deleted: bool
     last_login: datetime | None
+    last_login_ip: str | None
+    last_login_device: str | None
 
 
 class SetClientLoginActiveRequest(BaseModel):
