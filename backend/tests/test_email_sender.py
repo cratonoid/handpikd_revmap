@@ -62,7 +62,8 @@ def _make_contact(contact_type, channels=None):
 
     return SimpleNamespace(
         contact_type=contact_type,
-        outreach_channels=list(channels or []),
+        outreach_channels=[],
+        sent_channels=list(channels or []),
         lead_status=LeadStatus.new,
         save=save,
     )
@@ -112,9 +113,11 @@ def test_each_recipient_gets_own_personalised_message(wire):
     assert all(recipient.status == RecipientStatus.sent and recipient.saved_to_sent for recipient in send.recipients)
     assert send.status == EmailSendStatus.done
     assert mailbox.closed
-    # Emailing a lead marks it sent and ticks Mail, keeping WhatsApp.
+    # Emailing a lead marks it sent and ticks Mail under Sent status, keeping
+    # WhatsApp; Data present is left alone.
     assert lead.lead_status == LeadStatus.sent
-    assert lead.outreach_channels == [OutreachChannel.whatsapp, OutreachChannel.mail]
+    assert lead.sent_channels == [OutreachChannel.whatsapp, OutreachChannel.mail]
+    assert lead.outreach_channels == []
 
 
 def test_one_refused_recipient_does_not_stop_the_rest(wire):
@@ -137,7 +140,7 @@ def test_one_refused_recipient_does_not_stop_the_rest(wire):
     # Delivered but not filed: still a success, flagged separately.
     assert good.saved_to_sent is False
     # Clients carry no outreach or lead status.
-    assert client.outreach_channels == [] and client.lead_status == LeadStatus.new
+    assert client.sent_channels == [] and client.lead_status == LeadStatus.new
 
 
 def test_bad_login_fails_everyone_without_retrying(wire):

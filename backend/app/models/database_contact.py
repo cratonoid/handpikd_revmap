@@ -46,11 +46,15 @@ class DatabaseContact(Document):
     # this field existed have no value stored and read back as "new" (see
     # _to_item in routes/database_contacts.py).
     lead_status: LeadStatus | None = None
-    # Lead-only: the channels this lead has been reached on so far — the
-    # two tick boxes in the Leads table. Ticked by hand, except that
-    # emailing a lead from the app ticks "mail" itself (see
-    # services/email_sender.py). Empty on client and vendor rows.
+    # Lead-only: the channels we have this lead's details for — the
+    # "Data present" tick boxes in the Leads table. Ticked by hand. Empty on
+    # client and vendor rows.
     outreach_channels: list[OutreachChannel] = []
+    # Lead-only: the channels this lead has actually been sent something on —
+    # the "Sent status" tick boxes. Ticked by hand, except that emailing a
+    # lead from the app ticks "mail" itself (see services/email_sender.py).
+    # Empty on client and vendor rows.
+    sent_channels: list[OutreachChannel] = []
     # Set when an email the app sent to `email` bounced (see
     # services/email_bounces.py), so the address can be flagged and left out
     # of bulk sends. Cleared whenever the email address is edited.

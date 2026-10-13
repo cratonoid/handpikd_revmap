@@ -197,16 +197,16 @@ def friendly_error(error: Exception) -> str:
 
 
 async def _mark_contact_emailed(contact_id: int) -> None:
-    # A lead that's been emailed is "sent" and has Mail ticked as an
-    # outreach channel; clients carry neither. Looked up fresh because the
+    # A lead that's been emailed is "sent" and has Mail ticked under Sent
+    # status; clients carry neither. Looked up fresh because the
     # contact may have been edited or deleted since the send started.
     contact = await DatabaseContact.get(contact_id)
     if contact is None or contact.contact_type != ContactType.lead:
         return
-    channels = list(contact.outreach_channels or [])
+    channels = list(contact.sent_channels or [])
     if OutreachChannel.mail not in channels:
         channels.append(OutreachChannel.mail)
-    contact.outreach_channels = channels
+    contact.sent_channels = channels
     contact.lead_status = LeadStatus.sent
     await contact.save()
 

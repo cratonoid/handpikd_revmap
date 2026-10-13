@@ -606,6 +606,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.75rem;
+  margin-top: 1.25rem;
   margin-bottom: 0.75rem;
   font-size: 0.875rem;
   color: var(--color-ink);
@@ -617,6 +618,11 @@
 
 .colOutreach {
   width: 9.5rem;
+}
+
+/* Double-clicking a database row opens its edit popup. */
+.editableRow {
+  cursor: pointer;
 }
 
 .outreachGroup {

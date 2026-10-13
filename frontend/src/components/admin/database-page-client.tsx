@@ -17,8 +17,10 @@
 //
 // Leads and clients can be emailed from here: tick rows (or use a row's
 // Email button) and <EmailComposeModal> sends each one their own copy.
-// Leads also have two outreach tick boxes — WhatsApp and Mail — for the
-// channels they've been reached on; emailing a lead ticks Mail itself.
+// Leads also have two pairs of WhatsApp / Mail tick boxes: "Data present"
+// for the channels we have details for, and "Sent status" for the channels
+// they've been reached on; emailing a lead ticks Sent status Mail itself.
+// Double-clicking a row opens its edit popup.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { ContactFormModal } from "@/components/admin/contact-form-modal";
@@ -31,7 +33,8 @@ import {
   LEAD_STATUS_OPTIONS,
   OUTREACH_OPTIONS,
   updateLeadStatus,
-  updateOutreachChannels,
+  updateChannels,
+  type ChannelColumn,
   type Contact,
   type ContactType,
   type LeadStatus,
@@ -49,6 +52,12 @@ const TABS: { key: ContactType; label: string; singular: string }[] = [
   { key: "vendor", label: "Vendors", singular: "vendor" },
 ];
 
+// The Leads table's two WhatsApp / Mail tick-box columns.
+const CHANNEL_COLUMNS: { key: ChannelColumn; label: string; field: "outreachChannels" | "sentChannels" }[] = [
+  { key: "dataPresent", label: "Data present", field: "outreachChannels" },
+  { key: "sentStatus", label: "Sent status", field: "sentChannels" },
+];
+
 export function DatabasePageClient() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -62,7 +71,7 @@ export function DatabasePageClient() {
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [statusSavingId, setStatusSavingId] = useState<number | null>(null);
-  const [outreachSavingId, setOutreachSavingId] = useState<number | null>(null);
+  const [channelsSavingId, setChannelsSavingId] = useState<number | null>(null);
 
   // Rows ticked for emailing, on the current tab only.
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -109,11 +118,11 @@ export function DatabasePageClient() {
 
   // Selection may include rows the search currently hides; they still count.
   // Left out of bulk sends: addresses that bounced (until corrected), and
-  // leads already emailed — status Sent with Mail ticked — so a batch never
+  // leads already emailed — status Sent with Sent status Mail ticked — so a batch never
   // repeats the same outreach. The row's own Email button still works, for
   // a deliberate follow-up or retry.
   const alreadyMailed = (contact: Contact) =>
-    contact.type === "lead" && contact.leadStatus === "sent" && contact.outreachChannels.includes("mail");
+    contact.type === "lead" && contact.leadStatus === "sent" && contact.sentChannels.includes("mail");
   const canBulkEmail = (contact: Contact) =>
     Boolean(contact.email) && !contact.emailBounceReason && !alreadyMailed(contact);
   const selectedContacts = contacts.filter(
@@ -192,22 +201,22 @@ export function DatabasePageClient() {
 
   // Applied straight away and rolled back if the backend refuses, like the
   // status dropdown above.
-  async function handleOutreachToggle(contact: Contact, channel: OutreachChannel) {
-    const previous = contact.outreachChannels;
+  async function handleChannelToggle(contact: Contact, column: (typeof CHANNEL_COLUMNS)[number], channel: OutreachChannel) {
+    const previous = contact[column.field];
     const next = previous.includes(channel) ? previous.filter((value) => value !== channel) : [...previous, channel];
     const apply = (value: OutreachChannel[]) =>
-      setContacts((current) => current.map((row) => (row.id === contact.id ? { ...row, outreachChannels: value } : row)));
+      setContacts((current) => current.map((row) => (row.id === contact.id ? { ...row, [column.field]: value } : row)));
 
     setRowError(null);
-    setOutreachSavingId(contact.id);
+    setChannelsSavingId(contact.id);
     apply(next);
     try {
-      await updateOutreachChannels(contact.id, next);
+      await updateChannels(contact.id, column.key, next);
     } catch (caught) {
       apply(previous);
       setRowError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
     } finally {
-      setOutreachSavingId(null);
+      setChannelsSavingId(null);
     }
   }
 
@@ -286,7 +295,7 @@ export function DatabasePageClient() {
             <span>
               Tick {activeTab.label.toLowerCase()} to email several at once.{" "}
               {isLead
-                ? "Leads without an email, already emailed (Sent + Mail), or whose email bounced can't be ticked."
+                ? "Leads without an email, already emailed (Sent + Sent status Mail), or whose email bounced can't be ticked."
                 : "Rows without an email, or whose email bounced, can't be ticked."}
             </span>
           )}
@@ -313,9 +322,13 @@ export function DatabasePageClient() {
               <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>{nameLabel}</th>
               {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Contact person</th>}
               <th className={`${styles.tableHeadCell} ${styles.databaseColPhone}`}>Phone no.</th>
-              <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Email</th>
               {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>Status</th>}
-              {isLead && <th className={`${styles.tableHeadCell} ${emailStyles.colOutreach}`}>Outreach</th>}
+              {isLead &&
+                CHANNEL_COLUMNS.map((column) => (
+                  <th key={column.key} className={`${styles.tableHeadCell} ${emailStyles.colOutreach}`}>
+                    {column.label}
+                  </th>
+                ))}
               {isVendor && (
                 <>
                   <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Type</th>
@@ -330,7 +343,16 @@ export function DatabasePageClient() {
           </thead>
           <tbody>
             {visibleContacts.map((contact, index) => (
-              <tr key={contact.id} className={styles.tableRow}>
+              <tr
+                key={contact.id}
+                className={`${styles.tableRow} ${emailStyles.editableRow}`}
+                onDoubleClick={(event) => {
+                  // Double-clicking a control in the row shouldn't open the popup.
+                  if ((event.target as HTMLElement).closest("button, input, select, label, a")) return;
+                  setModalState({ mode: "edit", contact });
+                }}
+                title="Double-click to edit"
+              >
                 {canEmail && (
                   <td className={styles.tableCell}>
                     <input
@@ -355,6 +377,11 @@ export function DatabasePageClient() {
                 <td className={styles.tableCell}>{index + 1}</td>
                 <td className={`${styles.tableCell} ${styles.tableCellPrimary} ${styles.databaseCellClip}`} title={contact.name}>
                   {contact.name}
+                  {contact.emailBounceReason && (
+                    <span className={emailStyles.bouncedBadge} title={`Email bounced: ${contact.emailBounceReason}`}>
+                      Bounced
+                    </span>
+                  )}
                 </td>
                 {isLead && (
                   <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.contactPerson}>
@@ -363,13 +390,6 @@ export function DatabasePageClient() {
                 )}
                 <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.phone}>
                   {contact.phone}
-                </td>
-                <td
-                  className={`${styles.tableCell} ${styles.databaseCellClip}`}
-                  title={contact.emailBounceReason ? `Bounced: ${contact.emailBounceReason}` : contact.email}
-                >
-                  {contact.email || "—"}
-                  {contact.emailBounceReason && <span className={emailStyles.bouncedBadge}>Bounced</span>}
                 </td>
                 {isLead && (
                   <td className={styles.tableCell}>
@@ -382,23 +402,28 @@ export function DatabasePageClient() {
                     />
                   </td>
                 )}
-                {isLead && (
-                  <td className={styles.tableCell}>
-                    <div className={emailStyles.outreachGroup} role="group" aria-label={`Outreach for ${contact.name}`}>
-                      {OUTREACH_OPTIONS.map((option) => (
-                        <label key={option.value} className={emailStyles.outreachOption}>
-                          <input
-                            type="checkbox"
-                            checked={contact.outreachChannels.includes(option.value)}
-                            onChange={() => void handleOutreachToggle(contact, option.value)}
-                            disabled={outreachSavingId === contact.id}
-                          />
-                          {option.label}
-                        </label>
-                      ))}
-                    </div>
-                  </td>
-                )}
+                {isLead &&
+                  CHANNEL_COLUMNS.map((column) => (
+                    <td key={column.key} className={styles.tableCell}>
+                      <div
+                        className={emailStyles.outreachGroup}
+                        role="group"
+                        aria-label={`${column.label} for ${contact.name}`}
+                      >
+                        {OUTREACH_OPTIONS.map((option) => (
+                          <label key={option.value} className={emailStyles.outreachOption}>
+                            <input
+                              type="checkbox"
+                              checked={contact[column.field].includes(option.value)}
+                              onChange={() => void handleChannelToggle(contact, column, option.value)}
+                              disabled={channelsSavingId === contact.id}
+                            />
+                            {option.label}
+                          </label>
+                        ))}
+                      </div>
+                    </td>
+                  ))}
                 {isVendor && (
                   <>
                     <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.vendorType}>

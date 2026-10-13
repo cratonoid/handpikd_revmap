@@ -5,8 +5,9 @@
 // One list for all three tabs on /admin/database, told apart by `type`.
 // Name and phone are required; email is optional; vendors also carry a
 // type, description and location, all optional; leads carry an optional
-// contact person, a status that defaults to "new", and the outreach
-// channels (WhatsApp / mail) they've been reached on. Optional fields come back
+// contact person, a status that defaults to "new", the channels (WhatsApp /
+// mail) we have their details for ("Data present"), and the channels they've
+// been sent something on ("Sent status"). Optional fields come back
 // as "" rather than null so they drop straight into form inputs.
 import { apiFetch } from "@/lib/api";
 
@@ -39,9 +40,11 @@ export type Contact = {
   contactPerson: string;
   // Always "new" on client and vendor rows, where it isn't shown.
   leadStatus: LeadStatus;
-  // Lead-only; [] on client and vendor rows. "mail" is also ticked by the
-  // backend whenever the lead is emailed from the app.
+  // Lead-only "Data present" channels; [] on client and vendor rows.
   outreachChannels: OutreachChannel[];
+  // Lead-only "Sent status" channels; [] on client and vendor rows. "mail" is
+  // also ticked by the backend whenever the lead is emailed from the app.
+  sentChannels: OutreachChannel[];
   // Why the last email the app sent to this address bounced; "" if it didn't.
   emailBounceReason: string;
   createdAt: string;
@@ -71,6 +74,7 @@ type ContactItemResponse = {
   contact_person: string | null;
   lead_status: LeadStatus | null;
   outreach_channels?: OutreachChannel[];
+  sent_channels?: OutreachChannel[];
   email_bounce_reason?: string | null;
   created_at: string;
 };
@@ -88,6 +92,7 @@ function toContact(item: ContactItemResponse): Contact {
     contactPerson: item.contact_person ?? "",
     leadStatus: item.lead_status ?? "new",
     outreachChannels: item.outreach_channels ?? [],
+    sentChannels: item.sent_channels ?? [],
     emailBounceReason: item.email_bounce_reason ?? "",
     createdAt: item.created_at,
   };
@@ -164,16 +169,20 @@ export async function updateLeadStatus(id: number, status: LeadStatus): Promise<
   }
 }
 
-// The full set of ticked channels for the Leads table's Outreach column.
-// Throws an Error with a user-facing message on failure.
-export async function updateOutreachChannels(id: number, channels: OutreachChannel[]): Promise<void> {
+// Which of the Leads table's two tick-box columns a channel list belongs to.
+export type ChannelColumn = "dataPresent" | "sentStatus";
+
+// The full set of ticked channels for one of the Leads table's tick-box
+// columns. Throws an Error with a user-facing message on failure.
+export async function updateChannels(id: number, column: ChannelColumn, channels: OutreachChannel[]): Promise<void> {
+  const field = column === "dataPresent" ? "outreach_channels" : "sent_channels";
   const response = await apiFetch("/admin/database/update_contact", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contact_id: id, outreach_channels: channels }),
+    body: JSON.stringify({ contact_id: id, [field]: channels }),
   });
   if (!response.ok) {
-    throw new Error(await detailOr(response, "Couldn't update the outreach. Please try again."));
+    throw new Error(await detailOr(response, "Couldn't update the channels. Please try again."));
   }
 }
 

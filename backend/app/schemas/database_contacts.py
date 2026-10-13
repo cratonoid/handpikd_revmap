@@ -20,6 +20,7 @@ class ContactItem(BaseModel):
     lead_status: LeadStatus | None
     # Lead-only; [] on client and vendor rows.
     outreach_channels: list[OutreachChannel] = []
+    sent_channels: list[OutreachChannel] = []
     # Set when the last email the app sent to this address bounced.
     email_bounce_reason: str | None = None
     created_at: datetime
@@ -39,6 +40,7 @@ class AddContactRequest(BaseModel):
     contact_person: str | None = None
     lead_status: LeadStatus | None = None
     outreach_channels: list[OutreachChannel] | None = None
+    sent_channels: list[OutreachChannel] | None = None
 
 
 class AddContactResponse(BaseModel):
@@ -60,6 +62,7 @@ class UpdateContactRequest(BaseModel):
     lead_status: LeadStatus | None = None
     # The full set of ticked channels, not a delta; [] unticks both.
     outreach_channels: list[OutreachChannel] | None = None
+    sent_channels: list[OutreachChannel] | None = None
     delete: bool = False
 
 

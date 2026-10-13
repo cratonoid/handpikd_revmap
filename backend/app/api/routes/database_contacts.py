@@ -2,8 +2,8 @@
 # (frontend components/admin/database-page-client.tsx) — three tabs of
 # clients, leads and vendors, each a name, phone and optional email, with
 # vendors also carrying a type, description and location, and leads an
-# optional contact person, a status (new / sent) and the outreach channels
-# (WhatsApp / mail) they've been reached on. Restricted to
+# optional contact person, a status (new / sent), the channels (WhatsApp /
+# mail) we have their details for, and the channels they've been sent on. Restricted to
 # admins (bypassed entirely when settings.auth_enabled is False, matching
 # require_staff in api/deps.py).
 #
@@ -39,6 +39,7 @@ def _to_item(contact: DatabaseContact) -> ContactItem:
         contact_person=contact.contact_person,
         lead_status=(contact.lead_status or LeadStatus.new) if contact.contact_type == ContactType.lead else None,
         outreach_channels=_ordered_channels(contact.outreach_channels) if contact.contact_type == ContactType.lead else [],
+        sent_channels=_ordered_channels(contact.sent_channels) if contact.contact_type == ContactType.lead else [],
         email_bounce_reason=contact.email_bounce_reason if contact.email_bounced_at else None,
         created_at=contact.created_at,
     )
@@ -106,6 +107,7 @@ async def add_contact(
         contact_person=_optional(payload.contact_person) if is_lead else None,
         lead_status=(payload.lead_status or LeadStatus.new) if is_lead else None,
         outreach_channels=_ordered_channels(payload.outreach_channels) if is_lead else [],
+        sent_channels=_ordered_channels(payload.sent_channels) if is_lead else [],
     )
     # Id taken only once the payload has validated, so a rejected request
     # doesn't burn a number.
@@ -158,6 +160,9 @@ async def update_contact(
             changed = True
         if payload.outreach_channels is not None:
             contact.outreach_channels = _ordered_channels(payload.outreach_channels)
+            changed = True
+        if payload.sent_channels is not None:
+            contact.sent_channels = _ordered_channels(payload.sent_channels)
             changed = True
 
     if not changed:
