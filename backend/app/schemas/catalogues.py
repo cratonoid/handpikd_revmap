@@ -2,20 +2,27 @@
 from pydantic import BaseModel
 
 
+# One page and the categories it's shown under — always a subset of the
+# catalogue's own category_ids (see models/catalogue_image_details.py).
+class CataloguePage(BaseModel):
+    image_path: str
+    category_ids: list[int] = []
+
+
 class AddCatalogueDetailsRequest(BaseModel):
     catalogue_name: str
     catalogue_vendor_id: int
     catalogue_type: str
     category_ids: list[int]
     is_visible: bool = True
-    # Already-persisted pages to keep, in order — always empty for a
-    # brand-new catalogue. New pages never travel through this endpoint:
-    # each is uploaded separately, one request per page, via
+    # Already-persisted pages to keep, in order, each with its categories —
+    # always empty for a brand-new catalogue. New pages never travel through
+    # this endpoint: each is uploaded separately, one request per page, via
     # add_catalogue_image once this call returns an id — see
     # catalogue-form-modal.tsx's handleSubmit. Bundling every page's bytes
     # into this one request is what caused 413s on multi-page catalogues
     # when this used to carry base64 image data directly.
-    image_paths: list[str] = []
+    pages: list[CataloguePage] = []
 
 
 class AddCatalogueDetailsResponse(BaseModel):
@@ -31,7 +38,7 @@ class CatalogueDetailItem(BaseModel):
     catalogue_type: str
     category_ids: list[int]
     is_visible: bool
-    image_paths: list[str]
+    pages: list[CataloguePage]
 
 
 class UpdateCatalogueDetailsRequest(BaseModel):
@@ -41,10 +48,11 @@ class UpdateCatalogueDetailsRequest(BaseModel):
     catalogue_type: str
     category_ids: list[int]
     is_visible: bool = True
-    # Already-persisted pages to keep, in order — any page dropped from here
-    # relative to the catalogue's current set is removed. New pages: see
-    # AddCatalogueDetailsRequest.image_paths.
-    image_paths: list[str] = []
+    # Already-persisted pages to keep, in order, with their (possibly
+    # changed) categories — any page dropped from here relative to the
+    # catalogue's current set is removed. New pages: see
+    # AddCatalogueDetailsRequest.pages.
+    pages: list[CataloguePage] = []
 
 
 class UpdateCatalogueDetailsResponse(BaseModel):
@@ -104,7 +112,8 @@ class DiscardCataloguePdfResponse(BaseModel):
 # then by root category, matching how the /brand-catalogues page renders
 # them: one tab per catalogue_type, one subheading per category within it.
 # A catalogue carrying several category_ids appears under each of them, so
-# the same catalogue id can legitimately show up in more than one group.
+# the same catalogue id can legitimately show up in more than one group —
+# each time with only the pages assigned to that category in image_paths.
 # ---------------------------------------------------------------------------
 class PublicCatalogueItem(BaseModel):
     id: int

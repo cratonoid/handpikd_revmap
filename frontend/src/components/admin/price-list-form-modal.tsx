@@ -4,24 +4,31 @@
 // <PriceListFormModal> — add/edit popup for the /admin/price-lists table
 // ---------------------------------------------------------------------------
 // Mirrors catalogue-form-modal.tsx, minus the page conversion: a price list
-// keeps the vendor's PDF exactly as uploaded, so picking a file just holds
+// keeps the vendor's file (a PDF or an Excel workbook) exactly as uploaded,
+// so picking a file just holds
 // it until Save, which sends the fields and the file together (see
 // savePriceList in lib/price-lists.ts).
-//   - mode "add"  -> POST /admin/add_price_list    (PDF required)
-//   - mode "edit" -> POST /admin/update_price_list (PDF only if replacing)
+//   - mode "add"  -> POST /admin/add_price_list    (file required)
+//   - mode "edit" -> POST /admin/update_price_list (file only if replacing)
 //
 // The catalogue link is optional. Its picker lists the selected vendor's own
 // catalogues first, then every other one — a distributor's price list can
 // legitimately price a brand catalogue filed under a different vendor, so
 // the others stay pickable rather than being filtered out.
 //
-// Delete (edit mode only) is permanent — the record and its PDF both go —
+// Delete (edit mode only) is permanent — the record and its file both go —
 // and sits behind an inline confirm, like the catalogue delete.
 import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
 import { XMarkIcon } from "@/components/icons";
-import { deletePriceList, savePriceList, type PriceList, type PriceListCatalogueOption } from "@/lib/price-lists";
+import {
+  deletePriceList,
+  PRICE_LIST_FILE_ACCEPT,
+  savePriceList,
+  type PriceList,
+  type PriceListCatalogueOption,
+} from "@/lib/price-lists";
 import type { VendorOption } from "@/lib/vendors";
 import styles from "@/styles/dashboard.module.css";
 
@@ -77,10 +84,10 @@ export function PriceListFormModal({
     if (!picked) return;
     setFile(picked);
     setError(null);
-    // Most vendor PDFs are already named for what they are, so an empty
+    // Most vendor files are already named for what they are, so an empty
     // name field takes the file's name as a starting point.
     if (priceListName.trim() === "") {
-      setPriceListName(picked.name.replace(/\.pdf$/i, ""));
+      setPriceListName(picked.name.replace(/\.(pdf|xlsx|xls)$/i, ""));
     }
   }
 
@@ -93,7 +100,7 @@ export function PriceListFormModal({
       return;
     }
     if (!isEdit && !file) {
-      setError("Please choose the price list PDF.");
+      setError("Please choose the price list file.");
       return;
     }
     if (!form.checkValidity()) {
@@ -137,8 +144,8 @@ export function PriceListFormModal({
   const currentFileLabel = file
     ? file.name
     : isEdit
-      ? initialPriceList?.originalFilename || "Current PDF"
-      : "No file chosen";
+      ? initialPriceList?.originalFilename || "Current file"
+      : "PDF or Excel (.xlsx / .xls)";
 
   return (
     <div className={styles.modalBackdrop} onClick={onClose}>
@@ -163,22 +170,22 @@ export function PriceListFormModal({
             <div className={styles.formGridFullSpan}>
               <div className={styles.contactsHeader}>
                 <span className={styles.formLabel}>
-                  Price list PDF{!isEdit && <span className={styles.requiredMark}>*</span>}
+                  Price list file{!isEdit && <span className={styles.requiredMark}>*</span>}
                 </span>
                 <label htmlFor="priceListPdfUpload" className={styles.uploadPdfTrigger}>
-                  {isEdit || file ? "Replace PDF" : "+ Choose PDF"}
+                  {isEdit || file ? "Replace file" : "+ Choose file"}
                 </label>
                 <input
                   id="priceListPdfUpload"
                   type="file"
-                  accept="application/pdf"
+                  accept={PRICE_LIST_FILE_ACCEPT}
                   onChange={handleFileChange}
                   className="sr-only"
                 />
               </div>
               <p className={styles.pageSubtext}>
                 {currentFileLabel}
-                {isEdit && file && " — replaces the current PDF on save"}
+                {isEdit && file && " — replaces the current file on save"}
               </p>
             </div>
 
@@ -276,7 +283,7 @@ export function PriceListFormModal({
 
               {isEdit && confirmingDelete && (
                 <div className={styles.deleteConfirmRow}>
-                  <span className={styles.deleteConfirmText}>Permanently delete this price list and its PDF?</span>
+                  <span className={styles.deleteConfirmText}>Permanently delete this price list and its file?</span>
                   <Button
                     type="button"
                     variant="tertiary"

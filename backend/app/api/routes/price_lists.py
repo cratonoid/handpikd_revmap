@@ -1,16 +1,19 @@
-# Price lists module: vendor price-list PDFs, admin-only. Each one belongs to
-# a vendor and can optionally point at one of that catalogue's
-# CatalogueDetails rows. Unlike catalogues, the PDF is kept as the original
-# file rather than rendered into page images — prices stay as real,
-# searchable text — and it lives in the private PDF store, never under the
-# public /media mount: vendor pricing must not be reachable without signing
-# in. get_price_list_pdf is the only way out.
+# Price lists module: vendor price lists, admin-only. Each one belongs to a
+# vendor and can optionally point at one of that catalogue's CatalogueDetails
+# rows. The vendor's file is kept exactly as uploaded — a PDF, or an Excel
+# workbook (.xlsx / .xls), since vendors send both — rather than rendered
+# into page images like a catalogue, so prices stay as real, searchable
+# data. It lives in the private document store, never under the public
+# /media mount: vendor pricing must not be reachable without signing in.
+# get_price_list_file is the only way out.
 #
-# Add and update are multipart (fields + PDF in one request), so a price list
-# is never saved without its file. On update the file is optional; when one
-# is sent it replaces the old PDF, which is deleted only after the record
-# points at the new one. There is no soft delete: delete_price_list removes
-# the record and its PDF for good.
+# Add and update are multipart (fields + file in one request), so a price
+# list is never saved without its file. On update the file is optional; when
+# one is sent it replaces the old file (of either type), which is deleted
+# only after the record points at the new one. There is no soft delete:
+# delete_price_list removes the record and its file for good.
+import io
+import zipfile
 from datetime import timezone
 from urllib.parse import quote
 
@@ -27,12 +30,59 @@ from app.schemas.price_lists import (
     SavePriceListResponse,
 )
 from app.services.counters import get_next_id
-from app.services.purchase_invoice_storage import delete_uploaded_pdf, read_uploaded_pdf, save_uploaded_pdf
+from app.services.purchase_invoice_storage import delete_uploaded_pdf, read_uploaded_pdf, save_uploaded_file
 from app.services.storage import LocalUploadBlockedError
 
 router = APIRouter(prefix="/admin", tags=["price-lists"])
 
 _PRICE_LIST_SUBFOLDER = "price_lists"
+
+# Accepted file types, by the extension they're stored under -> media type.
+PRICE_LIST_FILE_TYPES: dict[str, str] = {
+    "pdf": "application/pdf",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "xls": "application/vnd.ms-excel",
+}
+
+# Legacy .xls is an OLE2 compound file, which is also what an old .doc or
+# .ppt is — so the signature alone can't tell them apart, and the extension
+# has to agree too.
+_OLE2_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+
+def detect_price_list_file_type(file_bytes: bytes, filename: str) -> str | None:
+    """The file's type ("pdf" | "xlsx" | "xls") from its contents, or None.
+
+    Checked against the bytes rather than trusted from the name, so a renamed
+    file of some other kind is refused instead of being served back later
+    under the wrong type.
+    """
+    # Every PDF opens with a %PDF- header (some writers put a few junk bytes
+    # first, which readers tolerate, hence the search rather than startswith).
+    if b"%PDF-" in file_bytes[:1024]:
+        return "pdf"
+
+    extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    # .xlsx is a zip, as are .docx/.pptx and plain zips — a workbook is the
+    # one with xl/workbook.xml inside.
+    if file_bytes.startswith(b"PK\x03\x04"):
+        try:
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+                if "xl/workbook.xml" in archive.namelist():
+                    return "xlsx"
+        except zipfile.BadZipFile:
+            return None
+        return None
+
+    if file_bytes.startswith(_OLE2_SIGNATURE) and extension == "xls":
+        return "xls"
+
+    return None
+
+
+def _file_type_of(file_path: str) -> str:
+    return file_path.rsplit(".", 1)[-1].lower()
 
 
 async def _get_price_list_or_404(price_list_id: int) -> PriceListDetails:
@@ -49,18 +99,16 @@ async def _require_vendor_and_catalogue(vendor_id: int, catalogue_id: int | None
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="catalogue not found")
 
 
-async def _read_pdf(file: UploadFile) -> bytes:
-    pdf_bytes = await file.read()
-    # Every PDF opens with a %PDF- header (some writers put a few junk bytes
-    # first, which readers tolerate, hence the search rather than startswith).
-    if b"%PDF-" not in pdf_bytes[:1024]:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="file is not a PDF")
-    return pdf_bytes
-
-
-def _store_pdf(pdf_bytes: bytes) -> str:
+# Reads, checks and stores the uploaded file; returns its storage key.
+async def _store_upload(file: UploadFile) -> str:
+    file_bytes = await file.read()
+    file_type = detect_price_list_file_type(file_bytes, file.filename or "")
+    if file_type is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="file must be a PDF or an Excel workbook"
+        )
     try:
-        return save_uploaded_pdf(pdf_bytes, subfolder=_PRICE_LIST_SUBFOLDER)
+        return save_uploaded_file(file_bytes, file_type, subfolder=_PRICE_LIST_SUBFOLDER)
     except LocalUploadBlockedError as error:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error))
 
@@ -75,8 +123,7 @@ async def add_price_list(
     _: User | None = Depends(require_section(Section.price_lists)),
 ) -> SavePriceListResponse:
     await _require_vendor_and_catalogue(vendor_id, catalogue_id)
-    pdf_bytes = await _read_pdf(file)
-    pdf_path = _store_pdf(pdf_bytes)
+    file_path = await _store_upload(file)
 
     price_list_id = await get_next_id(PriceListIdCounter, "next_price_list_id", PriceListDetails)
     await PriceListDetails(
@@ -85,7 +132,7 @@ async def add_price_list(
         vendor_id=vendor_id,
         catalogue_id=catalogue_id,
         notes=notes.strip(),
-        pdf_path=pdf_path,
+        file_path=file_path,
         original_filename=file.filename or "",
     ).insert()
 
@@ -104,6 +151,7 @@ async def get_price_list_details(
             vendor_id=price_list.vendor_id,
             catalogue_id=price_list.catalogue_id,
             notes=price_list.notes,
+            file_type=_file_type_of(price_list.file_path),
             original_filename=price_list.original_filename,
             # Stored naive UTC; sent tz-aware so the frontend renders it in IST.
             uploaded_at=price_list.uploaded_at.replace(tzinfo=timezone.utc),
@@ -140,11 +188,11 @@ async def update_price_list(
     price_list = await _get_price_list_or_404(id)
     await _require_vendor_and_catalogue(vendor_id, catalogue_id)
 
-    previous_pdf_path: str | None = None
+    previous_file_path: str | None = None
     if file is not None:
-        pdf_bytes = await _read_pdf(file)
-        previous_pdf_path = price_list.pdf_path
-        price_list.pdf_path = _store_pdf(pdf_bytes)
+        new_file_path = await _store_upload(file)
+        previous_file_path = price_list.file_path
+        price_list.file_path = new_file_path
         price_list.original_filename = file.filename or ""
         price_list.uploaded_at = utc_now()
 
@@ -155,30 +203,33 @@ async def update_price_list(
     await price_list.save()
 
     # Only once the record points at the new file, so a failed save never
-    # loses the PDF it still references.
-    if previous_pdf_path is not None:
-        delete_uploaded_pdf(previous_pdf_path)
+    # loses the file it still references.
+    if previous_file_path is not None:
+        delete_uploaded_pdf(previous_file_path)
 
     return SavePriceListResponse(message="price list updated successfully", id=price_list.id)
 
 
-@router.get("/get_price_list_pdf")
-async def get_price_list_pdf(
+@router.get("/get_price_list_file")
+async def get_price_list_file(
     price_list_id: int = Query(...),
     _: User | None = Depends(require_section(Section.price_lists)),
 ) -> Response:
     price_list = await _get_price_list_or_404(price_list_id)
-    pdf_bytes = read_uploaded_pdf(price_list.pdf_path)
-    if pdf_bytes is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="price list PDF file is missing")
+    file_bytes = read_uploaded_pdf(price_list.file_path)
+    if file_bytes is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="price list file is missing")
 
-    # inline so the browser opens it in its PDF viewer; the RFC 5987 form
-    # carries names with non-ASCII characters intact.
-    filename = quote(f"{price_list.price_list_name}.pdf")
+    file_type = _file_type_of(price_list.file_path)
+    # A PDF opens in the browser's viewer; a workbook can't be shown inline,
+    # so it downloads. The RFC 5987 form carries names with non-ASCII
+    # characters intact.
+    disposition = "inline" if file_type == "pdf" else "attachment"
+    filename = quote(f"{price_list.price_list_name}.{file_type}")
     return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"inline; filename*=UTF-8''{filename}"},
+        content=file_bytes,
+        media_type=PRICE_LIST_FILE_TYPES.get(file_type, "application/octet-stream"),
+        headers={"Content-Disposition": f"{disposition}; filename*=UTF-8''{filename}"},
     )
 
 
@@ -189,6 +240,5 @@ async def delete_price_list(
 ) -> DeletePriceListResponse:
     price_list = await _get_price_list_or_404(payload.id)
     await price_list.delete()
-    delete_uploaded_pdf(price_list.pdf_path)
+    delete_uploaded_pdf(price_list.file_path)
     return DeletePriceListResponse(message="price list deleted successfully")
-

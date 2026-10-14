@@ -6,9 +6,10 @@
 // Mirrors catalogues-page-client.tsx. Owns the price list table (fetched from
 // GET /admin/get_price_list_details, see lib/price-lists.ts) and the add/edit
 // popup (price-list-form-modal.tsx): "+ Add price list" opens it in "add"
-// mode, double-clicking a row opens it in "edit" mode. Each row's "View PDF"
-// button opens the vendor's original PDF in a new tab — price lists are
-// private, so there is no public link to it, only the authenticated fetch.
+// mode, double-clicking a row opens it in "edit" mode. Each row's file
+// button opens the vendor's original PDF in a new tab, or downloads it when
+// it's an Excel workbook — price lists are private, so there is no public
+// link to either, only the authenticated fetch.
 //
 // Vendor and catalogue names are resolved locally from the same option lists
 // the form modal's pickers use. The search box filters client-side over the
@@ -22,7 +23,8 @@ import { formatDate } from "@/lib/format-date";
 import {
   fetchPriceListCatalogueOptions,
   fetchPriceLists,
-  openPriceListPdf,
+  isExcelFileType,
+  openPriceListFile,
   type PriceList,
   type PriceListCatalogueOption,
 } from "@/lib/price-lists";
@@ -73,12 +75,12 @@ export function PriceListsPageClient() {
     setModalState(null);
   }
 
-  async function handleView(priceListId: number) {
+  async function handleView(priceList: PriceList) {
     setViewError(null);
     try {
-      await openPriceListPdf(priceListId);
+      await openPriceListFile(priceList);
     } catch {
-      setViewError("Couldn't open that PDF. Please try again.");
+      setViewError("Couldn't open that file. Please try again.");
     }
   }
 
@@ -117,7 +119,7 @@ export function PriceListsPageClient() {
               <th className={styles.tableHeadCell}>Vendor</th>
               <th className={styles.tableHeadCell}>Catalogue</th>
               <th className={styles.tableHeadCell}>Uploaded</th>
-              <th className={styles.tableHeadCell}>PDF</th>
+              <th className={styles.tableHeadCell}>File</th>
             </tr>
           </thead>
           <tbody>
@@ -143,11 +145,11 @@ export function PriceListsPageClient() {
                   <button
                     type="button"
                     className={styles.tableActionButton}
-                    onClick={() => void handleView(priceList.id)}
+                    onClick={() => void handleView(priceList)}
                     // Double-clicking the button shouldn't also open the edit popup.
                     onDoubleClick={(event) => event.stopPropagation()}
                   >
-                    View PDF
+                    {isExcelFileType(priceList.fileType) ? "Download Excel" : "View PDF"}
                   </button>
                 </td>
               </tr>

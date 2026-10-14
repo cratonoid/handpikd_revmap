@@ -168,7 +168,7 @@ export function CataloguesPageClient() {
                     .filter((name): name is string => Boolean(name))
                     .join(", ") || "—"}
                 </td>
-                <td className={styles.tableCell}>{catalogue.imagePaths.length}</td>
+                <td className={styles.tableCell}>{catalogue.pages.length}</td>
               </tr>
             ))}
           </tbody>

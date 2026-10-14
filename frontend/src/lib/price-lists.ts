@@ -2,11 +2,29 @@
 // Vendor price lists for the /admin/price-lists table
 // ---------------------------------------------------------------------------
 // Backed by backend/app/api/routes/price_lists.py. A price list is the
-// vendor's original PDF, kept as-is (not rendered into page images the way a
-// catalogue is) and stored privately: there is no /media URL for it, so
-// viewing goes through openPriceListPdf, which fetches it with the admin's
-// token. Each one belongs to a vendor and can optionally link a catalogue.
+// vendor's original file — a PDF or an Excel workbook (.xlsx / .xls) — kept
+// as-is (not rendered into page images the way a catalogue is) and stored
+// privately: there is no /media URL for it, so it's fetched with the admin's
+// token by openPriceListFile, which opens a PDF in a new tab and downloads a
+// workbook. Each one belongs to a vendor and can optionally link a catalogue.
 import { apiFetch } from "@/lib/api";
+
+export type PriceListFileType = "pdf" | "xlsx" | "xls";
+
+// For <input accept>: extensions plus media types, since browsers differ on
+// which of the two they match Excel files by.
+export const PRICE_LIST_FILE_ACCEPT = [
+  ".pdf",
+  ".xlsx",
+  ".xls",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
+].join(",");
+
+export function isExcelFileType(fileType: PriceListFileType): boolean {
+  return fileType === "xlsx" || fileType === "xls";
+}
 
 export type PriceList = {
   id: number;
@@ -14,6 +32,7 @@ export type PriceList = {
   vendorId: number;
   catalogueId: number | null;
   notes: string;
+  fileType: PriceListFileType;
   originalFilename: string;
   uploadedAt: string;
 };
@@ -24,6 +43,7 @@ type PriceListDetailItem = {
   vendor_id: number;
   catalogue_id: number | null;
   notes: string;
+  file_type: PriceListFileType;
   original_filename: string;
   uploaded_at: string;
 };
@@ -41,6 +61,7 @@ export async function fetchPriceLists(): Promise<PriceList[]> {
     vendorId: item.vendor_id,
     catalogueId: item.catalogue_id,
     notes: item.notes,
+    fileType: item.file_type,
     originalFilename: item.original_filename,
     uploadedAt: item.uploaded_at,
   }));
@@ -71,11 +92,11 @@ export type SavePriceListPayload = {
   vendorId: number;
   catalogueId: number | null;
   notes: string;
-  // Required when adding; on edit, only sent to replace the current PDF.
+  // Required when adding; on edit, only sent to replace the current file.
   file: File | null;
 };
 
-// Fields and PDF travel together as one multipart request, so a price list
+// Fields and file travel together as one multipart request, so a price list
 // is never saved without its file.
 export async function savePriceList(payload: SavePriceListPayload): Promise<number> {
   const formData = new FormData();
@@ -100,8 +121,10 @@ export async function savePriceList(payload: SavePriceListPayload): Promise<numb
     } catch {
       // Non-JSON error body (e.g. nginx's 413 page) — fall through.
     }
-    if (response.status === 413) throw new Error("That PDF is too large to upload.");
-    if (detail === "file is not a PDF") throw new Error("That file isn't a PDF.");
+    if (response.status === 413) throw new Error("That file is too large to upload.");
+    if (detail === "file must be a PDF or an Excel workbook") {
+      throw new Error("That file isn't a PDF or an Excel workbook (.xlsx / .xls).");
+    }
     if (response.status === 404) throw new Error("Vendor or catalogue not found.");
     throw new Error("Something went wrong. Please try again.");
   }
@@ -121,29 +144,36 @@ export async function deletePriceList(priceListId: number): Promise<void> {
   }
 }
 
-// Opens the PDF in a new tab. The tab is opened before the fetch, while the
-// click still counts as a user gesture — opening it after the await is what
-// popup blockers stop. The object URL is released after a minute, by which
-// point the tab has long since loaded it.
-export async function openPriceListPdf(priceListId: number): Promise<void> {
-  const tab = window.open("", "_blank");
+function downloadObjectUrl(url: string, filename: string) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// A PDF opens in a new tab; a workbook can't be shown in the browser, so it
+// downloads (named after the price list) for Excel to open. For a PDF the
+// tab is opened before the fetch, while the click still counts as a user
+// gesture — opening it after the await is what popup blockers stop. The
+// object URL is released after a minute, by which point the tab or download
+// has long since read it.
+export async function openPriceListFile(priceList: PriceList): Promise<void> {
+  const filename = `${priceList.priceListName}.${priceList.fileType}`;
+  const tab = isExcelFileType(priceList.fileType) ? null : window.open("", "_blank");
   try {
-    const response = await apiFetch(`/admin/get_price_list_pdf?price_list_id=${priceListId}`);
+    const response = await apiFetch(`/admin/get_price_list_file?price_list_id=${priceList.id}`);
     if (!response.ok) {
-      throw new Error("Failed to load PDF");
+      throw new Error("Failed to load file");
     }
     const url = URL.createObjectURL(await response.blob());
     if (tab) {
       tab.location.href = url;
     } else {
-      // Popup blocked anyway: fall back to a download rather than
-      // navigating the admin away from the page they're on.
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `price-list-${priceListId}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // An Excel file, or a PDF whose tab was blocked anyway: download it
+      // rather than navigating the admin away from the page they're on.
+      downloadObjectUrl(url, filename);
     }
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   } catch (error) {

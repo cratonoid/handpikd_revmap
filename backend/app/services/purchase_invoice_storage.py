@@ -38,17 +38,22 @@ def _ensure_upload_allowed() -> None:
     )
 
 
-# `subfolder` keeps other private vendor documents (price lists, see
-# routes/price_lists.py) apart from the invoices on the same volume. It is
-# part of the returned key, so read/delete need no extra argument.
-def save_uploaded_pdf(pdf_bytes: bytes, subfolder: str = "") -> str:
+def save_uploaded_pdf(pdf_bytes: bytes) -> str:
+    return save_uploaded_file(pdf_bytes, "pdf")
+
+
+# For private vendor documents other than invoice PDFs — price lists, which
+# can also be Excel (see routes/price_lists.py). `subfolder` keeps them apart
+# from the invoices on the same volume; it and the extension are part of the
+# returned key, so read/delete need no extra argument.
+def save_uploaded_file(file_bytes: bytes, extension: str, subfolder: str = "") -> str:
     _ensure_upload_allowed()
 
-    filename = f"{uuid.uuid4().hex}.pdf"
+    filename = f"{uuid.uuid4().hex}.{extension}"
     key = f"{subfolder}/{filename}" if subfolder else filename
     path = _purchase_invoice_root() / key
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(pdf_bytes)
+    path.write_bytes(file_bytes)
     return key
 
 

@@ -2657,6 +2657,67 @@ select.formInput:disabled {
   color: var(--color-charcoal);
 }
 
+/* Per-category page picking (catalogue-form-modal.tsx): a .viewToggle-style
+   pill bar, but wrapping, since a catalogue can carry several categories
+   and their names don't fit one line in the modal. */
+.catalogueCategoryTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  border-radius: 1.25rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  padding: 0.25rem;
+}
+
+/* In a category tab the whole thumbnail is the toggle. Pages outside the
+   category are dimmed rather than hidden, so the admin still sees the full
+   run of pages they're picking from. */
+.cataloguePageToggle {
+  position: relative;
+  border-radius: 0.6rem;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition:
+    opacity 0.15s,
+    outline-color 0.15s;
+}
+
+.cataloguePageToggleOn {
+  outline-color: var(--color-charcoal);
+}
+
+.cataloguePageToggleOff {
+  opacity: 0.4;
+}
+
+.cataloguePageToggleOff:hover {
+  opacity: 0.75;
+}
+
+.cataloguePageCheck {
+  position: absolute;
+  top: -0.5rem;
+  right: -0.5rem;
+  display: flex;
+  height: 1.5rem;
+  width: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background-color: var(--color-charcoal);
+  color: var(--color-cream);
+}
+
+/* Which categories a page is in, under its label on the "All pages" tab. */
+.cataloguePageCategories {
+  max-width: 6rem;
+  text-align: center;
+  font-size: 0.65rem;
+  line-height: 1.3;
+  color: var(--color-ink);
+}
+
 /* -----------------------------------------------------------------------
    Purchase order line items + totals
    (components/admin/purchase-order-form-modal.tsx)

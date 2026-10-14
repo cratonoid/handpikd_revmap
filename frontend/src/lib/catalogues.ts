@@ -23,7 +23,14 @@ export type Catalogue = {
   categoryIds: string[];
   // Storefront visibility only — see the module comment above.
   isVisible: boolean;
-  imagePaths: string[];
+  pages: CataloguePage[];
+};
+
+// One page, in order, and which of the catalogue's categoryIds it's shown
+// under on the storefront — a page can sit under several, or none.
+export type CataloguePage = {
+  imagePath: string;
+  categoryIds: string[];
 };
 
 type CatalogueDetailItem = {
@@ -33,7 +40,7 @@ type CatalogueDetailItem = {
   catalogue_type: string;
   category_ids: number[];
   is_visible: boolean;
-  image_paths: string[];
+  pages: { image_path: string; category_ids: number[] }[];
 };
 
 export async function fetchCatalogues(): Promise<Catalogue[]> {
@@ -50,7 +57,10 @@ export async function fetchCatalogues(): Promise<Catalogue[]> {
     catalogueType: item.catalogue_type,
     categoryIds: item.category_ids.map(String),
     isVisible: item.is_visible,
-    imagePaths: item.image_paths,
+    pages: item.pages.map((page) => ({
+      imagePath: page.image_path,
+      categoryIds: page.category_ids.map(String),
+    })),
   }));
 }
 
@@ -134,13 +144,19 @@ export async function discardCataloguePdfSession(sessionId: string): Promise<voi
 // page's bytes into add/update_catalogue_details — a multi-page catalogue's
 // combined bytes routinely exceeded the server's request size limit when
 // this used to be one request carrying everything.
-export async function addCatalogueImage(catalogueId: number, pageObjectUrl: string): Promise<string> {
+export async function addCatalogueImage(
+  catalogueId: number,
+  pageObjectUrl: string,
+  categoryIds: string[],
+): Promise<string> {
   const blob = await (await fetch(pageObjectUrl)).blob();
   const formData = new FormData();
   // The filename is what the backend derives the stored file's extension
   // from (see services/storage.py) — rendered pages are JPEG.
   formData.append("catalogue_id", String(catalogueId));
   formData.append("file", blob, "page.jpg");
+  // Repeated field: the backend reads every category_ids entry into a list.
+  categoryIds.forEach((id) => formData.append("category_ids", id));
 
   const response = await apiFetch("/admin/add_catalogue_image", {
     method: "POST",

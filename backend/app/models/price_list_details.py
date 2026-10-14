@@ -19,13 +19,17 @@ class PriceListDetails(Document):
     # in routes/catalogues.py.
     catalogue_id: int | None = None
     notes: str = ""
-    # Key into the private PDF store (services/purchase_invoice_storage.py,
+    # Key into the private document store (services/purchase_invoice_storage.py,
     # under its price_lists/ subfolder) — never a public /media path, since
-    # vendor pricing is admin-only. Served through get_price_list_pdf.
-    pdf_path: str
-    # The file name the PDF was uploaded with, for display only.
+    # vendor pricing is admin-only. Served through get_price_list_file. The
+    # key's extension is the file's type: pdf, xlsx or xls (see
+    # PRICE_LIST_FILE_TYPES in routes/price_lists.py). Was pdf_path while
+    # price lists were PDF-only; scripts/migrate_price_list_pdf_path_to_file_path.py
+    # renames it on older rows.
+    file_path: str
+    # The file name it was uploaded with, for display only.
     original_filename: str = ""
-    # Naive UTC, like the other created_at fields; bumped whenever the PDF is
+    # Naive UTC, like the other created_at fields; bumped whenever the file is
     # replaced, so the table shows how current the prices are.
     uploaded_at: datetime = Field(default_factory=utc_now)
 

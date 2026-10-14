@@ -13,7 +13,8 @@ class CatalogueDetails(Document):
     # until catalogues that genuinely belong in more than one main category
     # had to be duplicated to appear in both; scripts/
     # migrate_catalogue_category_id_to_category_ids.py wraps the old scalar
-    # into a one-element list.
+    # into a one-element list. Which pages show under each of these is set
+    # per page — see CatalogueImageDetails.category_ids.
     category_ids: list[int]
     # Storefront visibility only: an unticked catalogue disappears from the
     # public /brand-catalogues page but stays in /admin/catalogues, fully

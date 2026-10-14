@@ -124,6 +124,16 @@ MIGRATIONS: list[tuple[str, str, str]] = [
         MANUAL,
         "DESTRUCTIVE: deletes every proforma invoice_details row",
     ),
+    (
+        "migrate_catalogue_page_category_ids",
+        AUTO,
+        "catalogue_image_details: add per-page category_ids",
+    ),
+    (
+        "migrate_price_list_pdf_path_to_file_path",
+        AUTO,
+        "price_list_details.pdf_path -> file_path",
+    ),
 ]
 
 LEDGER_COLLECTION = "schema_migrations"

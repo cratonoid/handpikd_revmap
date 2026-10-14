@@ -10,13 +10,23 @@
 //
 // Vendor is a single-select (a catalogue has exactly one
 // catalogue_vendor_id) — see single-select-dropdown.tsx. Category is a
-// multiselect (multi-select-dropdown.tsx): a catalogue can belong to several
-// main categories at once and gets listed under each of them on the
-// storefront. `categoryOptions` is pre-filtered by the page client to
-// top-level/root categories only (parent_id === null) — a catalogue is filed
-// under main categories, not specific subcategories, so unlike the product
-// form's category picker these options are flat with no subtree/ancestor
-// behaviour.
+// multiselect (multi-select-dropdown.tsx): a catalogue can be filed under
+// several main categories at once. `categoryOptions` is pre-filtered by the
+// page client to top-level/root categories only (parent_id === null) — a
+// catalogue is filed under main categories, not specific subcategories, so
+// unlike the product form's category picker these options are flat with no
+// subtree/ancestor behaviour.
+//
+// Pages per category: the storefront shows a catalogue under each of its
+// categories with only the pages assigned to that category. The tab bar
+// above the page grid switches between "All pages" (remove pages, see what
+// each is assigned to) and one tab per category, where clicking a page
+// toggles it in or out of that category and shift-click does a range. A
+// page can be in several categories, or none (kept, but not shown on the
+// site). A newly picked category starts with no pages — except a
+// catalogue's first category, which takes every page, and while there is
+// only one category, newly converted pages go straight into it, so a
+// single-category catalogue never needs any picking.
 //
 // Images: a catalogue's pages always come from converting an uploaded PDF
 // rather than individual image uploads or pasted URLs. Picking a PDF stages
@@ -26,9 +36,9 @@
 // not an option. Pages arrive as "blob:" object URLs, not yet stored
 // anywhere, which is also what keeps them out of JS memory; the admin can
 // drop any of them before saving. A page removed here that was already
-// persisted (part of the catalogue's saved imagePaths when the form opened)
-// is deleted from the backend right away, same as product images. Save
-// itself is two-phase (see handleSubmit): the details call carries only
+// persisted (part of the catalogue's saved pages when the form opened) is
+// deleted from the backend right away, same as product images. Save itself
+// is two-phase (see handleSubmit): the details call carries only
 // already-persisted pages, then each new "blob:" page is uploaded with its
 // own addCatalogueImage call — bundling every page into one request
 // routinely exceeded the server's request size limit on multi-page
@@ -40,7 +50,7 @@
 // checkbox is the non-destructive alternative: it only decides whether the
 // catalogue appears on the public /brand-catalogues page, leaving the
 // catalogue and every page it has untouched in the admin table.
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type MouseEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch, resolveMediaUrl } from "@/lib/api";
 import {
@@ -51,12 +61,13 @@ import {
   fetchCataloguePdfPage,
   uploadCataloguePdf,
   type Catalogue,
+  type CataloguePage,
   type CataloguePdfSession,
 } from "@/lib/catalogues";
 import type { VendorOption } from "@/lib/vendors";
 import { MultiSelectDropdown, type MultiSelectOption } from "@/components/admin/multi-select-dropdown";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
-import { XMarkIcon } from "@/components/icons";
+import { CheckIcon, XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
 type Status = "idle" | "saving";
@@ -65,6 +76,9 @@ const CATALOGUE_TYPE_OPTIONS = [
   { value: "brand", label: "Brand" },
   { value: "regular", label: "Regular" },
 ];
+
+// "all" is the overview tab; any other value is a category id.
+const ALL_PAGES_TAB = "all";
 
 export function CatalogueFormModal({
   mode,
@@ -99,7 +113,12 @@ export function CatalogueFormModal({
   const [catalogueType, setCatalogueType] = useState(initialCatalogue?.catalogueType ?? "");
   // New catalogues go up visible — the admin uploads one to publish it.
   const [isVisible, setIsVisible] = useState(initialCatalogue?.isVisible ?? true);
-  const [imagePaths, setImagePaths] = useState<string[]>(initialCatalogue?.imagePaths ?? []);
+  // In page order. imagePath is a saved /media path, or a "blob:" object URL
+  // for a page converted this session and not yet saved.
+  const [pages, setPages] = useState<CataloguePage[]>(initialCatalogue?.pages ?? []);
+  const [activeTab, setActiveTab] = useState<string>(ALL_PAGES_TAB);
+  // Anchor for shift-click range selection within a category tab.
+  const lastClickedIndexRef = useRef<number | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -119,7 +138,7 @@ export function CatalogueFormModal({
   const [hasUnsavedImageDeletion, setHasUnsavedImageDeletion] = useState(false);
 
   // Every object URL this modal created, so they can be released on unmount.
-  // A revoked URL can't be read again, so pages still sitting in imagePaths
+  // A revoked URL can't be read again, so pages still sitting in `pages`
   // are only revoked once the modal is actually going away (or the page is
   // removed) — never on a failed Save, which leaves them in the grid to
   // retry.
@@ -134,6 +153,9 @@ export function CatalogueFormModal({
 
   const isEdit = mode === "edit";
   const title = isEdit ? "Edit catalogue" : "Add new catalogue";
+
+  const categoryNameById = new Map(categoryOptions.map((option) => [option.value, option.label]));
+  const unassignedPageCount = pages.filter((page) => page.categoryIds.length === 0).length;
 
   // Closing (Cancel/X/backdrop) never runs onSaved, so if a page delete
   // already went to the server this session, the parent's cached catalogue
@@ -155,6 +177,61 @@ export function CatalogueFormModal({
     isDeleted: false,
   }));
 
+  // Keeps every page's categories within the catalogue's own: a category
+  // taken off the catalogue comes off its pages too. The catalogue's first
+  // category takes every page, since with one category there's nothing to
+  // split; later ones start empty for the admin to pick.
+  function handleCategoriesChange(next: string[]) {
+    const isFirstCategory = categoryIds.length === 0 && next.length === 1;
+    setCategoryIds(next);
+    setPages((prev) =>
+      prev.map((page) => ({
+        ...page,
+        categoryIds: isFirstCategory ? [...next] : page.categoryIds.filter((id) => next.includes(id)),
+      })),
+    );
+    if (activeTab !== ALL_PAGES_TAB && !next.includes(activeTab)) {
+      setActiveTab(ALL_PAGES_TAB);
+    }
+    lastClickedIndexRef.current = null;
+  }
+
+  function switchTab(tab: string) {
+    setActiveTab(tab);
+    lastClickedIndexRef.current = null;
+  }
+
+  // Toggles one page in/out of the active category. With shift held, every
+  // page between the last-clicked one and this one is set to the state this
+  // page is being toggled to — the usual range-select behaviour.
+  function togglePageInActiveCategory(index: number, event: MouseEvent<HTMLButtonElement>) {
+    const categoryId = activeTab;
+    const include = !pages[index].categoryIds.includes(categoryId);
+    const anchor = lastClickedIndexRef.current;
+    const [from, to] =
+      event.shiftKey && anchor !== null ? [Math.min(anchor, index), Math.max(anchor, index)] : [index, index];
+
+    setPages((prev) =>
+      prev.map((page, i) => {
+        if (i < from || i > to) return page;
+        const without = page.categoryIds.filter((id) => id !== categoryId);
+        return { ...page, categoryIds: include ? [...without, categoryId] : without };
+      }),
+    );
+    lastClickedIndexRef.current = index;
+  }
+
+  function setAllPagesInActiveCategory(include: boolean) {
+    const categoryId = activeTab;
+    setPages((prev) =>
+      prev.map((page) => {
+        const without = page.categoryIds.filter((id) => id !== categoryId);
+        return { ...page, categoryIds: include ? [...without, categoryId] : without };
+      }),
+    );
+    lastClickedIndexRef.current = null;
+  }
+
   // Uploads the chosen PDF, then walks its pages one request at a time,
   // appending each to the grid as it arrives so the admin watches the
   // catalogue fill in rather than waiting on one long request. Pages are
@@ -171,6 +248,11 @@ export function CatalogueFormModal({
     setPdfUploadError(null);
     setPdfProgress(null);
 
+    // With a single category there's nothing to split, so new pages go
+    // straight into it; otherwise they arrive unassigned for the admin to
+    // place.
+    const newPageCategoryIds = categoryIds.length === 1 ? [...categoryIds] : [];
+
     let session: CataloguePdfSession | null = null;
     try {
       session = await uploadCataloguePdf(file);
@@ -180,7 +262,7 @@ export function CatalogueFormModal({
         const blob = await fetchCataloguePdfPage(session.sessionId, page);
         const objectUrl = URL.createObjectURL(blob);
         pageObjectUrlsRef.current.push(objectUrl);
-        setImagePaths((prev) => [...prev, objectUrl]);
+        setPages((prev) => [...prev, { imagePath: objectUrl, categoryIds: newPageCategoryIds }]);
         setPdfProgress({ done: page + 1, total: session.pageCount });
       }
     } catch (err) {
@@ -197,15 +279,16 @@ export function CatalogueFormModal({
     }
   }
 
-  // If this page was already persisted (part of the catalogue's saved
-  // imagePaths when the form opened), delete it from the backend right away
-  // via delete_catalogue_image rather than waiting for a full form Save — a
+  // If this page was already persisted (part of the catalogue's saved pages
+  // when the form opened), delete it from the backend right away via
+  // delete_catalogue_image rather than waiting for a full form Save — a
   // page from this session's own PDF conversion just comes out of local
-  // state (and has its object URL released), since there's nothing to delete
-  // server-side yet.
+  // state (and has its object URL released), since there's nothing to
+  // delete server-side yet.
   async function removePage(index: number) {
-    const path = imagePaths[index];
-    const wasPersisted = isEdit && initialCatalogue != null && initialCatalogue.imagePaths.includes(path);
+    const path = pages[index].imagePath;
+    const wasPersisted =
+      isEdit && initialCatalogue != null && initialCatalogue.pages.some((page) => page.imagePath === path);
 
     if (wasPersisted && initialCatalogue) {
       setDeletingPageIndex(index);
@@ -226,7 +309,8 @@ export function CatalogueFormModal({
       pageObjectUrlsRef.current = pageObjectUrlsRef.current.filter((url) => url !== path);
     }
 
-    setImagePaths((prev) => prev.filter((_, i) => i !== index));
+    setPages((prev) => prev.filter((_, i) => i !== index));
+    lastClickedIndexRef.current = null;
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -241,6 +325,16 @@ export function CatalogueFormModal({
       setError("Please select at least one category.");
       return;
     }
+    // A category with no pages would never show this catalogue, so it's
+    // either a missed step or a category that shouldn't be on it.
+    if (pages.length > 0) {
+      const emptyCategoryId = categoryIds.find((id) => !pages.some((page) => page.categoryIds.includes(id)));
+      if (emptyCategoryId !== undefined) {
+        setError(`Pick the pages to show under ${categoryNameById.get(emptyCategoryId) ?? "each category"}.`);
+        switchTab(emptyCategoryId);
+        return;
+      }
+    }
     if (!form.checkValidity()) {
       form.reportValidity();
       return;
@@ -254,8 +348,8 @@ export function CatalogueFormModal({
     // stored) are saved one at a time afterward via addCatalogueImage — see
     // the module comment in routes/catalogues.py for why bundling every page
     // into one request doesn't scale.
-    const persistedPaths = imagePaths.filter((path) => !path.startsWith("blob:"));
-    const pendingPageUrls = imagePaths.filter((path) => path.startsWith("blob:"));
+    const persistedPages = pages.filter((page) => !page.imagePath.startsWith("blob:"));
+    const pendingPages = pages.filter((page) => page.imagePath.startsWith("blob:"));
 
     const detailsPayload = {
       ...(isEdit ? { id: initialCatalogue?.id } : {}),
@@ -264,7 +358,10 @@ export function CatalogueFormModal({
       catalogue_type: catalogueType,
       category_ids: categoryIds.map(Number),
       is_visible: isVisible,
-      image_paths: persistedPaths,
+      pages: persistedPages.map((page) => ({
+        image_path: page.imagePath,
+        category_ids: page.categoryIds.map(Number),
+      })),
     };
 
     try {
@@ -287,24 +384,25 @@ export function CatalogueFormModal({
         return;
       }
 
-      const { id: catalogueId, image_paths: savedPersistedPaths }: { id: number; image_paths: string[] } =
-        await detailsResponse.json();
+      const { id: catalogueId }: { id: number } = await detailsResponse.json();
 
-      const uploadedPaths: string[] = [];
+      const uploadedPages: CataloguePage[] = [];
       try {
-        for (const pageUrl of pendingPageUrls) {
-          uploadedPaths.push(await addCatalogueImage(catalogueId, pageUrl));
+        for (const page of pendingPages) {
+          const imagePath = await addCatalogueImage(catalogueId, page.imagePath, page.categoryIds);
+          uploadedPages.push({ imagePath, categoryIds: page.categoryIds });
         }
       } catch {
         if (isEdit) {
           // The catalogue's other fields and kept pages are already saved
           // above — deleting the whole thing over one failed new page
-          // would destroy real pre-existing data. Keep whatever uploaded
-          // so far plus whichever pages never got attempted, still as
-          // pending object URLs, so the admin can just hit Save again.
-          setImagePaths([...savedPersistedPaths, ...pendingPageUrls.slice(uploadedPaths.length)]);
+          // would destroy real pre-existing data. Keep the pages that did
+          // upload (now saved paths, so the next Save keeps them) plus
+          // whichever never got attempted, still as pending object URLs,
+          // so the admin can just hit Save again.
+          setPages([...persistedPages, ...uploadedPages, ...pendingPages.slice(uploadedPages.length)]);
           setError(
-            `Saved, but only ${uploadedPaths.length} of ${pendingPageUrls.length} new page(s) uploaded. Try saving again for the rest.`,
+            `Saved, but only ${uploadedPages.length} of ${pendingPages.length} new page(s) uploaded. Try saving again for the rest.`,
           );
         } else {
           // Nothing about this catalogue was visible before this Save
@@ -324,7 +422,7 @@ export function CatalogueFormModal({
         catalogueType,
         categoryIds,
         isVisible,
-        imagePaths: [...savedPersistedPaths, ...uploadedPaths],
+        pages: [...persistedPages, ...uploadedPages],
       });
     } catch {
       setError("Couldn't reach the server. Please try again.");
@@ -346,6 +444,9 @@ export function CatalogueFormModal({
       setIsDeletingCatalogue(false);
     }
   }
+
+  const isCategoryTab = activeTab !== ALL_PAGES_TAB;
+  const activeCategoryName = isCategoryTab ? (categoryNameById.get(activeTab) ?? "this category") : "";
 
   return (
     <div className={styles.modalBackdrop} onClick={handleClose}>
@@ -402,7 +503,7 @@ export function CatalogueFormModal({
               placeholder="Select categories"
               options={categoryOptions}
               selectedValues={categoryIds}
-              onChange={setCategoryIds}
+              onChange={handleCategoriesChange}
             />
 
             <div>
@@ -474,37 +575,120 @@ export function CatalogueFormModal({
               />
             </div>
 
-            {imagePaths.length === 0 && !isUploadingPdf && (
+            {pages.length === 0 && !isUploadingPdf && (
               <p className={styles.pageSubtext}>Upload a PDF to generate the catalogue pages.</p>
             )}
 
-            <div className={styles.catalogueImageGrid}>
-              {imagePaths.map((path, index) => (
-                <div key={path} className={styles.catalogueImageCard}>
-                  <div className={styles.catalogueImageThumbWrap}>
-                    {/* eslint-disable-next-line @next/next/no-img-element -- backend-relative path, not an optimizable static asset */}
-                    <img
-                      src={resolveMediaUrl(path)}
-                      alt={`Page ${index + 1}`}
-                      // A long catalogue is 100+ full-page images, and
-                      // decoding them all at once is what would push the tab
-                      // into swapping — only decode what's scrolled into view.
-                      loading="lazy"
-                      className={styles.imageThumb}
-                    />
+            {pages.length > 0 && categoryIds.length > 0 && (
+              <div className={styles.catalogueCategoryTabs} role="tablist" aria-label="Pages by category">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={!isCategoryTab}
+                  onClick={() => switchTab(ALL_PAGES_TAB)}
+                  className={`${styles.viewToggleButton} ${!isCategoryTab ? styles.viewToggleButtonActive : ""}`}
+                >
+                  All pages ({pages.length})
+                </button>
+                {categoryIds.map((id) => {
+                  const count = pages.filter((page) => page.categoryIds.includes(id)).length;
+                  return (
                     <button
+                      key={id}
                       type="button"
-                      onClick={() => void removePage(index)}
-                      disabled={deletingPageIndex === index}
-                      aria-label={`Remove page ${index + 1}`}
-                      className={styles.catalogueImageRemoveButton}
+                      role="tab"
+                      aria-selected={activeTab === id}
+                      onClick={() => switchTab(id)}
+                      className={`${styles.viewToggleButton} ${activeTab === id ? styles.viewToggleButtonActive : ""}`}
                     >
-                      <XMarkIcon className="h-3.5 w-3.5" />
+                      {categoryNameById.get(id) ?? "Category"} ({count})
                     </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {isCategoryTab && pages.length > 0 && (
+              <p className={styles.formHint}>
+                Click pages to show them under <strong>{activeCategoryName}</strong>; shift-click to select a range.{" "}
+                <button type="button" className={styles.linkButton} onClick={() => setAllPagesInActiveCategory(true)}>
+                  Select all
+                </button>{" "}
+                ·{" "}
+                <button type="button" className={styles.linkButton} onClick={() => setAllPagesInActiveCategory(false)}>
+                  Clear
+                </button>
+              </p>
+            )}
+
+            {!isCategoryTab && unassignedPageCount > 0 && categoryIds.length > 0 && (
+              <p className={styles.formHint}>
+                {unassignedPageCount} page{unassignedPageCount === 1 ? " isn't" : "s aren't"} in any category, so{" "}
+                {unassignedPageCount === 1 ? "it won't" : "they won't"} be shown on the site. Open a category tab to
+                assign {unassignedPageCount === 1 ? "it" : "them"}.
+              </p>
+            )}
+
+            <div className={styles.catalogueImageGrid}>
+              {pages.map((page, index) => {
+                const inActiveCategory = isCategoryTab && page.categoryIds.includes(activeTab);
+                const thumb = (
+                  // eslint-disable-next-line @next/next/no-img-element -- backend-relative path, not an optimizable static asset
+                  <img
+                    src={resolveMediaUrl(page.imagePath)}
+                    alt={`Page ${index + 1}`}
+                    // A long catalogue is 100+ full-page images, and
+                    // decoding them all at once is what would push the tab
+                    // into swapping — only decode what's scrolled into view.
+                    loading="lazy"
+                    className={styles.imageThumb}
+                  />
+                );
+
+                return (
+                  <div key={page.imagePath} className={styles.catalogueImageCard}>
+                    {isCategoryTab ? (
+                      <button
+                        type="button"
+                        aria-pressed={inActiveCategory}
+                        aria-label={`Page ${index + 1} in ${activeCategoryName}`}
+                        onClick={(event) => togglePageInActiveCategory(index, event)}
+                        className={`${styles.cataloguePageToggle} ${
+                          inActiveCategory ? styles.cataloguePageToggleOn : styles.cataloguePageToggleOff
+                        }`}
+                      >
+                        {thumb}
+                        {inActiveCategory && (
+                          <span className={styles.cataloguePageCheck}>
+                            <CheckIcon className="h-3.5 w-3.5" />
+                          </span>
+                        )}
+                      </button>
+                    ) : (
+                      <div className={styles.catalogueImageThumbWrap}>
+                        {thumb}
+                        <button
+                          type="button"
+                          onClick={() => void removePage(index)}
+                          disabled={deletingPageIndex === index}
+                          aria-label={`Remove page ${index + 1}`}
+                          className={styles.catalogueImageRemoveButton}
+                        >
+                          <XMarkIcon className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+                    <span className={styles.cataloguePageLabel}>Page {index + 1}</span>
+                    {!isCategoryTab && categoryIds.length > 1 && (
+                      <span className={styles.cataloguePageCategories}>
+                        {page.categoryIds.length === 0
+                          ? "Not shown"
+                          : page.categoryIds.map((id) => categoryNameById.get(id) ?? "?").join(", ")}
+                      </span>
+                    )}
                   </div>
-                  <span className={styles.cataloguePageLabel}>Page {index + 1}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {pageDeleteError && (

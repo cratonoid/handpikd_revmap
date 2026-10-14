@@ -12,6 +12,7 @@ class PriceListDetailItem(BaseModel):
     vendor_id: int
     catalogue_id: int | None
     notes: str
+    file_type: str  # "pdf" | "xlsx" | "xls"
     original_filename: str
     uploaded_at: datetime
 

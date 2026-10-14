@@ -12,6 +12,11 @@
 # switch that keeps the catalogue and its pages in the admin table while
 # taking it off get_public_catalogues, so hiding one is not a delete.
 #
+# A catalogue is filed under one or more categories, and each page carries
+# the subset of those it belongs to: the storefront lists the catalogue under
+# every category it has pages for, showing only those pages there. A page
+# can sit under several categories, or none (kept, but shown nowhere).
+#
 # Both directions of that PDF flow are paged, for the same reason. Intake:
 # upload_catalogue_pdf only stages the PDF and counts its pages, then the
 # client fetches each rendered page from get_catalogue_pdf_page and calls
@@ -46,6 +51,7 @@ from app.schemas.catalogues import (
     AddCatalogueDetailsResponse,
     AddCatalogueImageResponse,
     CatalogueDetailItem,
+    CataloguePage,
     DeleteCatalogueDetailsRequest,
     DeleteCatalogueDetailsResponse,
     DeleteCatalogueImageRequest,
@@ -79,11 +85,47 @@ router = APIRouter(prefix="/admin", tags=["catalogues"])
 public_router = APIRouter(prefix="/catalogues", tags=["catalogues-public"])
 
 
-async def _replace_image_paths(catalogue_id: int, image_paths: list[str]) -> None:
+# Rewrites a catalogue's page rows from scratch. Page order is row order:
+# ids come from an increasing counter, so inserting in list order is what
+# keeps the pages in the order the admin arranged them.
+async def _replace_pages(catalogue_id: int, pages: list[CataloguePage]) -> None:
     await CatalogueImageDetails.find(CatalogueImageDetails.catalogue_id == catalogue_id).delete()
-    for image_path in image_paths:
+    for page in pages:
         image_id = await get_next_id(CatalogueImageIdCounter, "next_catalogue_image_id", CatalogueImageDetails)
-        await CatalogueImageDetails(id=image_id, catalogue_id=catalogue_id, image_path=image_path).insert()
+        await CatalogueImageDetails(
+            id=image_id,
+            catalogue_id=catalogue_id,
+            image_path=page.image_path,
+            category_ids=page.category_ids,
+        ).insert()
+
+
+# A page can only be shown under categories its catalogue is filed under —
+# anything else would never be reached on the storefront, which only lists
+# the catalogue under its own category_ids.
+def _require_page_categories_within(page_category_ids: list[int], catalogue_category_ids: list[int]) -> None:
+    if not set(page_category_ids) <= set(catalogue_category_ids):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="a page can only use the catalogue's own categories",
+        )
+
+
+# The pages one category shows, in page order.
+def _image_paths_in_category(pages: list[CatalogueImageDetails], category_id: int) -> list[str]:
+    return [page.image_path for page in pages if category_id in page.category_ids]
+
+
+async def _pages_by_catalogue_id(catalogue_ids: list[int]) -> dict[int, list[CatalogueImageDetails]]:
+    pages = (
+        await CatalogueImageDetails.find(In(CatalogueImageDetails.catalogue_id, catalogue_ids))
+        .sort(+CatalogueImageDetails.id)
+        .to_list()
+    )
+    by_catalogue: dict[int, list[CatalogueImageDetails]] = {}
+    for page in pages:
+        by_catalogue.setdefault(page.catalogue_id, []).append(page)
+    return by_catalogue
 
 
 async def _require_vendor_and_categories(vendor_id: int, category_ids: list[int]) -> None:
@@ -195,6 +237,8 @@ async def add_catalogue_details(
     _: User | None = Depends(require_section(Section.catalogues)),
 ) -> AddCatalogueDetailsResponse:
     await _require_vendor_and_categories(payload.catalogue_vendor_id, payload.category_ids)
+    for page in payload.pages:
+        _require_page_categories_within(page.category_ids, payload.category_ids)
 
     catalogue_id = await get_next_id(CatalogueIdCounter, "next_catalogue_id", CatalogueDetails)
     catalogue = CatalogueDetails(
@@ -207,9 +251,13 @@ async def add_catalogue_details(
     )
     await catalogue.insert()
 
-    await _replace_image_paths(catalogue_id, payload.image_paths)
+    await _replace_pages(catalogue_id, payload.pages)
 
-    return AddCatalogueDetailsResponse(message="catalogue added successfully", id=catalogue_id, image_paths=payload.image_paths)
+    return AddCatalogueDetailsResponse(
+        message="catalogue added successfully",
+        id=catalogue_id,
+        image_paths=[page.image_path for page in payload.pages],
+    )
 
 
 @router.get("/get_catalogue_details", response_model=list[CatalogueDetailItem])
@@ -220,11 +268,7 @@ async def get_catalogue_details(
     if not catalogues:
         return []
 
-    catalogue_ids = [catalogue.id for catalogue in catalogues]
-    images = await CatalogueImageDetails.find(In(CatalogueImageDetails.catalogue_id, catalogue_ids)).to_list()
-    images_by_catalogue_id: dict[int, list[str]] = {}
-    for image in images:
-        images_by_catalogue_id.setdefault(image.catalogue_id, []).append(image.image_path)
+    pages_by_catalogue_id = await _pages_by_catalogue_id([catalogue.id for catalogue in catalogues])
 
     return [
         CatalogueDetailItem(
@@ -234,7 +278,10 @@ async def get_catalogue_details(
             catalogue_type=catalogue.catalogue_type,
             category_ids=catalogue.category_ids,
             is_visible=catalogue.is_visible,
-            image_paths=images_by_catalogue_id.get(catalogue.id, []),
+            pages=[
+                CataloguePage(image_path=page.image_path, category_ids=page.category_ids)
+                for page in pages_by_catalogue_id.get(catalogue.id, [])
+            ],
         )
         for catalogue in catalogues
     ]
@@ -250,6 +297,8 @@ async def update_catalogue_details(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="catalogue not found")
 
     await _require_vendor_and_categories(payload.catalogue_vendor_id, payload.category_ids)
+    for page in payload.pages:
+        _require_page_categories_within(page.category_ids, payload.category_ids)
 
     catalogue.catalogue_name = payload.catalogue_name
     catalogue.catalogue_vendor_id = payload.catalogue_vendor_id
@@ -258,15 +307,21 @@ async def update_catalogue_details(
     catalogue.is_visible = payload.is_visible
     await catalogue.save()
 
-    await _replace_image_paths(catalogue.id, payload.image_paths)
+    await _replace_pages(catalogue.id, payload.pages)
 
-    return UpdateCatalogueDetailsResponse(message="catalogue updated successfully", id=catalogue.id, image_paths=payload.image_paths)
+    return UpdateCatalogueDetailsResponse(
+        message="catalogue updated successfully",
+        id=catalogue.id,
+        image_paths=[page.image_path for page in payload.pages],
+    )
 
 
 @router.post("/add_catalogue_image", response_model=AddCatalogueImageResponse)
 async def add_catalogue_image(
     catalogue_id: int = Form(...),
     file: UploadFile = File(...),
+    # Repeated form field, one per category this page is shown under.
+    category_ids: list[int] = Form([]),
     _: User | None = Depends(require_section(Section.catalogues)),
 ) -> AddCatalogueImageResponse:
     # Persists one page for an already-saved catalogue — see the module
@@ -275,6 +330,7 @@ async def add_catalogue_image(
     catalogue = await CatalogueDetails.get(catalogue_id)
     if catalogue is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="catalogue not found")
+    _require_page_categories_within(category_ids, catalogue.category_ids)
 
     image_bytes = await file.read()
     try:
@@ -283,7 +339,9 @@ async def add_catalogue_image(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(error))
 
     image_id = await get_next_id(CatalogueImageIdCounter, "next_catalogue_image_id", CatalogueImageDetails)
-    await CatalogueImageDetails(id=image_id, catalogue_id=catalogue_id, image_path=image_path).insert()
+    await CatalogueImageDetails(
+        id=image_id, catalogue_id=catalogue_id, image_path=image_path, category_ids=category_ids
+    ).insert()
 
     return AddCatalogueImageResponse(message="image added successfully", image_path=image_path)
 
@@ -363,10 +421,7 @@ async def get_public_catalogues() -> list[PublicCatalogueSection]:
     vendor_ids = list({catalogue.catalogue_vendor_id for catalogue in catalogues})
     category_ids = list({category_id for catalogue in catalogues for category_id in catalogue.category_ids})
 
-    images = await CatalogueImageDetails.find(In(CatalogueImageDetails.catalogue_id, catalogue_ids)).to_list()
-    images_by_catalogue_id: dict[int, list[str]] = {}
-    for image in images:
-        images_by_catalogue_id.setdefault(image.catalogue_id, []).append(image.image_path)
+    pages_by_catalogue_id = await _pages_by_catalogue_id(catalogue_ids)
 
     vendors = await VendorDetails.find(In(VendorDetails.id, vendor_ids)).to_list()
     vendor_name_by_id = {vendor.id: vendor.registered_name for vendor in vendors}
@@ -378,17 +433,22 @@ async def get_public_catalogues() -> list[PublicCatalogueSection]:
     # into the nested response shape below.
     grouped: dict[str, dict[int, list[PublicCatalogueItem]]] = {}
     for catalogue in catalogues:
-        item = PublicCatalogueItem(
-            id=catalogue.id,
-            catalogue_name=catalogue.catalogue_name,
-            vendor_name=vendor_name_by_id.get(catalogue.catalogue_vendor_id, ""),
-            image_paths=images_by_catalogue_id.get(catalogue.id, []),
-        )
-        # One entry per category the catalogue belongs to: a catalogue tagged
-        # with several main categories is listed under each of them, which is
-        # the whole point of category_ids being a list. The same item object
-        # is shared across those groups — nothing mutates it after this.
+        pages = pages_by_catalogue_id.get(catalogue.id, [])
+        # One entry per category the catalogue belongs to, each carrying only
+        # the pages assigned to that category — so one catalogue covering
+        # several categories shows each of them just its own pages. A
+        # category with no pages assigned is skipped rather than listed as
+        # an empty card.
         for category_id in catalogue.category_ids:
+            image_paths = _image_paths_in_category(pages, category_id)
+            if not image_paths:
+                continue
+            item = PublicCatalogueItem(
+                id=catalogue.id,
+                catalogue_name=catalogue.catalogue_name,
+                vendor_name=vendor_name_by_id.get(catalogue.catalogue_vendor_id, ""),
+                image_paths=image_paths,
+            )
             grouped.setdefault(catalogue.catalogue_type, {}).setdefault(category_id, []).append(item)
 
     sections: list[PublicCatalogueSection] = []
