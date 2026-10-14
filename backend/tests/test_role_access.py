@@ -119,7 +119,15 @@ def test_every_admin_endpoint_is_behind_require_staff():
     admin_routes = [(path, route) for path, route in _module_routes() if path.startswith("/admin/")]
     assert len(admin_routes) > 50
     unguarded = [path for path, route in admin_routes if not _depends_on_require_staff(route.dependant)]
-    assert unguarded == []
+    assert sorted(unguarded) == sorted(_GUARDED_ANOTHER_WAY)
+
+
+# Deliberately reachable without a login, each guarded another way — see the
+# header of app/api/routes/backups.py. A restore signs everyone out partway
+# through, so its progress poll is keyed by an unguessable job id; a backup
+# download is authorized by a short-lived link token so the browser can
+# stream it to disk.
+_GUARDED_ANOTHER_WAY = ["/admin/backups/jobs/{job_id}", "/admin/backups/download/{name}"]
 
 
 def test_unique_sections_dedupes_in_sidebar_order():

@@ -27,12 +27,17 @@ export type SectionKey =
   | "quotation"
   | "profile"
   | "emails"
-  | "users";
+  | "users"
+  | "backups";
 
 export type AdminSection = {
   key: SectionKey;
   label: string;
   href: string;
+  // Only the built-in Administrator role may open it, so it's never offered
+  // as a checkbox in the role editor — see require_administrator in
+  // backend/app/api/deps.py, which has no matching backend Section.
+  administratorOnly?: boolean;
 };
 
 export const ADMIN_SECTIONS: AdminSection[] = [
@@ -54,7 +59,16 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "quotation", label: "Quotation", href: "/admin/quotation" },
   { key: "profile", label: "Profile", href: "/admin/profile" },
   { key: "users", label: "Users & Roles", href: "/admin/users" },
+  { key: "backups", label: "Backup & Restore", href: "/admin/backups", administratorOnly: true },
 ];
+
+// What a custom role can be given: everything but the Administrator-only
+// sections.
+export const GRANTABLE_SECTIONS: AdminSection[] = ADMIN_SECTIONS.filter((section) => !section.administratorOnly);
+
+const ADMINISTRATOR_ONLY = new Set(
+  ADMIN_SECTIONS.filter((section) => section.administratorOnly).map((section) => section.key),
+);
 
 // A section also owns its sub-pages (the sales order details page sits
 // under /admin/orders). The dashboard is the exception: every admin page is
@@ -78,7 +92,8 @@ export type MyAccess = {
 };
 
 export function canAccess(access: MyAccess, key: SectionKey): boolean {
-  return access.sections === null || access.sections.includes(key);
+  if (access.sections === null) return true;
+  return !ADMINISTRATOR_ONLY.has(key) && access.sections.includes(key);
 }
 
 type MyAccessResponse = {

@@ -5,8 +5,10 @@
 // vendor's original file — a PDF or an Excel workbook (.xlsx / .xls) — kept
 // as-is (not rendered into page images the way a catalogue is) and stored
 // privately: there is no /media URL for it, so it's fetched with the admin's
-// token by openPriceListFile, which opens a PDF in a new tab and downloads a
-// workbook. Each one belongs to a vendor and can optionally link a catalogue.
+// token. A PDF opens in a new tab (openPriceListFile); a workbook is shown
+// in the admin as a table (fetchPriceListSheets), with openPriceListFile
+// downloading the original. Each one belongs to a vendor and can optionally
+// link a catalogue.
 import { apiFetch } from "@/lib/api";
 
 export type PriceListFileType = "pdf" | "xlsx" | "xls";
@@ -144,6 +146,25 @@ export async function deletePriceList(priceListId: number): Promise<void> {
   }
 }
 
+// An Excel price list read server-side into text cells, one entry per
+// visible worksheet — what <PriceListSheetViewer> renders, since a browser
+// can't open a workbook itself. `truncated` means the sheet ran past the
+// viewer's row/column limit and the rest is only in the downloaded file.
+export type PriceListSheet = {
+  name: string;
+  rows: string[][];
+  truncated: boolean;
+};
+
+export async function fetchPriceListSheets(priceListId: number): Promise<PriceListSheet[]> {
+  const response = await apiFetch(`/admin/get_price_list_sheets?price_list_id=${priceListId}`);
+  if (!response.ok) {
+    throw new Error("Failed to read workbook");
+  }
+  const data: { sheets: PriceListSheet[] } = await response.json();
+  return data.sheets;
+}
+
 function downloadObjectUrl(url: string, filename: string) {
   const link = document.createElement("a");
   link.href = url;
@@ -153,8 +174,9 @@ function downloadObjectUrl(url: string, filename: string) {
   document.body.removeChild(link);
 }
 
-// A PDF opens in a new tab; a workbook can't be shown in the browser, so it
-// downloads (named after the price list) for Excel to open. For a PDF the
+// A PDF opens in a new tab; a workbook downloads (named after the price
+// list) for Excel to open — viewing one in the admin goes through
+// fetchPriceListSheets instead. For a PDF the
 // tab is opened before the fetch, while the click still counts as a user
 // gesture — opening it after the await is what popup blockers stop. The
 // object URL is released after a minute, by which point the tab or download

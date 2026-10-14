@@ -22,6 +22,15 @@ class LeadStatus(str, Enum):
     sent = "sent"
 
 
+# Lead-only "SD Status" column in the Leads table. Unlike lead_status it has
+# no default: a lead has none until one is picked.
+class SdStatus(str, Enum):
+    sdi = "sdi"
+    sdid = "sdid"
+    sdl = "sdl"
+    sdld = "sdld"
+
+
 class OutreachChannel(str, Enum):
     whatsapp = "whatsapp"
     mail = "mail"
@@ -46,6 +55,9 @@ class DatabaseContact(Document):
     # this field existed have no value stored and read back as "new" (see
     # _to_item in routes/database_contacts.py).
     lead_status: LeadStatus | None = None
+    # Lead-only, optional: the "SD Status" dropdown. None on client and
+    # vendor rows, and on leads that haven't been given one.
+    sd_status: SdStatus | None = None
     # Lead-only: the channels we have this lead's details for — the
     # "Data present" tick boxes in the Leads table. Ticked by hand. Empty on
     # client and vendor rows.

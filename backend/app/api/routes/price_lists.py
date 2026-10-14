@@ -18,6 +18,7 @@ from datetime import timezone
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import require_section
 from app.models import CatalogueDetails, PriceListDetails, PriceListIdCounter, Section, User, VendorDetails
@@ -27,10 +28,13 @@ from app.schemas.price_lists import (
     DeletePriceListResponse,
     PriceListCatalogueOption,
     PriceListDetailItem,
+    PriceListSheet,
+    PriceListSheetsResponse,
     SavePriceListResponse,
 )
 from app.services.counters import get_next_id
 from app.services.purchase_invoice_storage import delete_uploaded_pdf, read_uploaded_pdf, save_uploaded_file
+from app.services.spreadsheet_preview import read_workbook_preview
 from app.services.storage import LocalUploadBlockedError
 
 router = APIRouter(prefix="/admin", tags=["price-lists"])
@@ -230,6 +234,36 @@ async def get_price_list_file(
         content=file_bytes,
         media_type=PRICE_LIST_FILE_TYPES.get(file_type, "application/octet-stream"),
         headers={"Content-Disposition": f"{disposition}; filename*=UTF-8''{filename}"},
+    )
+
+
+@router.get("/get_price_list_sheets", response_model=PriceListSheetsResponse)
+async def get_price_list_sheets(
+    price_list_id: int = Query(...),
+    _: User | None = Depends(require_section(Section.price_lists)),
+) -> PriceListSheetsResponse:
+    # The in-browser view of an Excel price list: browsers can't render a
+    # workbook, so it's read here into text cells instead.
+    price_list = await _get_price_list_or_404(price_list_id)
+    file_type = _file_type_of(price_list.file_path)
+    if file_type not in ("xlsx", "xls"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="price list is not an Excel workbook")
+
+    file_bytes = read_uploaded_pdf(price_list.file_path)
+    if file_bytes is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="price list file is missing")
+
+    # Parsing a large workbook is CPU-bound, so it runs off the event loop.
+    try:
+        previews = await run_in_threadpool(read_workbook_preview, file_bytes, file_type)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="couldn't read this workbook")
+
+    return PriceListSheetsResponse(
+        sheets=[
+            PriceListSheet(name=preview.name, rows=preview.rows, truncated=preview.truncated)
+            for preview in previews
+        ]
     )
 
 

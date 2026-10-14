@@ -458,6 +458,19 @@ export function DatabaseIcon(props: IconProps) {
   );
 }
 
+// A box with an arrow circling back into it — the admin's Backup & Restore
+// page, which saves the whole site and loads it back.
+export function BackupIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 8.5h16v10a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5v-10Z" />
+      <path d="M3 5.5A1.5 1.5 0 0 1 4.5 4h15A1.5 1.5 0 0 1 21 5.5v3H3v-3Z" />
+      <path d="M14.75 14.25a2.75 2.75 0 1 1-.8-1.95" />
+      <path d="M14.25 11.25v1.5h-1.5" />
+    </svg>
+  );
+}
+
 // A shield with a person inside — the admin's Users & Roles page, which
 // decides who can open which sections.
 export function ShieldUserIcon(props: IconProps) {

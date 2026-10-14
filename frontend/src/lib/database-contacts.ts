@@ -20,6 +20,16 @@ export const LEAD_STATUS_OPTIONS: { value: LeadStatus; label: string }[] = [
   { value: "sent", label: "Sent" },
 ];
 
+// The Leads table's "SD Status" dropdown. Optional: "" until one is picked.
+export type SdStatus = "sdi" | "sdid" | "sdl" | "sdld";
+
+export const SD_STATUS_OPTIONS: { value: SdStatus; label: string }[] = [
+  { value: "sdi", label: "SDI" },
+  { value: "sdid", label: "SDID" },
+  { value: "sdl", label: "SDL" },
+  { value: "sdld", label: "SDLD" },
+];
+
 export type OutreachChannel = "whatsapp" | "mail";
 
 export const OUTREACH_OPTIONS: { value: OutreachChannel; label: string }[] = [
@@ -40,6 +50,8 @@ export type Contact = {
   contactPerson: string;
   // Always "new" on client and vendor rows, where it isn't shown.
   leadStatus: LeadStatus;
+  // Lead-only; "" when none is set.
+  sdStatus: SdStatus | "";
   // Lead-only "Data present" channels; [] on client and vendor rows.
   outreachChannels: OutreachChannel[];
   // Lead-only "Sent status" channels; [] on client and vendor rows. "mail" is
@@ -59,6 +71,7 @@ export type ContactFields = {
   location: string;
   contactPerson: string;
   leadStatus: LeadStatus;
+  sdStatus: SdStatus | "";
 };
 
 // Shape returned by the backend's ContactItem schema.
@@ -73,6 +86,7 @@ type ContactItemResponse = {
   location: string | null;
   contact_person: string | null;
   lead_status: LeadStatus | null;
+  sd_status?: SdStatus | null;
   outreach_channels?: OutreachChannel[];
   sent_channels?: OutreachChannel[];
   email_bounce_reason?: string | null;
@@ -91,6 +105,7 @@ function toContact(item: ContactItemResponse): Contact {
     location: item.location ?? "",
     contactPerson: item.contact_person ?? "",
     leadStatus: item.lead_status ?? "new",
+    sdStatus: item.sd_status ?? "",
     outreachChannels: item.outreach_channels ?? [],
     sentChannels: item.sent_channels ?? [],
     emailBounceReason: item.email_bounce_reason ?? "",
@@ -109,6 +124,7 @@ function toRequestFields(fields: ContactFields) {
     location: fields.location,
     contact_person: fields.contactPerson,
     lead_status: fields.leadStatus,
+    sd_status: fields.sdStatus,
   };
 }
 
@@ -166,6 +182,19 @@ export async function updateLeadStatus(id: number, status: LeadStatus): Promise<
   });
   if (!response.ok) {
     throw new Error(await detailOr(response, "Couldn't update the status. Please try again."));
+  }
+}
+
+// Just the SD status, for the dropdown in the Leads table's SD Status column.
+// Throws an Error with a user-facing message on failure.
+export async function updateSdStatus(id: number, sdStatus: SdStatus): Promise<void> {
+  const response = await apiFetch("/admin/database/update_contact", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ contact_id: id, sd_status: sdStatus }),
+  });
+  if (!response.ok) {
+    throw new Error(await detailOr(response, "Couldn't update the SD status. Please try again."));
   }
 }
 

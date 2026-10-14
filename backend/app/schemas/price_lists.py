@@ -37,3 +37,17 @@ class PriceListCatalogueOption(BaseModel):
     id: int
     catalogue_name: str
     vendor_id: int
+
+
+# An Excel price list read into text cells for the in-browser viewer — see
+# services/spreadsheet_preview.py.
+class PriceListSheet(BaseModel):
+    name: str
+    rows: list[list[str]]
+    # The sheet went past the viewer's row/column limit; the rest is only in
+    # the downloaded file.
+    truncated: bool
+
+
+class PriceListSheetsResponse(BaseModel):
+    sheets: list[PriceListSheet]

@@ -15,7 +15,7 @@
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { XMarkIcon } from "@/components/icons";
-import { ADMIN_SECTIONS, type SectionKey } from "@/lib/access";
+import { GRANTABLE_SECTIONS, type SectionKey } from "@/lib/access";
 import { addRole, deleteRole, updateRole, UsersApiError, type Role } from "@/lib/users";
 import styles from "@/styles/dashboard.module.css";
 
@@ -40,7 +40,7 @@ export function RoleFormModal({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const isEdit = initialRole !== undefined;
-  const allChecked = sections.size === ADMIN_SECTIONS.length;
+  const allChecked = sections.size === GRANTABLE_SECTIONS.length;
 
   function toggleSection(key: SectionKey, checked: boolean) {
     setSections((prev) => {
@@ -52,7 +52,7 @@ export function RoleFormModal({
   }
 
   function toggleAll() {
-    setSections(allChecked ? new Set() : new Set(ADMIN_SECTIONS.map((section) => section.key)));
+    setSections(allChecked ? new Set() : new Set(GRANTABLE_SECTIONS.map((section) => section.key)));
   }
 
   async function run(action: () => Promise<void>) {
@@ -78,7 +78,7 @@ export function RoleFormModal({
     // Sent in sidebar order; the backend normalises it anyway.
     const payload = {
       name: name.trim(),
-      sections: ADMIN_SECTIONS.map((section) => section.key).filter((key) => sections.has(key)),
+      sections: GRANTABLE_SECTIONS.map((section) => section.key).filter((key) => sections.has(key)),
     };
     void run(() => (initialRole ? updateRole(initialRole.id, payload) : addRole(payload)));
   }
@@ -135,7 +135,7 @@ export function RoleFormModal({
             </div>
 
             <div className={styles.sectionChecklist}>
-              {ADMIN_SECTIONS.map((section) => (
+              {GRANTABLE_SECTIONS.map((section) => (
                 <label key={section.key} className={styles.sectionChecklistItem}>
                   <input
                     type="checkbox"

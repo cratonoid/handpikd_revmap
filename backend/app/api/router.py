@@ -7,6 +7,7 @@ from app.api.routes import (
     analytics,
     auth,
     authentication,
+    backups,
     catalogues,
     categories,
     customer_invoices,
@@ -38,6 +39,7 @@ api_router.include_router(auth.router)
 api_router.include_router(authentication.router)
 api_router.include_router(admin.router)
 api_router.include_router(users.router)
+api_router.include_router(backups.router)
 api_router.include_router(analytics.router)
 api_router.include_router(accounts.router)
 api_router.include_router(expenses.router)

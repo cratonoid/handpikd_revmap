@@ -5434,3 +5434,190 @@ select.formInput:disabled {
 .pageHeaderAction {
   margin-left: auto;
 }
+
+/* -----------------------------------------------------------------------
+   Backup & Restore (components/admin/backups-page-client.tsx)
+   ----------------------------------------------------------------------- */
+
+.backupPanel {
+  margin-top: 1.25rem;
+  border-radius: 1rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-white);
+  padding: 1.25rem 1.5rem;
+}
+
+.backupPanelTitle {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.backupPanelRow {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.progressTrack {
+  margin-top: 0.75rem;
+  height: 0.5rem;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, var(--color-border) 45%, transparent);
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 9999px;
+  background-color: var(--color-charcoal);
+  transition: width 0.3s;
+}
+
+/* A restore replaces everything, so its panel and confirmation carry the
+   one red accent on the page. */
+.backupDangerPanel {
+  border-color: color-mix(in srgb, var(--color-red) 55%, var(--color-border));
+}
+
+.backupWarningList {
+  margin-top: 0.5rem;
+  padding-left: 1.1rem;
+  list-style: disc;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--color-ink);
+}
+
+.backupSuccess {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-status-completed);
+}
+
+.backupRowActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.tableActionButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.tableActionButtonDanger {
+  border-color: var(--color-red);
+  background-color: var(--color-red);
+}
+
+.backupHeaderActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+/* -----------------------------------------------------------------------
+   Excel price list viewer (components/admin/price-list-sheet-viewer.tsx)
+   ----------------------------------------------------------------------- */
+
+/* A price sheet is wide; the form-sized panel would leave most of its
+   columns behind a horizontal scroll. Wider than .modalPanel, and still
+   full-bleed on phones via .modalPanel's own mobile rules. */
+.modalPanelWide {
+  max-width: 80rem;
+}
+
+.sheetViewerHeaderActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sheetViewerBody {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.sheetViewerToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* The grid scrolls inside its own box, so the column letters and row
+   numbers can stay pinned (position: sticky below) while it does. */
+.sheetViewerScroll {
+  max-height: 65vh;
+  overflow: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background-color: #fff;
+}
+
+.sheetTable {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.8125rem;
+  color: var(--color-charcoal);
+}
+
+.sheetCell,
+.sheetColumnHead,
+.sheetRowHead,
+.sheetCorner {
+  border-right: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  padding: 0.35rem 0.6rem;
+  white-space: nowrap;
+}
+
+.sheetCell {
+  max-width: 28rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.sheetCellNumeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sheetColumnHead,
+.sheetRowHead,
+.sheetCorner {
+  background-color: var(--color-cream);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--color-ink);
+  text-align: center;
+}
+
+.sheetColumnHead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.sheetRowHead {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 2.75rem;
+}
+
+.sheetCorner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 2;
+}

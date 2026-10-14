@@ -15,6 +15,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.core.config import settings
 from app.core.security import decode_access_token
 from app.models import Role, Section, User, UserRole
+from app.services.restore_epoch import token_predates_restore
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -27,6 +28,13 @@ async def _user_from_credentials(credentials: HTTPAuthorizationCredentials | Non
         payload = decode_access_token(credentials.credentials)
     except jwt.PyJWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+
+    # A purpose token (core/security.py's create_purpose_token — e.g. a
+    # backup download link) is signed with the same key but is never a login.
+    if "purpose" in payload or "sub" not in payload:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
+    if token_predates_restore(payload):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Signed out by a restore")
 
     user = await User.get(int(payload["sub"]))
     if user is None:
@@ -117,3 +125,17 @@ def require_section(*sections: Section) -> Callable[..., Awaitable[User | None]]
         return current_user
 
     return dependency
+
+
+async def require_administrator(current_user: User | None = Depends(require_staff)) -> User | None:
+    """A team account holding the built-in Administrator role.
+
+    For backup and restore (routes/backups.py), which aren't a Section a
+    custom role can be granted: a restore replaces every record in the
+    business, so only the role that already sees everything may run one.
+    """
+    if current_user is None:
+        return None
+    if await get_allowed_sections(current_user) is not None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="only an Administrator can do this")
+    return current_user

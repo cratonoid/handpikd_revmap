@@ -313,9 +313,13 @@ async def bounce_check_loop() -> None:
     # Started from app/main.py's lifespan. A failed check (Titan briefly
     # unreachable) is logged and retried next round, never fatal.
     await asyncio.sleep(60)
+    from app.services.backup import restore_in_progress
+
     while True:
         try:
-            found = await check_bounces()
+            # Never writes into data a restore is busy replacing; the next
+            # round picks up whatever this one would have.
+            found = 0 if restore_in_progress() else await check_bounces()
             if found:
                 logger.info("bounce check: marked %s recipient(s) bounced", found)
         except asyncio.CancelledError:

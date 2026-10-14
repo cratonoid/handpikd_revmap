@@ -44,6 +44,18 @@ class Settings(BaseSettings):
     # see docker-compose.yml.
     purchase_invoice_root: str = "purchase_invoices"
 
+    # Where whole-site backups (see app/services/backup.py) are written,
+    # uploaded to and restored from. Its own volume in production — see
+    # docker-compose.yml — so a backup never sits inside the media it copies.
+    # It holds one backup at a time; see services/backup.py's header.
+    backup_root: str = "backups"
+    # A fresh backup is taken automatically every day at this time (24-hour
+    # HH:MM, India time), replacing the previous one — see
+    # daily_backup_loop in services/backup.py. Pick an hour nobody is using
+    # the site.
+    backup_daily_enabled: bool = True
+    backup_daily_time: str = "02:00"
+
     # Reading an uploaded vendor invoice PDF falls back to Claude whenever
     # the deterministic parser can't decode its layout — see
     # app/services/claude_invoice_extraction.py. Leaving the key unset

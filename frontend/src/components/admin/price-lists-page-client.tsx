@@ -7,9 +7,10 @@
 // GET /admin/get_price_list_details, see lib/price-lists.ts) and the add/edit
 // popup (price-list-form-modal.tsx): "+ Add price list" opens it in "add"
 // mode, double-clicking a row opens it in "edit" mode. Each row's file
-// button opens the vendor's original PDF in a new tab, or downloads it when
-// it's an Excel workbook — price lists are private, so there is no public
-// link to either, only the authenticated fetch.
+// button opens the vendor's original PDF in a new tab, or an Excel workbook
+// in the in-page sheet viewer (price-list-sheet-viewer.tsx) — price lists
+// are private, so there is no public link to either, only the authenticated
+// fetch.
 //
 // Vendor and catalogue names are resolved locally from the same option lists
 // the form modal's pickers use. The search box filters client-side over the
@@ -17,6 +18,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { PriceListFormModal } from "@/components/admin/price-list-form-modal";
+import { PriceListSheetViewer } from "@/components/admin/price-list-sheet-viewer";
 import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import { PriceListIcon } from "@/components/icons";
 import { formatDate } from "@/lib/format-date";
@@ -42,6 +44,7 @@ export function PriceListsPageClient() {
   const [modalState, setModalState] = useState<ModalState>(null);
   const [search, setSearch] = useState("");
   const [viewError, setViewError] = useState<string | null>(null);
+  const [viewingSheets, setViewingSheets] = useState<PriceList | null>(null);
 
   function loadAll(): Promise<void> {
     return Promise.all([fetchPriceLists(), fetchVendorsList(), fetchPriceListCatalogueOptions()])
@@ -77,6 +80,12 @@ export function PriceListsPageClient() {
 
   async function handleView(priceList: PriceList) {
     setViewError(null);
+    // Workbooks open in the in-page sheet viewer; PDFs in the browser's own
+    // viewer, in a new tab.
+    if (isExcelFileType(priceList.fileType)) {
+      setViewingSheets(priceList);
+      return;
+    }
     try {
       await openPriceListFile(priceList);
     } catch {
@@ -149,7 +158,7 @@ export function PriceListsPageClient() {
                     // Double-clicking the button shouldn't also open the edit popup.
                     onDoubleClick={(event) => event.stopPropagation()}
                   >
-                    {isExcelFileType(priceList.fileType) ? "Download Excel" : "View PDF"}
+                    {isExcelFileType(priceList.fileType) ? "View Excel" : "View PDF"}
                   </button>
                 </td>
               </tr>
@@ -180,6 +189,8 @@ export function PriceListsPageClient() {
           onDeleted={handleChanged}
         />
       )}
+
+      {viewingSheets && <PriceListSheetViewer priceList={viewingSheets} onClose={() => setViewingSheets(null)} />}
     </>
   );
 }

@@ -52,6 +52,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/logo";
 import {
   ArchiveBoxIcon,
+  BackupIcon,
   ChartBarIcon,
   CubeIcon,
   DatabaseIcon,
@@ -116,6 +117,7 @@ const SECTION_ICONS: Record<SectionKey, Icon> = {
   quotation: DocumentTextIcon,
   profile: IdCardIcon,
   users: ShieldUserIcon,
+  backups: BackupIcon,
 };
 
 const NAV_ITEMS: Record<UserRole, NavItem[]> = {

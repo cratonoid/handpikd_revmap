@@ -1,10 +1,11 @@
 # Request/response bodies for the database module's endpoints (the admin's
 # /admin/database address book of clients, leads and vendors).
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.models.database_contact import ContactType, LeadStatus, OutreachChannel
+from app.models.database_contact import ContactType, LeadStatus, OutreachChannel, SdStatus
 
 
 class ContactItem(BaseModel):
@@ -18,6 +19,8 @@ class ContactItem(BaseModel):
     location: str | None
     contact_person: str | None
     lead_status: LeadStatus | None
+    # Lead-only; None until one is picked.
+    sd_status: SdStatus | None = None
     # Lead-only; [] on client and vendor rows.
     outreach_channels: list[OutreachChannel] = []
     sent_channels: list[OutreachChannel] = []
@@ -39,6 +42,7 @@ class AddContactRequest(BaseModel):
     location: str | None = None
     contact_person: str | None = None
     lead_status: LeadStatus | None = None
+    sd_status: SdStatus | Literal[""] | None = None
     outreach_channels: list[OutreachChannel] | None = None
     sent_channels: list[OutreachChannel] | None = None
 
@@ -60,6 +64,8 @@ class UpdateContactRequest(BaseModel):
     location: str | None = None
     contact_person: str | None = None
     lead_status: LeadStatus | None = None
+    # "" clears it, like the optional text fields.
+    sd_status: SdStatus | Literal[""] | None = None
     # The full set of ticked channels, not a delta; [] unticks both.
     outreach_channels: list[OutreachChannel] | None = None
     sent_channels: list[OutreachChannel] | None = None

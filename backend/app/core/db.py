@@ -428,100 +428,100 @@ async def _backfill_customer_points_lots() -> None:
         await db["customer_details"].update_one({"_id": row["_id"]}, {"$set": {"points": 0}})
 
 
-async def connect_to_mongo() -> None:
-    global client
-    client = AsyncMongoClient(settings.mongodb_uri)
-    await init_beanie(
-        database=client[settings.mongodb_db_name],
-        document_models=[
-            User,
-            UserIdCounter,
-            Role,
-            RoleIdCounter,
-            CustomerDetails,
-            CustomerIdCounter,
-            CustomerPocDetails,
-            CustomerPocIdCounter,
-            CustomerPointsLot,
-            CustomerPointsLotIdCounter,
-            VendorDetails,
-            VendorIdCounter,
-            VendorPocDetails,
-            VendorPocIdCounter,
-            ProductDetails,
-            ProductIdCounter,
-            ProductImageDetails,
-            ProductImageIdCounter,
-            ProductInquiry,
-            ProductInquiryIdCounter,
-            Inventory,
-            InventoryIdCounter,
-            InventoryHistory,
-            InventoryHistoryIdCounter,
-            PurchaseOrders,
-            PurchaseOrderIdCounter,
-            PurchaseSummary,
-            PurchaseSummaryIdCounter,
-            OrderStatusMaster,
-            OrderNoCounterMaster,
-            SalesOrders,
-            SalesOrderIdCounter,
-            SalesSummary,
-            SalesSummaryIdCounter,
-            SalesOrderCosting,
-            SalesOrderCostingIdCounter,
-            InvoiceNoCounterMaster,
-            InvoiceDetails,
-            InvoiceIdCounter,
-            StandardInvoiceNoCounterMaster,
-            ProformaInvoiceNoCounterMaster,
-            ProformaInvoiceSummary,
-            ProformaInvoiceSummaryIdCounter,
-            PurchaseInvoiceDetails,
-            PurchaseInvoiceIdCounter,
-            PurchaseInvoiceNoCounterMaster,
-            PrintingPurchaseOrders,
-            PrintingPurchaseOrderIdCounter,
-            PrintingPurchaseSummary,
-            PrintingPurchaseSummaryIdCounter,
-            PrintingPurchaseInvoiceDetails,
-            PrintingPurchaseInvoiceIdCounter,
-            PrintingPurchaseInvoiceNoCounterMaster,
-            UnbilledPurchaseOrders,
-            UnbilledPurchaseOrderIdCounter,
-            UnbilledPurchaseSummary,
-            UnbilledPurchaseSummaryIdCounter,
-            Category,
-            CategoryIdCounter,
-            PersonalDetails,
-            CatalogueDetails,
-            CatalogueIdCounter,
-            CatalogueImageDetails,
-            CatalogueImageIdCounter,
-            PriceListDetails,
-            PriceListIdCounter,
-            InquiryFormNode,
-            InquiryFormNodeIdCounter,
-            InquiryFormSubmission,
-            InquiryFormSubmissionIdCounter,
-            QuotationNoCounterMaster,
-            QuotationDetails,
-            QuotationIdCounter,
-            QuotationSummary,
-            QuotationSummaryIdCounter,
-            ExpenseDetails,
-            ExpenseIdCounter,
-            DatabaseContact,
-            DatabaseContactIdCounter,
-            EmailTemplate,
-            EmailTemplateIdCounter,
-            EmailAttachment,
-            EmailAttachmentIdCounter,
-            EmailSend,
-            EmailSendIdCounter,
-            EmailSettings,
-        ],
-    )
+# Every Beanie document model, registered with init_beanie at startup and
+# again after a restore (see reinitialize_after_restore below).
+DOCUMENT_MODELS = [
+    User,
+    UserIdCounter,
+    Role,
+    RoleIdCounter,
+    CustomerDetails,
+    CustomerIdCounter,
+    CustomerPocDetails,
+    CustomerPocIdCounter,
+    CustomerPointsLot,
+    CustomerPointsLotIdCounter,
+    VendorDetails,
+    VendorIdCounter,
+    VendorPocDetails,
+    VendorPocIdCounter,
+    ProductDetails,
+    ProductIdCounter,
+    ProductImageDetails,
+    ProductImageIdCounter,
+    ProductInquiry,
+    ProductInquiryIdCounter,
+    Inventory,
+    InventoryIdCounter,
+    InventoryHistory,
+    InventoryHistoryIdCounter,
+    PurchaseOrders,
+    PurchaseOrderIdCounter,
+    PurchaseSummary,
+    PurchaseSummaryIdCounter,
+    OrderStatusMaster,
+    OrderNoCounterMaster,
+    SalesOrders,
+    SalesOrderIdCounter,
+    SalesSummary,
+    SalesSummaryIdCounter,
+    SalesOrderCosting,
+    SalesOrderCostingIdCounter,
+    InvoiceNoCounterMaster,
+    InvoiceDetails,
+    InvoiceIdCounter,
+    StandardInvoiceNoCounterMaster,
+    ProformaInvoiceNoCounterMaster,
+    ProformaInvoiceSummary,
+    ProformaInvoiceSummaryIdCounter,
+    PurchaseInvoiceDetails,
+    PurchaseInvoiceIdCounter,
+    PurchaseInvoiceNoCounterMaster,
+    PrintingPurchaseOrders,
+    PrintingPurchaseOrderIdCounter,
+    PrintingPurchaseSummary,
+    PrintingPurchaseSummaryIdCounter,
+    PrintingPurchaseInvoiceDetails,
+    PrintingPurchaseInvoiceIdCounter,
+    PrintingPurchaseInvoiceNoCounterMaster,
+    UnbilledPurchaseOrders,
+    UnbilledPurchaseOrderIdCounter,
+    UnbilledPurchaseSummary,
+    UnbilledPurchaseSummaryIdCounter,
+    Category,
+    CategoryIdCounter,
+    PersonalDetails,
+    CatalogueDetails,
+    CatalogueIdCounter,
+    CatalogueImageDetails,
+    CatalogueImageIdCounter,
+    PriceListDetails,
+    PriceListIdCounter,
+    InquiryFormNode,
+    InquiryFormNodeIdCounter,
+    InquiryFormSubmission,
+    InquiryFormSubmissionIdCounter,
+    QuotationNoCounterMaster,
+    QuotationDetails,
+    QuotationIdCounter,
+    QuotationSummary,
+    QuotationSummaryIdCounter,
+    ExpenseDetails,
+    ExpenseIdCounter,
+    DatabaseContact,
+    DatabaseContactIdCounter,
+    EmailTemplate,
+    EmailTemplateIdCounter,
+    EmailAttachment,
+    EmailAttachmentIdCounter,
+    EmailSend,
+    EmailSendIdCounter,
+    EmailSettings,
+
+]
+
+
+async def _run_seeds_and_backfills() -> None:
     await _seed_system_role()
     await _backfill_admin_role_ids()
     await _seed_order_statuses()
@@ -534,6 +534,33 @@ async def connect_to_mongo() -> None:
     await _backfill_inventory_history_transaction_date()
     await _backfill_expense_dates()
     await _backfill_customer_points_lots()
+
+
+async def connect_to_mongo() -> None:
+    global client
+    client = AsyncMongoClient(settings.mongodb_uri)
+    await init_beanie(database=client[settings.mongodb_db_name], document_models=DOCUMENT_MODELS)
+    await _run_seeds_and_backfills()
+
+    from app.services.restore_epoch import load_restore_epoch
+
+    await load_restore_epoch()
+
+
+async def reinitialize_after_restore() -> None:
+    """Bring freshly restored data up to what this code expects.
+
+    The same steps a deploy plus a restart would take, in the same order:
+    pending data migrations first (the deploy step — a backup from an older
+    release still holds the old shapes), then init_beanie, which recreates
+    any index this code defines that the backup predates, then the startup
+    seeds and backfills.
+    """
+    from app.services.backup import apply_pending_migrations
+
+    await apply_pending_migrations(get_db())
+    await init_beanie(database=get_db(), document_models=DOCUMENT_MODELS)
+    await _run_seeds_and_backfills()
 
 
 async def close_mongo_connection() -> None:

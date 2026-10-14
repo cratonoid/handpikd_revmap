@@ -32,13 +32,16 @@ import {
   fetchContacts,
   LEAD_STATUS_OPTIONS,
   OUTREACH_OPTIONS,
+  SD_STATUS_OPTIONS,
   updateLeadStatus,
+  updateSdStatus,
   updateChannels,
   type ChannelColumn,
   type Contact,
   type ContactType,
   type LeadStatus,
   type OutreachChannel,
+  type SdStatus,
 } from "@/lib/database-contacts";
 import styles from "@/styles/dashboard.module.css";
 import emailStyles from "@/styles/emails.module.css";
@@ -199,6 +202,27 @@ export function DatabasePageClient() {
     }
   }
 
+  // Same optimistic save as the status dropdown above.
+  async function handleSdStatusChange(contact: Contact, nextSdStatus: SdStatus) {
+    if (nextSdStatus === contact.sdStatus) return;
+
+    const previous = contact.sdStatus;
+    const apply = (value: SdStatus | "") =>
+      setContacts((current) => current.map((row) => (row.id === contact.id ? { ...row, sdStatus: value } : row)));
+
+    setRowError(null);
+    setStatusSavingId(contact.id);
+    apply(nextSdStatus);
+    try {
+      await updateSdStatus(contact.id, nextSdStatus);
+    } catch (caught) {
+      apply(previous);
+      setRowError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
+    } finally {
+      setStatusSavingId(null);
+    }
+  }
+
   // Applied straight away and rolled back if the backend refuses, like the
   // status dropdown above.
   async function handleChannelToggle(contact: Contact, column: (typeof CHANNEL_COLUMNS)[number], channel: OutreachChannel) {
@@ -319,6 +343,7 @@ export function DatabasePageClient() {
               {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Contact person</th>}
               <th className={`${styles.tableHeadCell} ${styles.databaseColPhone}`}>Phone no.</th>
               {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>Status</th>}
+              {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>SD Status</th>}
               {isLead &&
                 CHANNEL_COLUMNS.map((column) => (
                   <th key={column.key} className={`${styles.tableHeadCell} ${emailStyles.colOutreach}`}>
@@ -395,6 +420,19 @@ export function DatabasePageClient() {
                       label={`Status for ${contact.name}`}
                       disabled={statusSavingId === contact.id}
                       onChange={(nextStatus) => void handleStatusChange(contact, nextStatus)}
+                    />
+                  </td>
+                )}
+                {isLead && (
+                  <td className={styles.tableCell}>
+                    <StatusSelect<SdStatus | "">
+                      value={contact.sdStatus}
+                      options={SD_STATUS_OPTIONS}
+                      label={`SD status for ${contact.name}`}
+                      disabled={statusSavingId === contact.id}
+                      onChange={(next) => {
+                        if (next) void handleSdStatusChange(contact, next);
+                      }}
                     />
                   </td>
                 )}

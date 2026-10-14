@@ -398,6 +398,52 @@ deploy instead of taking the service down.
 
 ---
 
+## 6. Backups, and moving the site to another server
+
+The site's content lives in three places, and **Admin → Backup & Restore**
+(`/admin/backups`, built-in Administrator role only) copies all three into one
+`.zip`: every MongoDB collection (as raw BSON, plus index definitions), the
+public media volume (`/srv/handpikd-media`), and the private documents volume
+(`/srv/handpikd-purchase-invoices`). Backups are written to their own volume,
+`/srv/handpikd-backups`, which holds **one backup at a time**: creating or
+uploading a new one replaces it (once the new one is complete), and after a
+restore the backup kept is the automatic copy of the data that was replaced.
+Download the backup to keep copies off the server.
+
+A backup is taken **automatically every day at 02:00 India time**, replacing
+the previous one. Set `BACKUP_DAILY_TIME` (24-hour `HH:MM`, India time) in
+`backend/.env` to change the hour, or `BACKUP_DAILY_ENABLED=false` to turn it
+off. If the server was down at that time, a backup more than a day old is
+caught up about ten minutes after startup. **Back up & download** on the page
+takes a fresh backup and downloads it as soon as it's ready, so a download is
+never older than the click.
+`backend/app/services/backup.py`'s header documents the format and how a
+restore stays safe.
+
+A backup deliberately does **not** contain `backend/.env`. Secrets are
+per-server configuration, not content, and keeping them out means a leaked
+backup leaks no passwords or API keys.
+
+### Moving to a new server
+
+1. Set the server up as in §4: clone the repo, write `backend/.env` by hand
+   (same keys as the old server; a new `JWT_SECRET_KEY` is fine), issue the
+   certificate, `docker compose up -d --build`.
+2. Make a temporary login so the admin page can be reached:
+   `docker compose run --rm backend python scripts/create_admin_user.py`
+   (creates `admin@gmail.com` / `password`).
+3. Sign in, open **Backup & Restore**, upload the backup `.zip` downloaded
+   from the old server, then **Restore** it and type `RESTORE`.
+4. Sign in again with your real account from the old server. The temporary
+   login from step 2 is gone: the restore replaced every user.
+
+The restore also runs any pending data migrations (§5), so a backup taken on
+an older release can be loaded into newer code. The reverse is refused: a
+backup whose migration ledger includes migrations this code doesn't know was
+made by newer code, so deploy the latest code first.
+
+---
+
 ## Summary
 
 | Layer | Tech | Core reason (per this codebase) |
