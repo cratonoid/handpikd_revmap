@@ -236,16 +236,12 @@ export function DatabasePageClient() {
 
   return (
     <>
-      <div className={styles.pageHeaderRow}>
-        <div>
-          <h1 className={styles.pageHeading}>Database</h1>
-        </div>
-        <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
-          + Add new {activeTab.singular}
-        </Button>
-      </div>
+      <h1 className={styles.pageHeading}>Database</h1>
 
-      <div className={styles.filterToggleRow}>
+      {/* Tabs, search, email and add share one row so the table starts
+          higher; the bulk-email rules live in the button's tooltip rather
+          than a sentence on a row of their own. */}
+      <div className={`${styles.filterToggleRow} ${styles.databaseToolbar}`}>
         <div className={styles.viewToggle} role="tablist" aria-label="Database section">
           {TABS.map((option) => (
             <button
@@ -267,39 +263,39 @@ export function DatabasePageClient() {
           label={`Search ${activeTab.label.toLowerCase()}`}
           placeholder={isVendor ? "Search name, phone, type, location…" : `Search ${nameLabel.toLowerCase()}, email or phone…`}
         />
+
+        <div className={styles.filterToggleRowEndGroup}>
+          {canEmail && selectedContacts.length > 0 && (
+            <button type="button" onClick={() => setSelectedIds([])} className={emailStyles.smallButton}>
+              Clear selection
+            </button>
+          )}
+          {canEmail && (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={selectedContacts.length === 0}
+              onClick={() => setComposeFor(selectedContacts)}
+              title={
+                `Tick ${activeTab.label.toLowerCase()} to email several at once. ` +
+                (isLead
+                  ? "Leads without an email, already emailed (Sent + Sent status Mail), or whose email bounced can't be ticked."
+                  : "Rows without an email, or whose email bounced, can't be ticked.")
+              }
+            >
+              {selectedContacts.length === 0 ? "Email selected" : `Email ${selectedContacts.length} selected`}
+            </Button>
+          )}
+          <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
+            + Add new {activeTab.singular}
+          </Button>
+        </div>
       </div>
 
       {rowError && (
         <p role="alert" aria-live="polite" className={styles.formError}>
           {rowError}
         </p>
-      )}
-
-      {canEmail && (
-        <div className={emailStyles.selectionBar}>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={selectedContacts.length === 0}
-            onClick={() => setComposeFor(selectedContacts)}
-          >
-            {selectedContacts.length === 0
-              ? `Email selected ${activeTab.label.toLowerCase()}`
-              : `Email ${selectedContacts.length} selected`}
-          </Button>
-          {selectedContacts.length > 0 ? (
-            <button type="button" onClick={() => setSelectedIds([])} className={emailStyles.smallButton}>
-              Clear selection
-            </button>
-          ) : (
-            <span>
-              Tick {activeTab.label.toLowerCase()} to email several at once.{" "}
-              {isLead
-                ? "Leads without an email, already emailed (Sent + Sent status Mail), or whose email bounced can't be ticked."
-                : "Rows without an email, or whose email bounced, can't be ticked."}
-            </span>
-          )}
-        </div>
       )}
 
       <div className={styles.tableWrap}>

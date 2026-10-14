@@ -37,6 +37,7 @@ from app.models import (
     CatalogueImageDetails,
     CatalogueImageIdCounter,
     Category,
+    PriceListDetails,
     User,
     VendorDetails,
 )
@@ -300,6 +301,12 @@ async def delete_catalogue_details(
     for image in images:
         remove_stored_image(image.image_path)
     await CatalogueImageDetails.find(CatalogueImageDetails.catalogue_id == catalogue.id).delete()
+
+    # A price list's catalogue link is optional, so losing the catalogue
+    # just unlinks it — the price list itself (and its PDF) stays.
+    await PriceListDetails.find(PriceListDetails.catalogue_id == catalogue.id).update(
+        {"$set": {"catalogue_id": None}}
+    )
 
     await catalogue.delete()
 

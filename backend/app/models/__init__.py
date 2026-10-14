@@ -36,6 +36,8 @@ from app.models.invoice_no_counter_master import InvoiceNoCounterMaster
 from app.models.order_no_counter_master import OrderNoCounterMaster
 from app.models.order_status_master import OrderStatusMaster
 from app.models.personal_details import PersonalDetails
+from app.models.price_list_details import PriceListDetails
+from app.models.price_list_id_counter import PriceListIdCounter
 from app.models.printing_purchase_invoice_details import PrintingPurchaseInvoiceDetails
 from app.models.printing_purchase_invoice_id_counter import PrintingPurchaseInvoiceIdCounter
 from app.models.printing_purchase_invoice_no_counter_master import PrintingPurchaseInvoiceNoCounterMaster
@@ -133,6 +135,8 @@ __all__ = [
     "OrderNoCounterMaster",
     "OrderStatusMaster",
     "PersonalDetails",
+    "PriceListDetails",
+    "PriceListIdCounter",
     "PrintingPurchaseInvoiceDetails",
     "PrintingPurchaseInvoiceIdCounter",
     "PrintingPurchaseInvoiceNoCounterMaster",

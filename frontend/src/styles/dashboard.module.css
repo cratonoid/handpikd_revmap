@@ -1721,6 +1721,13 @@ select.formInput:disabled {
   color: var(--color-charcoal);
 }
 
+/* The /admin/database toolbar: tabs, search, email and add on one row. It is
+   the first visible thing on the page (the heading is visually hidden), so
+   .filterToggleRow's top margin would only push the table down. */
+.databaseToolbar {
+  margin-top: 0;
+}
+
 /* The /admin/database table (components/admin/database-page-client.tsx).
    Fixed layout so it always fits .tableWrap, with no horizontal scrollbar:
    the short columns (S.No, phone, status, actions) get set widths and the

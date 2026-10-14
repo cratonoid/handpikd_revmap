@@ -23,6 +23,7 @@ class Section(str, Enum):
     products = "products"
     categories = "categories"
     catalogues = "catalogues"
+    price_lists = "price_lists"
     inquiry_form = "inquiry_form"
     product_inquiries = "product_inquiries"
     quotation = "quotation"

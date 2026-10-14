@@ -21,6 +21,7 @@ export type SectionKey =
   | "products"
   | "categories"
   | "catalogues"
+  | "price_lists"
   | "inquiry_form"
   | "product_inquiries"
   | "quotation"
@@ -47,6 +48,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "products", label: "Products", href: "/admin/products" },
   { key: "categories", label: "Categories", href: "/admin/categories" },
   { key: "catalogues", label: "Catalogues", href: "/admin/catalogues" },
+  { key: "price_lists", label: "Price Lists", href: "/admin/price-lists" },
   { key: "inquiry_form", label: "Hamper Inquiry Form", href: "/admin/inquiry-form" },
   { key: "product_inquiries", label: "Product Inquiries", href: "/admin/product-inquiries" },
   { key: "quotation", label: "Quotation", href: "/admin/quotation" },

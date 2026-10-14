@@ -409,6 +409,18 @@ export function DiaryIcon(props: IconProps) {
 // bookmark ribbon) so "Diaries" and "Notebooks" don't look identical next
 // to each other in the /catalogue grid.
 
+// A page with a rupee sign — the admin's Price Lists page. A page rather
+// than a tag so it doesn't read as Categories (TagIcon) beside it.
+export function PriceListIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M7 3.5h7l4 4V19.5a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1Z" />
+      <path d="M14 3.5V8h4" />
+      <path d="M9.5 11h5M9.5 13.25h5M12.25 11c1.3 0 1.9.95 1.9 2.25s-.95 2.25-2.4 2.25H9.5l4 3.25" />
+    </svg>
+  );
+}
+
 export function IdCardIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
