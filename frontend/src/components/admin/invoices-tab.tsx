@@ -41,6 +41,7 @@ import {
 } from "@/lib/invoices";
 import { fetchPersonalDetails } from "@/lib/personal-details";
 import { fetchSalesOrders, type SalesOrder } from "@/lib/sales-orders";
+import { CANCELLED_STATUS_NAME, fetchOrderStatusList } from "@/lib/order-status";
 import { fetchProducts, type Product } from "@/lib/products";
 import { customerLabel, fetchCustomerList, type CustomerOption } from "@/lib/customers";
 import { byNewestFirst } from "@/lib/row-order";
@@ -76,6 +77,8 @@ const STATUS_OPTIONS: readonly { value: InvoiceStatus; label: string }[] = [
 export function InvoicesTab() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
+  // Status ids that mean "cancelled" — those orders can't be invoiced.
+  const [cancelledStatusIds, setCancelledStatusIds] = useState<number[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
   const [personalDetails, setPersonalDetails] = useState<Record<string, string>>({});
@@ -140,9 +143,13 @@ export function InvoicesTab() {
       fetchProducts(),
       fetchCustomerList(),
       fetchPersonalDetails(),
-    ]).then(([invoiceData, salesOrderData, productData, customerData, personalData]) => {
+      fetchOrderStatusList(),
+    ]).then(([invoiceData, salesOrderData, productData, customerData, personalData, statusData]) => {
       setInvoices(invoiceData);
       setSalesOrders(salesOrderData);
+      setCancelledStatusIds(
+        statusData.filter((orderStatus) => orderStatus.statusName === CANCELLED_STATUS_NAME).map((s) => s.id),
+      );
       setProducts(productData);
       setCustomers(customerData);
       setPersonalDetails(personalData);
@@ -474,6 +481,7 @@ export function InvoicesTab() {
           mode={modalState.mode}
           initialInvoice={modalState.mode === "edit" ? modalState.invoice : undefined}
           salesOrders={salesOrders}
+          cancelledStatusIds={cancelledStatusIds}
           invoices={invoices}
           customers={customers}
           onClose={() => setModalState(null)}

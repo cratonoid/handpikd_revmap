@@ -31,6 +31,9 @@ router = APIRouter(prefix="/admin", tags=["analytics"])
 # _ORDER_STATUS_SEED ("Completed") looked up by name as sales_orders.py's
 # _get_new_status_id does for "New".
 _COMPLETED_STATUS_NAME = "Completed"
+# Cancelled orders are closed too, and never earned anything, so they're left
+# out of both the open-orders figure and the sales trend.
+_CANCELLED_STATUS_NAME = "Cancelled"
 _SALES_TREND_MONTHS = 6
 _RECENT_ORDERS_LIMIT = 5
 
@@ -58,6 +61,7 @@ async def get_dashboard_stats(
     )
     if completed_status_id is None:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="order statuses not seeded")
+    cancelled_status_ids = {status_id for status_id, name in status_names.items() if name == _CANCELLED_STATUS_NAME}
 
     total_clients = await CustomerDetails.find(CustomerDetails.is_deleted == False).count()
 
@@ -65,7 +69,11 @@ async def get_dashboard_stats(
     # is simpler than four separate aggregation pipelines.
     orders = await SalesOrders.find(SalesOrders.is_deleted == False).to_list()
 
-    open_orders = [order for order in orders if order.order_status_id != completed_status_id]
+    open_orders = [
+        order
+        for order in orders
+        if order.order_status_id != completed_status_id and order.order_status_id not in cancelled_status_ids
+    ]
 
     status_counts = {status_id: 0 for status_id in status_names}
     for order in orders:
@@ -77,6 +85,8 @@ async def get_dashboard_stats(
     month_keys = _last_month_keys(_SALES_TREND_MONTHS, datetime.now())
     monthly = {key: [0.0, 0] for key in month_keys}
     for order in orders:
+        if order.order_status_id in cancelled_status_ids:
+            continue
         key = f"{order.date.year:04d}-{order.date.month:02d}"
         if key in monthly:
             monthly[key][0] += order.total_amount_before_tax

@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 // Fetches from GET /admin/get_order_status_list (backend/app/api/routes/
 // sales_orders.py), which returns the fixed, seeded OrderStatusMaster rows
-// (New/Processing/Delivered/Completed) unfiltered — this is the edit form's
+// (New/Processing/Delivered/Completed/Cancelled) unfiltered — this is the edit form's
 // dropdown source list and the sales orders tab's status filter tabs, not a
 // per-order active/deleted split (that's handled by fetchSalesOrders/
 // is_deleted on SalesOrders itself).
@@ -19,6 +19,10 @@ type OrderStatusListItem = {
   id: number;
   status_name: string;
 };
+
+// Seeded name of the status that takes a sales order out of invoicing (see
+// _check_not_cancelled in backend/app/api/routes/invoices.py).
+export const CANCELLED_STATUS_NAME = "Cancelled";
 
 export async function fetchOrderStatusList(): Promise<OrderStatus[]> {
   const response = await apiFetch("/admin/get_order_status_list");

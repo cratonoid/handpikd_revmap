@@ -1140,6 +1140,10 @@
   color: var(--color-status-completed);
 }
 
+.statusCancelled {
+  color: var(--color-status-cancelled);
+}
+
 /* Payment state, on both invoice tables (admin and client). Aliased onto two
    of the sales-order colors above rather than given hexes of their own: the
    palette in lib/brand.ts is a closed family of four, and two of them

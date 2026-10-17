@@ -15,7 +15,8 @@
 // order a live standard invoice already lists (the `invoices` prop —
 // voided ones don't count, their orders are free again). The backend
 // enforces the same rule (_check_not_already_invoiced in routes/invoices.py)
-// in case two admins pick the same order from stale lists.
+// in case two admins pick the same order from stale lists. Cancelled sales
+// orders are left out too — there's nothing to bill (_check_not_cancelled).
 // Proforma invoices have their own dedicated modal
 // (proforma-invoice-form-modal.tsx), since they carry their own line items
 // instead of a sales-order link.
@@ -55,6 +56,7 @@ export function InvoiceFormModal({
   mode,
   initialInvoice,
   salesOrders,
+  cancelledStatusIds,
   invoices,
   customers,
   onClose,
@@ -63,6 +65,8 @@ export function InvoiceFormModal({
   mode: "add" | "edit";
   initialInvoice?: Invoice;
   salesOrders: SalesOrder[];
+  // OrderStatusMaster ids of "Cancelled" — those orders are hidden from the picker.
+  cancelledStatusIds: number[];
   // Every live invoice — used only to hide sales orders already billed.
   invoices: Invoice[];
   customers: CustomerOption[];
@@ -136,6 +140,7 @@ export function InvoiceFormModal({
         .filter(
           (order) =>
             !order.isDeleted &&
+            !cancelledStatusIds.includes(order.orderStatusId) &&
             !invoicedSalesIds.has(order.id) &&
             (lockedCustId === null || order.custId === lockedCustId),
         )
@@ -143,7 +148,7 @@ export function InvoiceFormModal({
           value: String(order.id),
           label: `SO-${order.orderNo} · ${customersById.get(order.custId)?.name ?? "Unknown customer"}`,
         })),
-    [salesOrders, customersById, lockedCustId, invoicedSalesIds],
+    [salesOrders, cancelledStatusIds, customersById, lockedCustId, invoicedSalesIds],
   );
 
   async function submitPayload(isDeletedValue: boolean) {

@@ -35,6 +35,7 @@ const STATUS_COLOR_VAR: Record<string, string> = {
   Processing: "var(--color-status-processing)",
   Delivered: "var(--color-status-delivered)",
   Completed: "var(--color-status-completed)",
+  Cancelled: "var(--color-status-cancelled)",
 };
 
 const STATUS_TEXT_CLASS: Record<string, string> = {
@@ -42,6 +43,7 @@ const STATUS_TEXT_CLASS: Record<string, string> = {
   Processing: styles.statusProcessing,
   Delivered: styles.statusDelivered,
   Completed: styles.statusCompleted,
+  Cancelled: styles.statusCancelled,
 };
 
 function statusColor(name: string): string {

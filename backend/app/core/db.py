@@ -109,6 +109,10 @@ _ORDER_STATUS_SEED = [
     (2, "Processing"),
     (3, "Delivered"),
     (4, "Completed"),
+    # Terminal like "Completed", but the order fell through: it holds no
+    # stock (not in _STOCK_DEDUCTED_STATUS_NAMES) and can't be invoiced
+    # (see _check_not_cancelled in routes/invoices.py).
+    (5, "Cancelled"),
 ]
 
 # Initial values for the #personal_details EAV table (see

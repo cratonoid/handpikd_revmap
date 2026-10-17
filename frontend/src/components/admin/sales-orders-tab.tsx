@@ -88,6 +88,7 @@ const STATUS_COLOR_CLASSES: Record<string, string> = {
   processing: styles.statusProcessing,
   delivered: styles.statusDelivered,
   completed: styles.statusCompleted,
+  cancelled: styles.statusCancelled,
 };
 
 function statusCellClassName(statusName: string | undefined) {

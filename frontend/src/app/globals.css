@@ -54,6 +54,7 @@
   --color-status-processing: #8a5a12;
   --color-status-delivered: #2c6e7f;
   --color-status-completed: #2f6b3a;
+  --color-status-cancelled: #9c2b2b;
 
   /* The header's own rendered height in its normal (non-compact, non-
      scrolled) state: 1.25rem of padding-block + the 2.25rem logo mark +

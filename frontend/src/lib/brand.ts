@@ -57,6 +57,7 @@ export const statusColors = {
   processing: "#8A5A12", // ochre — work in progress
   delivered: "#2C6E7F", // teal — goods are out
   completed: "#2F6B3A", // green — closed out
+  cancelled: "#9C2B2B", // brick red (same as colors.red) — fell through, not billable
 } as const;
 
 // `keyof typeof colors` produces a union type of every key name in `colors`,

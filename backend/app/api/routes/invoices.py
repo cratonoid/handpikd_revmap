@@ -23,6 +23,7 @@ from app.models import (
     InvoiceStatus,
     InvoiceType,
     OnlineOrOffline,
+    OrderStatusMaster,
     ProductDetails,
     ProductImageDetails,
     ProformaInvoiceNoCounterMaster,
@@ -88,6 +89,30 @@ def _check_same_customer(sales_orders: list[SalesOrders]) -> None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="all selected sales orders must belong to the same customer",
+        )
+
+
+# Seeded in _ORDER_STATUS_SEED (core/db.py), looked up by name the same way
+# sales_orders.py looks up "New".
+_CANCELLED_STATUS_NAME = "Cancelled"
+
+
+async def _check_not_cancelled(sales_orders: list[SalesOrders]) -> None:
+    """Reject a sales order that has been cancelled.
+
+    A cancelled order never went out, so there is nothing to bill. The
+    frontend picker already leaves them out (see invoice-form-modal.tsx);
+    this covers stale lists and restoring a voided invoice whose order was
+    cancelled in the meantime.
+    """
+    cancelled_status = await OrderStatusMaster.find_one(OrderStatusMaster.status_name == _CANCELLED_STATUS_NAME)
+    if cancelled_status is None:
+        return
+    cancelled = [f"SO-{order.order_no}" for order in sales_orders if order.order_status_id == cancelled_status.id]
+    if cancelled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="sales order(s) cancelled: " + ", ".join(cancelled),
         )
 
 
@@ -342,6 +367,7 @@ async def create_new_invoice(
 ) -> CreateNewInvoiceResponse:
     sales_orders = await _get_sales_orders_or_404(payload.sales_ids)
     _check_same_customer(sales_orders)
+    await _check_not_cancelled(sales_orders)
     await _check_not_already_invoiced(sales_orders)
     total_before_tax, total_tax, total_after_tax = _sum_sales_order_totals(sales_orders)
     # All linked sales orders share one customer (just enforced above).
@@ -523,6 +549,7 @@ async def update_invoice_details(
     # pass the same one-invoice-per-order check a new invoice does: another
     # invoice may have been raised against them while this one was void.
     if invoice.is_deleted and not payload.is_deleted:
+        await _check_not_cancelled(sales_orders)
         await _check_not_already_invoiced(sales_orders, exclude_invoice_id=invoice.id)
 
     # invoice_fy_start_year is deliberately left alone: the number has
