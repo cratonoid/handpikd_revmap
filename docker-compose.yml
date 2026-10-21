@@ -41,6 +41,13 @@ services:
         # design — it appears in every page's HTML — so it's fine in git.
         NEXT_PUBLIC_GA_ID: G-DW9TNLFM1C
     restart: unless-stopped
+    volumes:
+      # Next's optimized-image cache (/_next/image). Without a volume it lives
+      # in the container and every deploy throws it away, so the first visits
+      # after each deploy waited seconds per image while the server
+      # re-encoded them all. Only images/: the rest of .next/cache belongs to
+      # one build.
+      - /srv/handpikd-next-image-cache:/app/.next/cache/images
     expose:
       - "3000"
 
