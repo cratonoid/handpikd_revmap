@@ -48,6 +48,8 @@ export type Contact = {
   location: string;
   // Lead-only; "" on client and vendor rows.
   contactPerson: string;
+  // Lead-only: the contact person's role ("Marketing Head"); "" if not given.
+  contactRole: string;
   // Always "new" on client and vendor rows, where it isn't shown.
   leadStatus: LeadStatus;
   // Lead-only; "" when none is set.
@@ -70,6 +72,7 @@ export type ContactFields = {
   description: string;
   location: string;
   contactPerson: string;
+  contactRole: string;
   leadStatus: LeadStatus;
   sdStatus: SdStatus | "";
 };
@@ -85,6 +88,7 @@ type ContactItemResponse = {
   description: string | null;
   location: string | null;
   contact_person: string | null;
+  contact_role?: string | null;
   lead_status: LeadStatus | null;
   sd_status?: SdStatus | null;
   outreach_channels?: OutreachChannel[];
@@ -104,6 +108,7 @@ function toContact(item: ContactItemResponse): Contact {
     description: item.description ?? "",
     location: item.location ?? "",
     contactPerson: item.contact_person ?? "",
+    contactRole: item.contact_role ?? "",
     leadStatus: item.lead_status ?? "new",
     sdStatus: item.sd_status ?? "",
     outreachChannels: item.outreach_channels ?? [],
@@ -123,6 +128,7 @@ function toRequestFields(fields: ContactFields) {
     description: fields.description,
     location: fields.location,
     contact_person: fields.contactPerson,
+    contact_role: fields.contactRole,
     lead_status: fields.leadStatus,
     sd_status: fields.sdStatus,
   };

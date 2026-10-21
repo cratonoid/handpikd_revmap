@@ -785,3 +785,9 @@
   align-items: center;
   gap: 0.75rem;
 }
+
+/* " · Marketing Head" after a lead's contact person in the Database and
+   campaign tables. */
+.contactRole {
+  color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+}

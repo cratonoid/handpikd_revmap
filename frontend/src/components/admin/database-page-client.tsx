@@ -111,6 +111,7 @@ export function DatabasePageClient() {
       matchesSearch(search, [
         contact.name,
         contact.contactPerson,
+        contact.contactRole,
         contact.email,
         contact.phone,
         contact.vendorType,
@@ -340,7 +341,7 @@ export function DatabasePageClient() {
               )}
               <th className={`${styles.tableHeadCell} ${styles.databaseColSerial}`}>S.No</th>
               <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>{nameLabel}</th>
-              {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Contact person</th>}
+              {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Contact person / Role</th>}
               <th className={`${styles.tableHeadCell} ${styles.databaseColPhone}`}>Phone no.</th>
               {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>Status</th>}
               {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>SD Status</th>}
@@ -405,8 +406,12 @@ export function DatabasePageClient() {
                   )}
                 </td>
                 {isLead && (
-                  <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.contactPerson}>
+                  <td
+                    className={`${styles.tableCell} ${styles.databaseCellClip}`}
+                    title={[contact.contactPerson, contact.contactRole].filter(Boolean).join(" · ")}
+                  >
                     {contact.contactPerson || "—"}
+                    {contact.contactRole && <span className={emailStyles.contactRole}> · {contact.contactRole}</span>}
                   </td>
                 )}
                 <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.phone}>

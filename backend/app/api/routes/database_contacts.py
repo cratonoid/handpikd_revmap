@@ -2,7 +2,7 @@
 # (frontend components/admin/database-page-client.tsx) — three tabs of
 # clients, leads and vendors, each a name, phone and optional email, with
 # vendors also carrying a type, description and location, and leads an
-# optional contact person, a status (new / sent), an optional SD status
+# optional contact person and their role, a status (new / sent), an optional SD status
 # (SDI / SDID / SDL / SDLD), the channels (WhatsApp /
 # mail) we have their details for, and the channels they've been sent on. Restricted to
 # admins (bypassed entirely when settings.auth_enabled is False, matching
@@ -38,6 +38,7 @@ def _to_item(contact: DatabaseContact) -> ContactItem:
         description=contact.description,
         location=contact.location,
         contact_person=contact.contact_person,
+        contact_role=contact.contact_role if contact.contact_type == ContactType.lead else None,
         lead_status=(contact.lead_status or LeadStatus.new) if contact.contact_type == ContactType.lead else None,
         sd_status=contact.sd_status if contact.contact_type == ContactType.lead else None,
         outreach_channels=_ordered_channels(contact.outreach_channels) if contact.contact_type == ContactType.lead else [],
@@ -108,6 +109,7 @@ async def add_contact(
         description=_optional(payload.description) if is_vendor else None,
         location=_optional(payload.location) if is_vendor else None,
         contact_person=_optional(payload.contact_person) if is_lead else None,
+        contact_role=_optional(payload.contact_role) if is_lead else None,
         lead_status=(payload.lead_status or LeadStatus.new) if is_lead else None,
         sd_status=(payload.sd_status or None) if is_lead else None,
         outreach_channels=_ordered_channels(payload.outreach_channels) if is_lead else [],
@@ -158,6 +160,9 @@ async def update_contact(
     if contact.contact_type == ContactType.lead:
         if payload.contact_person is not None:
             contact.contact_person = _optional(payload.contact_person)
+            changed = True
+        if payload.contact_role is not None:
+            contact.contact_role = _optional(payload.contact_role)
             changed = True
         if payload.lead_status is not None:
             contact.lead_status = payload.lead_status

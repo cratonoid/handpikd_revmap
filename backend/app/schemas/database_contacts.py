@@ -18,6 +18,7 @@ class ContactItem(BaseModel):
     description: str | None
     location: str | None
     contact_person: str | None
+    contact_role: str | None = None
     lead_status: LeadStatus | None
     # Lead-only; None until one is picked.
     sd_status: SdStatus | None = None
@@ -30,7 +31,7 @@ class ContactItem(BaseModel):
 
 
 # Email and the three vendor fields are optional; the vendor fields are
-# ignored on client and lead rows. `contact_person` and `lead_status` are
+# ignored on client and lead rows. `contact_person`, `contact_role` and `lead_status` are
 # ignored on anything but a lead; the status defaults to "new".
 class AddContactRequest(BaseModel):
     contact_type: ContactType
@@ -41,6 +42,7 @@ class AddContactRequest(BaseModel):
     description: str | None = None
     location: str | None = None
     contact_person: str | None = None
+    contact_role: str | None = None
     lead_status: LeadStatus | None = None
     sd_status: SdStatus | Literal[""] | None = None
     outreach_channels: list[OutreachChannel] | None = None
@@ -63,6 +65,7 @@ class UpdateContactRequest(BaseModel):
     description: str | None = None
     location: str | None = None
     contact_person: str | None = None
+    contact_role: str | None = None
     lead_status: LeadStatus | None = None
     # "" clears it, like the optional text fields.
     sd_status: SdStatus | Literal[""] | None = None

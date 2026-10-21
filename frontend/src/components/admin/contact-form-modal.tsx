@@ -6,7 +6,7 @@
 // One form for clients, leads and vendors (components/admin/
 // database-page-client.tsx): name and phone are required, email is
 // optional, and vendors get three more optional fields — type, description
-// and location, while leads get an optional contact person and a status
+// and location, while leads get an optional contact person and role, and a status
 // dropdown (New / Sent, defaulting to New). "add" mode starts blank; "edit" mode is pre-filled from the
 // row. Saving goes through lib/database-contacts.ts and any backend error is
 // shown here instead of closing the modal.
@@ -34,6 +34,7 @@ const EMPTY_FIELDS: ContactFields = {
   description: "",
   location: "",
   contactPerson: "",
+  contactRole: "",
   leadStatus: "new",
   sdStatus: "",
 };
@@ -72,6 +73,7 @@ export function ContactFormModal({
           description: initialContact.description,
           location: initialContact.location,
           contactPerson: initialContact.contactPerson,
+          contactRole: initialContact.contactRole,
           leadStatus: initialContact.leadStatus,
           sdStatus: initialContact.sdStatus,
         }
@@ -94,6 +96,7 @@ export function ContactFormModal({
       description: isVendor ? fields.description.trim() : "",
       location: isVendor ? fields.location.trim() : "",
       contactPerson: isLead ? fields.contactPerson.trim() : "",
+      contactRole: isLead ? fields.contactRole.trim() : "",
       leadStatus: fields.leadStatus,
       sdStatus: isLead ? fields.sdStatus : "",
     };
@@ -159,19 +162,35 @@ export function ContactFormModal({
               />
             </div>
             {isLead && (
-              <div className={styles.formGridFullSpan}>
-                <label htmlFor="contactPerson" className={styles.formLabel}>
-                  Contact person
-                </label>
-                <input
-                  id="contactPerson"
-                  type="text"
-                  value={fields.contactPerson}
-                  onChange={(event) => setField("contactPerson", event.target.value)}
-                  className={styles.formInput}
-                  disabled={saving}
-                />
-              </div>
+              <>
+                <div>
+                  <label htmlFor="contactPerson" className={styles.formLabel}>
+                    Contact person
+                  </label>
+                  <input
+                    id="contactPerson"
+                    type="text"
+                    value={fields.contactPerson}
+                    onChange={(event) => setField("contactPerson", event.target.value)}
+                    className={styles.formInput}
+                    disabled={saving}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="contactRole" className={styles.formLabel}>
+                    Role
+                  </label>
+                  <input
+                    id="contactRole"
+                    type="text"
+                    placeholder="e.g. Marketing Head"
+                    value={fields.contactRole}
+                    onChange={(event) => setField("contactRole", event.target.value)}
+                    className={styles.formInput}
+                    disabled={saving}
+                  />
+                </div>
+              </>
             )}
             <div>
               <label htmlFor="contactPhone" className={styles.formLabel}>

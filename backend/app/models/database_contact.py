@@ -51,6 +51,9 @@ class DatabaseContact(Document):
     # Lead-only, like lead_status: the person to talk to at the company in
     # `name`. Optional.
     contact_person: str | None = None
+    # Lead-only, optional: the contact person's role or designation at the
+    # company ("Marketing Head"). None on client and vendor rows.
+    contact_role: str | None = None
     # Lead-only; always None on client and vendor rows. Leads saved before
     # this field existed have no value stored and read back as "new" (see
     # _to_item in routes/database_contacts.py).

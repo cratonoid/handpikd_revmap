@@ -150,7 +150,7 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
   const visibleContacts = tabContacts
     .filter((contact) => matchesFilter(statusFilter, statuses.get(contact.id)))
     .filter((contact) =>
-      matchesSearch(search, [contact.name, contact.contactPerson, contact.email, contact.phone, contact.vendorType]),
+      matchesSearch(search, [contact.name, contact.contactPerson, contact.contactRole, contact.email, contact.phone, contact.vendorType]),
     );
 
   const selectedContacts = tabContacts.filter((contact) => canBulkEmail(contact) && selectedIds.includes(contact.id));
@@ -299,7 +299,7 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
                   </th>
                   <th className={`${styles.tableHeadCell} ${styles.databaseColSerial}`}>S.No</th>
                   <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>{nameLabel}</th>
-                  {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Contact person</th>}
+                  {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Contact person / Role</th>}
                   {tab === "vendor" && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Type</th>}
                   <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Email</th>
                   <th className={`${styles.tableHeadCell} ${styles.databaseColPhone}`}>Phone no.</th>
@@ -346,8 +346,12 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
                         )}
                       </td>
                       {isLead && (
-                        <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.contactPerson}>
+                        <td
+                          className={`${styles.tableCell} ${styles.databaseCellClip}`}
+                          title={[contact.contactPerson, contact.contactRole].filter(Boolean).join(" · ")}
+                        >
                           {contact.contactPerson || "—"}
+                          {contact.contactRole && <span className={emailStyles.contactRole}> · {contact.contactRole}</span>}
                         </td>
                       )}
                       {tab === "vendor" && (
