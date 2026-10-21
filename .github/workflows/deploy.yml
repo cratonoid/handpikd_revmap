@@ -15,6 +15,10 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          # The action's default is 10m, and building both images on the
+          # VPS can take longer than that; hitting it fails the deploy
+          # part-way, with the old containers still running.
+          command_timeout: 30m
           script: |
             set -e
             cd ${{ secrets.VPS_DEPLOY_PATH }}
