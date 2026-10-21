@@ -152,3 +152,60 @@ def test_contact_with_corrected_address_is_not_flagged(monkeypatch):
     asyncio.run(email_bounces.apply_bounces(parse_bounce(_dsn())))
 
     assert contact.email_bounced_at is None
+
+
+class _FakeImap:
+    """Just enough of imaplib.IMAP4_SSL for _fetch_recent_reports."""
+
+    validity = b"1"
+    uids = [b"7", b"8"]
+    fetched: list[bytes] = []
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def login(self, *args):
+        pass
+
+    def select(self, *args, **kwargs):
+        return "OK", [b"2"]
+
+    def response(self, code):
+        return code, [self.validity]
+
+    def uid(self, command, *args):
+        if command == "SEARCH":
+            return "OK", [b" ".join(self.uids)]
+        uid = args[0]
+        _FakeImap.fetched.append(uid)
+        return "OK", [(b"%s (UID %s BODY[]<0> {1}" % (uid, uid), _dsn()), b")"]
+
+    def logout(self):
+        pass
+
+
+def test_reports_already_read_are_not_downloaded_again(monkeypatch):
+    monkeypatch.setattr(email_bounces.imaplib, "IMAP4_SSL", _FakeImap)
+    monkeypatch.setattr(email_bounces.email_sender, "is_configured", lambda: True)
+    monkeypatch.setattr(email_bounces, "_seen_reports", (None, set()))
+
+    async def no_matches(bounces):
+        return 0
+
+    monkeypatch.setattr(email_bounces, "apply_bounces", no_matches)
+
+    _FakeImap.fetched = []
+    asyncio.run(email_bounces.check_bounces())
+    assert sorted(_FakeImap.fetched) == [b"7", b"8"]
+
+    # A new report arrives: only it is downloaded.
+    _FakeImap.fetched = []
+    monkeypatch.setattr(_FakeImap, "uids", [b"7", b"8", b"9"])
+    asyncio.run(email_bounces.check_bounces())
+    assert _FakeImap.fetched == [b"9"]
+
+    # The mailbox was renumbered: everything is read afresh.
+    _FakeImap.fetched = []
+    monkeypatch.setattr(_FakeImap, "validity", b"2")
+    asyncio.run(email_bounces.check_bounces())
+    assert sorted(_FakeImap.fetched, key=int) == [b"7", b"8", b"9"]

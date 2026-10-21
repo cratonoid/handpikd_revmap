@@ -15,7 +15,14 @@
 #
 # The inbox is opened read-only: reports stay unread and exactly where they
 # were, so the mailbox looks the same in Titan afterwards. Applying a report
-# twice is a no-op, so every check simply re-reads the last few weeks.
+# twice is a no-op, but reports already read are remembered (by IMAP UID)
+# and skipped, so a check after the first only downloads what's new.
+#
+# The download and the parsing both run in a worker thread. A report quotes
+# the original email, attachments and all, and parsing a few hundred of
+# those on the event loop used to freeze every API request for seconds at a
+# time; only the first _REPORT_FETCH_BYTES of each is fetched for the same
+# reason — the delivery-status part and the quoted Message-ID come first.
 import asyncio
 import email
 import imaplib
@@ -41,6 +48,7 @@ logger = logging.getLogger(__name__)
 _REPORT_WINDOW = timedelta(days=14)
 _SEND_WINDOW = timedelta(days=30)
 _MAX_REPORTS_PER_CHECK = 300
+_REPORT_FETCH_BYTES = 256 * 1024
 CHECK_INTERVAL_SECONDS = 10 * 60
 
 _MESSAGE_ID = re.compile(r"<[^<>\s@]+@[^<>\s]+>")
@@ -204,13 +212,28 @@ def parse_bounce(raw: bytes) -> list[Bounce]:
     return [Bounce(address, "Delivery failed.", quoted_id, received_at) for address in addresses]
 
 
-def _fetch_recent_reports() -> list[bytes]:
-    """Raw bounce reports from the inbox's last _REPORT_WINDOW, read-only."""
+# Reports already parsed, as (UIDVALIDITY, UIDs). Kept in memory only: after
+# a restart the first check re-reads the window once, which is harmless.
+# A changed UIDVALIDITY means the server renumbered the mailbox, so the
+# remembered UIDs no longer mean anything and are dropped.
+_seen_reports: tuple[bytes | None, set[bytes]] = (None, set())
+
+
+def _fetch_recent_reports() -> tuple[bytes | None, list[tuple[bytes, bytes]]]:
+    """Unseen bounce reports from the inbox's last _REPORT_WINDOW, read-only.
+
+    Returns the mailbox's UIDVALIDITY and (uid, raw report) pairs, each
+    report cut off after _REPORT_FETCH_BYTES.
+    """
     imap = imaplib.IMAP4_SSL(settings.imap_host, settings.imap_port, ssl_context=ssl.create_default_context(), timeout=30)
     try:
         imap.login(settings.smtp_user, settings.smtp_password)
         # readonly: EXAMINE rather than SELECT, so nothing is marked read.
         imap.select("INBOX", readonly=True)
+        _, validity_data = imap.response("UIDVALIDITY")
+        validity = validity_data[0] if validity_data and validity_data[0] else None
+        seen_validity, seen_uids = _seen_reports
+        already_read = seen_uids if validity is not None and validity == seen_validity else set()
         since = (_now() - _REPORT_WINDOW).strftime("%d-%b-%Y")
         uids: set[bytes] = set()
         for criteria in (
@@ -221,15 +244,16 @@ def _fetch_recent_reports() -> list[bytes]:
             status, data = imap.uid("SEARCH", None, criteria)
             if status == "OK" and data and data[0]:
                 uids.update(data[0].split())
-        reports: list[bytes] = []
-        for uid in sorted(uids, key=int, reverse=True)[:_MAX_REPORTS_PER_CHECK]:
-            status, data = imap.uid("FETCH", uid, "(BODY.PEEK[])")
+        reports: list[tuple[bytes, bytes]] = []
+        unread = [uid for uid in uids if uid not in already_read]
+        for uid in sorted(unread, key=int, reverse=True)[:_MAX_REPORTS_PER_CHECK]:
+            status, data = imap.uid("FETCH", uid, f"(BODY.PEEK[]<0.{_REPORT_FETCH_BYTES}>)")
             if status != "OK":
                 continue
             for item in data or []:
                 if isinstance(item, tuple) and len(item) == 2:
-                    reports.append(item[1])
-        return reports
+                    reports.append((uid, item[1]))
+        return validity, reports
     finally:
         try:
             imap.logout()
@@ -304,9 +328,21 @@ async def check_bounces() -> int:
     """Reads the inbox for new bounce reports and applies them; returns how many recipients bounced."""
     if not email_sender.is_configured():
         return 0
-    reports = await asyncio.to_thread(_fetch_recent_reports)
-    bounces = [bounce for raw in reports for bounce in parse_bounce(raw)]
-    return await apply_bounces(bounces)
+    validity, uids, bounces = await asyncio.to_thread(_fetch_and_parse_reports)
+    found = await apply_bounces(bounces)
+    # Remembered only once applied, so a failed round is retried in full.
+    global _seen_reports
+    seen_validity, seen_uids = _seen_reports
+    kept = seen_uids if validity == seen_validity else set()
+    _seen_reports = (validity, kept | set(uids))
+    return found
+
+
+def _fetch_and_parse_reports() -> tuple[bytes | None, list[bytes], list[Bounce]]:
+    # Runs in a worker thread: see the note at the top of this module.
+    validity, reports = _fetch_recent_reports()
+    bounces = [bounce for _, raw in reports for bounce in parse_bounce(raw)]
+    return validity, [uid for uid, _ in reports], bounces
 
 
 async def bounce_check_loop() -> None:
