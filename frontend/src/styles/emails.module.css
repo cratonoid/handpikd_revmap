@@ -776,3 +776,12 @@
   background-color: color-mix(in srgb, var(--color-red) 12%, transparent);
   color: var(--color-red);
 }
+
+/* Contacts / Summary toggle and "Edit campaign", side by side in the
+   campaign page's header. */
+.campaignHeaderActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}

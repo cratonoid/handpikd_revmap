@@ -7,7 +7,9 @@
 // Leads / Clients / Vendors tabs as /admin/database, read live, so a contact
 // added there shows up here too. Each row also says where it stands in this
 // campaign — not sent, sent (and when), failed or bounced — worked out by
-// the backend from the campaign's sends (lib/campaigns.ts).
+// the backend from the campaign's sends (lib/campaigns.ts). The totals and
+// the list of sends sit on a separate Summary view, so the Contacts view
+// gives its room to the rows.
 //
 // Tick rows and "Send mail" opens <EmailComposeModal> for that tab's
 // audience, where a template is picked; the send carries the campaign's id
@@ -29,6 +31,12 @@ import emailStyles from "@/styles/emails.module.css";
 
 type LoadState = "loading" | "loaded" | "error";
 type StatusFilter = "all" | "not_sent" | "sent" | "failed";
+type View = "contacts" | "summary";
+
+const VIEWS: { key: View; label: string }[] = [
+  { key: "contacts", label: "Contacts" },
+  { key: "summary", label: "Summary" },
+];
 
 const TABS: { key: ContactType; label: string }[] = [
   { key: "lead", label: "Leads" },
@@ -66,6 +74,7 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
 
+  const [view, setView] = useState<View>("contacts");
   const [tab, setTab] = useState<ContactType>("lead");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -191,234 +200,260 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
             {campaign.description ? `${campaign.description} · ` : ""}Created {formatDate(utc(campaign.createdAt))}
           </p>
         </div>
-        <Button type="button" variant="tertiary" onClick={() => setEditing(true)}>
-          Edit campaign
-        </Button>
-      </div>
-
-      <div className={`${styles.statGrid} ${emailStyles.campaignStats}`}>
-        <div className={styles.statCard}>
-          <p className={styles.statLabel}>Reached</p>
-          <p className={styles.statValue}>{campaign.sentCount}</p>
-          <p className={styles.statCaption}>contacts emailed by this campaign</p>
-        </div>
-        <div className={styles.statCard}>
-          <p className={styles.statLabel}>Not sent yet</p>
-          <p className={styles.statValue}>{notSentCount}</p>
-          <p className={styles.statCaption}>of {withEmail.length} contacts with an email</p>
-        </div>
-        <div className={styles.statCard}>
-          <p className={styles.statLabel}>Failed / bounced</p>
-          <p className={styles.statValue}>{campaign.failedCount + campaign.bouncedCount}</p>
-          <p className={styles.statCaption}>
-            {campaign.failedCount} failed · {campaign.bouncedCount} bounced
-          </p>
-        </div>
-      </div>
-
-      <div className={styles.filterToggleRow}>
-        <div className={styles.viewToggle} role="tablist" aria-label="Database section">
-          {TABS.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              role="tab"
-              aria-selected={tab === option.key}
-              onClick={() => switchTab(option.key)}
-              className={`${styles.viewToggleButton} ${tab === option.key ? styles.viewToggleButtonActive : ""}`}
-            >
-              {option.label} ({contacts.filter((contact) => contact.type === option.key).length})
-            </button>
-          ))}
-        </div>
-
-        <select
-          value={statusFilter}
-          onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-          aria-label="Filter by campaign status"
-          className={`${styles.formInput} ${emailStyles.campaignFilter}`}
-        >
-          {STATUS_FILTERS.map((option) => (
-            <option key={option.key} value={option.key}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-
-        <TableSearchInput
-          value={search}
-          onChange={setSearch}
-          label={`Search ${activeTab.label.toLowerCase()}`}
-          placeholder={`Search ${nameLabel.toLowerCase()}, email or phone…`}
-        />
-
-        <div className={styles.filterToggleRowEndGroup}>
-          {selectedContacts.length > 0 && (
-            <button type="button" onClick={() => setSelectedIds([])} className={emailStyles.smallButton}>
-              Clear selection
-            </button>
-          )}
-          <Button
-            type="button"
-            variant="primary"
-            disabled={selectedContacts.length === 0}
-            onClick={() => setComposeFor(selectedContacts)}
-            title={`Tick ${activeTab.label.toLowerCase()} to mail them. Contacts already reached by this campaign, without an email, or whose email bounced can't be ticked.`}
-          >
-            {selectedContacts.length === 0 ? "Send mail" : `Send mail to ${selectedContacts.length}`}
+        <div className={emailStyles.campaignHeaderActions}>
+          <div className={styles.viewToggle} role="tablist" aria-label="Campaign view">
+            {VIEWS.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                role="tab"
+                aria-selected={view === option.key}
+                onClick={() => setView(option.key)}
+                className={`${styles.viewToggleButton} ${view === option.key ? styles.viewToggleButtonActive : ""}`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <Button type="button" variant="tertiary" onClick={() => setEditing(true)}>
+            Edit campaign
           </Button>
         </div>
       </div>
 
-      {refreshError && (
-        <p role="alert" aria-live="polite" className={styles.formError}>
-          {refreshError}
-        </p>
-      )}
+      {view === "contacts" && (
+        <>
+          <div className={styles.filterToggleRow}>
+            <div className={styles.viewToggle} role="tablist" aria-label="Database section">
+              {TABS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === option.key}
+                  onClick={() => switchTab(option.key)}
+                  className={`${styles.viewToggleButton} ${tab === option.key ? styles.viewToggleButtonActive : ""}`}
+                >
+                  {option.label} ({contacts.filter((contact) => contact.type === option.key).length})
+                </button>
+              ))}
+            </div>
 
-      <div className={styles.tableWrap}>
-        <table className={`${styles.table} ${styles.databaseTable}`}>
-          <thead>
-            <tr>
-              <th className={`${styles.tableHeadCell} ${emailStyles.colSelect}`}>
-                <input
-                  type="checkbox"
-                  checked={allVisibleSelected}
-                  onChange={toggleAllVisible}
-                  disabled={selectableVisible.length === 0}
-                  aria-label={`Select all ${activeTab.label.toLowerCase()} not yet mailed`}
-                  className={emailStyles.rowCheckbox}
-                />
-              </th>
-              <th className={`${styles.tableHeadCell} ${styles.databaseColSerial}`}>S.No</th>
-              <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>{nameLabel}</th>
-              {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Contact person</th>}
-              {tab === "vendor" && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Type</th>}
-              <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Email</th>
-              <th className={`${styles.tableHeadCell} ${styles.databaseColPhone}`}>Phone no.</th>
-              <th className={`${styles.tableHeadCell} ${emailStyles.colCampaignStatus}`}>Campaign status</th>
-              <th className={`${styles.tableHeadCell} ${emailStyles.colCampaignAction}`}>
-                <span className="sr-only">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleContacts.map((contact, index) => {
-              const entry = statuses.get(contact.id);
-              return (
-                <tr key={contact.id} className={styles.tableRow}>
-                  <td className={styles.tableCell}>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+              aria-label="Filter by campaign status"
+              className={`${styles.formInput} ${emailStyles.campaignFilter}`}
+            >
+              {STATUS_FILTERS.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+
+            <TableSearchInput
+              value={search}
+              onChange={setSearch}
+              label={`Search ${activeTab.label.toLowerCase()}`}
+              placeholder={`Search ${nameLabel.toLowerCase()}, email or phone…`}
+            />
+
+            <div className={styles.filterToggleRowEndGroup}>
+              {selectedContacts.length > 0 && (
+                <button type="button" onClick={() => setSelectedIds([])} className={emailStyles.smallButton}>
+                  Clear selection
+                </button>
+              )}
+              <Button
+                type="button"
+                variant="primary"
+                disabled={selectedContacts.length === 0}
+                onClick={() => setComposeFor(selectedContacts)}
+                title={`Tick ${activeTab.label.toLowerCase()} to mail them. Contacts already reached by this campaign, without an email, or whose email bounced can't be ticked.`}
+              >
+                {selectedContacts.length === 0 ? "Send mail" : `Send mail to ${selectedContacts.length}`}
+              </Button>
+            </div>
+          </div>
+
+          {refreshError && (
+            <p role="alert" aria-live="polite" className={styles.formError}>
+              {refreshError}
+            </p>
+          )}
+
+          <div className={styles.tableWrap}>
+            <table className={`${styles.table} ${styles.databaseTable}`}>
+              <thead>
+                <tr>
+                  <th className={`${styles.tableHeadCell} ${emailStyles.colSelect}`}>
                     <input
                       type="checkbox"
-                      checked={canBulkEmail(contact) && selectedIds.includes(contact.id)}
-                      onChange={() => toggleSelected(contact.id)}
-                      disabled={!canBulkEmail(contact)}
-                      title={
-                        !contact.email
-                          ? "No email address"
-                          : contact.emailBounceReason
-                            ? "The last email to this address bounced. Fix the address in the Database to include it again."
-                            : !awaitingMail(contact)
-                              ? "Already mailed by this campaign. Use the row's Resend button to send again."
-                              : undefined
-                      }
-                      aria-label={`Select ${contact.name}`}
+                      checked={allVisibleSelected}
+                      onChange={toggleAllVisible}
+                      disabled={selectableVisible.length === 0}
+                      aria-label={`Select all ${activeTab.label.toLowerCase()} not yet mailed`}
                       className={emailStyles.rowCheckbox}
                     />
-                  </td>
-                  <td className={styles.tableCell}>{index + 1}</td>
-                  <td
-                    className={`${styles.tableCell} ${styles.tableCellPrimary} ${styles.databaseCellClip}`}
-                    title={contact.name}
-                  >
-                    {contact.name}
-                    {contact.emailBounceReason && (
-                      <span className={emailStyles.bouncedBadge} title={`Email bounced: ${contact.emailBounceReason}`}>
-                        Bounced
-                      </span>
-                    )}
-                  </td>
-                  {isLead && (
-                    <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.contactPerson}>
-                      {contact.contactPerson || "—"}
-                    </td>
-                  )}
-                  {tab === "vendor" && (
-                    <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.vendorType}>
-                      {contact.vendorType || "—"}
-                    </td>
-                  )}
-                  <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.email}>
-                    {contact.email || "—"}
-                  </td>
-                  <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.phone}>
-                    {contact.phone}
-                  </td>
-                  <td className={styles.tableCell}>
-                    <CampaignStatusPill entry={entry} />
-                  </td>
-                  <td className={styles.tableCell}>
-                    <button
-                      type="button"
-                      onClick={() => setComposeFor([contact])}
-                      disabled={!contact.email || entry?.status === "pending"}
-                      title={contact.email ? `Mail ${contact.email}` : "Add an email address in the Database first"}
-                      className={styles.expenseRowButton}
-                    >
-                      {entry && entry.status !== "failed" ? "Resend" : "Send"}
-                    </button>
-                  </td>
+                  </th>
+                  <th className={`${styles.tableHeadCell} ${styles.databaseColSerial}`}>S.No</th>
+                  <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>{nameLabel}</th>
+                  {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Contact person</th>}
+                  {tab === "vendor" && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Type</th>}
+                  <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Email</th>
+                  <th className={`${styles.tableHeadCell} ${styles.databaseColPhone}`}>Phone no.</th>
+                  <th className={`${styles.tableHeadCell} ${emailStyles.colCampaignStatus}`}>Campaign status</th>
+                  <th className={`${styles.tableHeadCell} ${emailStyles.colCampaignAction}`}>
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {visibleContacts.length === 0 && (
-          <p className={styles.pageSubtext}>
-            {tabContacts.length === 0
-              ? `No ${activeTab.label.toLowerCase()} in the Database yet.`
-              : `No ${activeTab.label.toLowerCase()} match these filters.`}
-          </p>
-        )}
-      </div>
+              </thead>
+              <tbody>
+                {visibleContacts.map((contact, index) => {
+                  const entry = statuses.get(contact.id);
+                  return (
+                    <tr key={contact.id} className={styles.tableRow}>
+                      <td className={styles.tableCell}>
+                        <input
+                          type="checkbox"
+                          checked={canBulkEmail(contact) && selectedIds.includes(contact.id)}
+                          onChange={() => toggleSelected(contact.id)}
+                          disabled={!canBulkEmail(contact)}
+                          title={
+                            !contact.email
+                              ? "No email address"
+                              : contact.emailBounceReason
+                                ? "The last email to this address bounced. Fix the address in the Database to include it again."
+                                : !awaitingMail(contact)
+                                  ? "Already mailed by this campaign. Use the row's Resend button to send again."
+                                  : undefined
+                          }
+                          aria-label={`Select ${contact.name}`}
+                          className={emailStyles.rowCheckbox}
+                        />
+                      </td>
+                      <td className={styles.tableCell}>{index + 1}</td>
+                      <td
+                        className={`${styles.tableCell} ${styles.tableCellPrimary} ${styles.databaseCellClip}`}
+                        title={contact.name}
+                      >
+                        {contact.name}
+                        {contact.emailBounceReason && (
+                          <span className={emailStyles.bouncedBadge} title={`Email bounced: ${contact.emailBounceReason}`}>
+                            Bounced
+                          </span>
+                        )}
+                      </td>
+                      {isLead && (
+                        <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.contactPerson}>
+                          {contact.contactPerson || "—"}
+                        </td>
+                      )}
+                      {tab === "vendor" && (
+                        <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.vendorType}>
+                          {contact.vendorType || "—"}
+                        </td>
+                      )}
+                      <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.email}>
+                        {contact.email || "—"}
+                      </td>
+                      <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.phone}>
+                        {contact.phone}
+                      </td>
+                      <td className={styles.tableCell}>
+                        <CampaignStatusPill entry={entry} />
+                      </td>
+                      <td className={styles.tableCell}>
+                        <button
+                          type="button"
+                          onClick={() => setComposeFor([contact])}
+                          disabled={!contact.email || entry?.status === "pending"}
+                          title={contact.email ? `Mail ${contact.email}` : "Add an email address in the Database first"}
+                          className={styles.expenseRowButton}
+                        >
+                          {entry && entry.status !== "failed" ? "Resend" : "Send"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {visibleContacts.length === 0 && (
+              <p className={styles.pageSubtext}>
+                {tabContacts.length === 0
+                  ? `No ${activeTab.label.toLowerCase()} in the Database yet.`
+                  : `No ${activeTab.label.toLowerCase()} match these filters.`}
+              </p>
+            )}
+          </div>
 
-      <div className={styles.dashboardSectionHeader}>
-        <h2 className={styles.dashboardSectionTitle}>Mail sent from this campaign</h2>
-      </div>
-      <div className={styles.tableWrap}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th className={styles.tableHeadCell}>Sent on</th>
-              <th className={styles.tableHeadCell}>To</th>
-              <th className={styles.tableHeadCell}>Template</th>
-              <th className={styles.tableHeadCell}>Subject</th>
-              <th className={styles.tableHeadCell}>Result</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sends.map((send) => (
-              <tr key={send.id} className={styles.tableRow}>
-                <td className={styles.tableCell}>{formatDateTime(utc(send.createdAt))}</td>
-                <td className={styles.tableCell}>
-                  {send.total} {AUDIENCE_LABELS[send.audience][send.total === 1 ? "singular" : "plural"].toLowerCase()}
-                </td>
-                <td className={styles.tableCell}>{send.templateName || "—"}</td>
-                <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={send.subject}>
-                  {send.subject}
-                </td>
-                <td className={styles.tableCell}>
-                  {send.sentCount}/{send.total} sent
-                  {send.failedCount > 0 && <span className={emailStyles.failedText}> · {send.failedCount} failed</span>}
-                  {send.bouncedCount > 0 && <span className={emailStyles.failedText}> · {send.bouncedCount} bounced</span>}
-                  {!send.done && " · sending…"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {sends.length === 0 && <p className={styles.pageSubtext}>Nothing sent yet. Tick contacts above and press Send mail.</p>}
-      </div>
+        </>
+      )}
+
+      {view === "summary" && (
+        <>
+          <div className={`${styles.statGrid} ${emailStyles.campaignStats}`}>
+            <div className={styles.statCard}>
+              <p className={styles.statLabel}>Reached</p>
+              <p className={styles.statValue}>{campaign.sentCount}</p>
+              <p className={styles.statCaption}>contacts emailed by this campaign</p>
+            </div>
+            <div className={styles.statCard}>
+              <p className={styles.statLabel}>Not sent yet</p>
+              <p className={styles.statValue}>{notSentCount}</p>
+              <p className={styles.statCaption}>of {withEmail.length} contacts with an email</p>
+            </div>
+            <div className={styles.statCard}>
+              <p className={styles.statLabel}>Failed / bounced</p>
+              <p className={styles.statValue}>{campaign.failedCount + campaign.bouncedCount}</p>
+              <p className={styles.statCaption}>
+                {campaign.failedCount} failed · {campaign.bouncedCount} bounced
+              </p>
+            </div>
+          </div>
+
+          <div className={styles.dashboardSectionHeader}>
+            <h2 className={styles.dashboardSectionTitle}>Mail sent from this campaign</h2>
+          </div>
+          <div className={styles.tableWrap}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th className={styles.tableHeadCell}>Sent on</th>
+                  <th className={styles.tableHeadCell}>To</th>
+                  <th className={styles.tableHeadCell}>Template</th>
+                  <th className={styles.tableHeadCell}>Subject</th>
+                  <th className={styles.tableHeadCell}>Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sends.map((send) => (
+                  <tr key={send.id} className={styles.tableRow}>
+                    <td className={styles.tableCell}>{formatDateTime(utc(send.createdAt))}</td>
+                    <td className={styles.tableCell}>
+                      {send.total} {AUDIENCE_LABELS[send.audience][send.total === 1 ? "singular" : "plural"].toLowerCase()}
+                    </td>
+                    <td className={styles.tableCell}>{send.templateName || "—"}</td>
+                    <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={send.subject}>
+                      {send.subject}
+                    </td>
+                    <td className={styles.tableCell}>
+                      {send.sentCount}/{send.total} sent
+                      {send.failedCount > 0 && <span className={emailStyles.failedText}> · {send.failedCount} failed</span>}
+                      {send.bouncedCount > 0 && <span className={emailStyles.failedText}> · {send.bouncedCount} bounced</span>}
+                      {!send.done && " · sending…"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {sends.length === 0 && <p className={styles.pageSubtext}>Nothing sent yet. Tick contacts above and press Send mail.</p>}
+          </div>
+
+        </>
+      )}
 
       {composeFor && (
         <EmailComposeModal audience={tab} recipients={composeFor} campaignId={campaign.id} onClose={handleComposeClosed} />
