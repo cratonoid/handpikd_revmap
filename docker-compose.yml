@@ -1,6 +1,17 @@
+# The backend and frontend images are built by GitHub Actions and pushed to
+# ghcr.io (.github/workflows/deploy.yml); the VPS only pulls them, so a
+# deploy no longer spends 10+ minutes of the server's CPU on `npm run build`
+# while it is serving the site. IMAGE_TAG is the commit being deployed; the
+# `build:` sections remain for building the same images by hand.
 services:
   backend:
-    build: ./backend
+    image: ghcr.io/cratonoid/handpikd_revmap-backend:${IMAGE_TAG:-latest}
+    build:
+      context: ./backend
+      labels:
+        # Links the ghcr.io package to this repo, so the workflow's own
+        # GITHUB_TOKEN can push and pull it.
+        org.opencontainers.image.source: https://github.com/cratonoid/handpikd_revmap
     restart: unless-stopped
     env_file:
       - ./backend/.env
@@ -32,8 +43,11 @@ services:
       - "8000"
 
   frontend:
+    image: ghcr.io/cratonoid/handpikd_revmap-frontend:${IMAGE_TAG:-latest}
     build:
       context: ./frontend
+      labels:
+        org.opencontainers.image.source: https://github.com/cratonoid/handpikd_revmap
       args:
         NEXT_PUBLIC_API_BASE_URL: /api/v1
         NEXT_PUBLIC_MEDIA_BASE_URL: ""

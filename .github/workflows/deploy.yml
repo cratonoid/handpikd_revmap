@@ -5,29 +5,84 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+# One deploy at a time; a push that lands mid-deploy waits for it rather
+# than racing it on the server.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
 jobs:
-  deploy:
+  # The images are built here, on GitHub's runner, and pushed to ghcr.io.
+  # Building them on the VPS took 10+ minutes of its CPU per deploy, during
+  # which the live site slowed to a crawl (and once ran past the SSH
+  # action's timeout).
+  build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE_TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to ghcr.io
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build images
+        run: |
+          # Compose reads the backend's env_file even just to build; the real
+          # one only exists on the server and never goes into an image.
+          touch backend/.env
+          docker compose build backend frontend
+
+      - name: Push images
+        run: |
+          docker compose push backend frontend
+          # `latest` too, so a plain `docker compose up` on the server
+          # (no IMAGE_TAG) still finds the newest images.
+          for service in backend frontend; do
+            image="ghcr.io/cratonoid/handpikd_revmap-$service"
+            docker tag "$image:$IMAGE_TAG" "$image:latest"
+            docker push "$image:latest"
+          done
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          # This run's own token: it can pull this repo's images and expires
+          # when the run ends, so nothing long-lived is left on the server.
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          # The action's default is 10m, and building both images on the
-          # VPS can take longer than that; hitting it fails the deploy
-          # part-way, with the old containers still running.
+          envs: IMAGE_TAG,GHCR_TOKEN,GHCR_USER
           command_timeout: 30m
           script: |
             set -e
             cd ${{ secrets.VPS_DEPLOY_PATH }}
             git fetch origin main
-            git reset --hard origin/main
+            # The exact commit the images were built from, not whatever main
+            # is by now, so the compose file and code always match the images.
+            git reset --hard "$IMAGE_TAG"
+            export IMAGE_TAG
 
-            # Build first, migrate second, swap third — the ordering matters.
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            docker compose pull backend frontend
+            docker logout ghcr.io
+
+            # Pull first, migrate second, swap third — the ordering matters.
             #
-            # `build` only produces images; the currently-running containers
+            # `pull` only fetches images; the currently-running containers
             # keep serving the OLD code untouched. So the migration below runs
             # while the old code is still live, and only once it succeeds does
             # `up -d` promote the new code.
@@ -39,7 +94,6 @@ jobs:
             # fails after the swap leaves the new code live on data it cannot
             # read. Migrating first means a failed migration aborts the deploy
             # with the old, working code still serving.
-            docker compose build
             docker compose run --rm backend python scripts/run_migrations.py --apply
             docker compose up -d --remove-orphans
             # nginx.conf is bind-mounted as a single file; git updates it by
@@ -50,4 +104,13 @@ jobs:
             # contents. Force it every deploy so nginx.conf edits actually
             # take effect instead of silently no-op'ing.
             docker compose up -d --force-recreate nginx
+
+            # Every deploy pulls a new tag, so older ones would pile up on a
+            # disk that's already three-quarters full. Keep only this one,
+            # and drop the images the server used to build for itself.
+            docker images --format '{{.Repository}}:{{.Tag}}' \
+              | grep '^ghcr.io/cratonoid/handpikd_revmap-' \
+              | grep -v ":$IMAGE_TAG\$" \
+              | xargs -r docker rmi || true
+            docker rmi handpikd_revmap-backend handpikd_revmap-frontend 2>/dev/null || true
             docker image prune -f
