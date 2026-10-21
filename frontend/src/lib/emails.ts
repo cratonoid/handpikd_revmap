@@ -2,18 +2,22 @@
 // Emails — templates, signature and sending through the company's Titan mailbox
 // ---------------------------------------------------------------------------
 // Backed by /admin/email/* (backend/app/api/routes/emails.py). Templates
-// each belong to one audience — leads or clients — and the compose screen
+// each belong to one audience — leads, clients or vendors — and the compose screen
 // only offers the ones matching its recipients; the backend refuses a
 // mismatch too. Sending runs in the background on the server: sendEmail()
 // returns straight away with the send's id, and fetchSend() is polled for
 // progress.
 import { apiFetch } from "@/lib/api";
 
-export type EmailAudience = "lead" | "client";
+// Vendors are only emailed from a campaign (components/admin/
+// campaign-detail-page-client.tsx); the Database page emails leads and
+// clients.
+export type EmailAudience = "lead" | "client" | "vendor";
 
 export const AUDIENCE_LABELS: Record<EmailAudience, { singular: string; plural: string }> = {
   lead: { singular: "Lead", plural: "Leads" },
   client: { singular: "Client", plural: "Clients" },
+  vendor: { singular: "Vendor", plural: "Vendors" },
 };
 
 // Mirrors PLACEHOLDER_FIELDS in backend/app/services/email_render.py.
@@ -23,6 +27,7 @@ export const PLACEHOLDER_FIELDS: Record<EmailAudience, { key: string; label: str
     { key: "contact_person", label: "Contact person" },
   ],
   client: [{ key: "name", label: "Client name" }],
+  vendor: [{ key: "name", label: "Vendor name" }],
 };
 
 export type EmailStatus = {
@@ -76,6 +81,8 @@ export type EmailSend = {
   id: number;
   audience: EmailAudience;
   templateName: string;
+  // "" when not sent from a campaign.
+  campaignName: string;
   subject: string;
   bodyHtml: string;
   attachmentNames: string[];
@@ -99,6 +106,8 @@ export type SendEmailInput = {
   templateAttachmentIds: number[];
   includeSignature: boolean;
   files: File[];
+  // Counts the send towards a campaign; null for a plain send.
+  campaignId: number | null;
 };
 
 type TemplateItemResponse = {
@@ -112,10 +121,11 @@ type TemplateItemResponse = {
   updated_at: string;
 };
 
-type SendItemResponse = {
+export type SendItemResponse = {
   send_id: number;
   audience: EmailAudience;
   template_name: string | null;
+  campaign_name?: string | null;
   subject: string;
   body_html: string;
   attachment_names: string[];
@@ -156,11 +166,12 @@ function toTemplate(item: TemplateItemResponse): EmailTemplate {
   };
 }
 
-function toSend(item: SendItemResponse): EmailSend {
+export function toSend(item: SendItemResponse): EmailSend {
   return {
     id: item.send_id,
     audience: item.audience,
     templateName: item.template_name ?? "",
+    campaignName: item.campaign_name ?? "",
     subject: item.subject,
     bodyHtml: item.body_html,
     attachmentNames: item.attachment_names,
@@ -397,6 +408,7 @@ export async function sendEmail(input: SendEmailInput): Promise<EmailSend> {
       body_html: input.bodyHtml,
       template_attachment_ids: input.templateAttachmentIds,
       include_signature: input.includeSignature,
+      campaign_id: input.campaignId,
     }),
   );
   for (const file of input.files) {

@@ -187,7 +187,11 @@ export function EmailTemplateModal({
                     />
                     <span className={styles.audienceOptionTitle}>{AUDIENCE_LABELS[option].plural}</span>
                     <span className={styles.audienceOptionHint}>
-                      {option === "lead" ? "Outreach to prospects on the Leads tab" : "Emails to existing clients"}
+                      {option === "lead"
+                        ? "Outreach to prospects on the Leads tab"
+                        : option === "client"
+                          ? "Emails to existing clients"
+                          : "Campaign mail to suppliers"}
                     </span>
                   </label>
                 ))}

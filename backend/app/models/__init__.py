@@ -1,4 +1,6 @@
 # Models package: database document/schema models, one per MongoDB collection.
+from app.models.campaign import Campaign
+from app.models.campaign_id_counter import CampaignIdCounter
 from app.models.catalogue_details import CatalogueDetails
 from app.models.catalogue_id_counter import CatalogueIdCounter
 from app.models.catalogue_image_details import CatalogueImageDetails
@@ -87,6 +89,8 @@ from app.models.vendor_poc_details import VendorPocDetails
 from app.models.vendor_poc_id_counter import VendorPocIdCounter
 
 __all__ = [
+    "Campaign",
+    "CampaignIdCounter",
     "CatalogueDetails",
     "CatalogueIdCounter",
     "CatalogueImageDetails",

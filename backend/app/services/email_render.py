@@ -16,6 +16,7 @@ from app.models.email_template import EmailAudience
 PLACEHOLDER_FIELDS: dict[EmailAudience, tuple[str, ...]] = {
     EmailAudience.lead: ("name", "contact_person"),
     EmailAudience.client: ("name",),
+    EmailAudience.vendor: ("name",),
 }
 
 _PLACEHOLDER = re.compile(r"\{\{\s*([A-Za-z_]+)\s*\}\}")

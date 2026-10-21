@@ -79,7 +79,8 @@ def _clean_email(value: str | None) -> str | None:
 @router.get("/get_contacts", response_model=list[ContactItem])
 async def get_contacts(
     contact_type: ContactType | None = None,
-    _: User | None = Depends(require_section(Section.database)),
+    # Campaigns list the whole address book too (routes/campaigns.py).
+    _: User | None = Depends(require_section(Section.database, Section.campaigns)),
 ) -> list[ContactItem]:
     # One tab at a time when `contact_type` is given, everything otherwise.
     # Newest first, the same rule lib/row-order.ts applies to every list.

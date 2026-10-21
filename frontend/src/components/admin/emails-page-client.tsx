@@ -143,7 +143,11 @@ export function EmailsPageClient() {
 
 function AudiencePill({ audience }: { audience: EmailTemplate["audience"] }) {
   return (
-    <span className={`${styles.audiencePill} ${audience === "lead" ? styles.audiencePillLead : styles.audiencePillClient}`}>
+    <span
+      className={`${styles.audiencePill} ${
+        audience === "lead" ? styles.audiencePillLead : audience === "client" ? styles.audiencePillClient : styles.audiencePillVendor
+      }`}
+    >
       {AUDIENCE_LABELS[audience].singular}
     </span>
   );
@@ -407,7 +411,10 @@ function SentTab() {
                   <td className={`${dashboardStyles.tableCell} ${dashboardStyles.tableCellPrimary} ${dashboardStyles.databaseCellClip}`} title={send.subject}>
                     {send.subject}
                   </td>
-                  <td className={dashboardStyles.tableCell}>{send.templateName || "—"}</td>
+                  <td className={dashboardStyles.tableCell}>
+                    {send.templateName || "—"}
+                    {send.campaignName && <span className={styles.campaignNote}> · {send.campaignName} campaign</span>}
+                  </td>
                   <td className={dashboardStyles.tableCell}>
                     {send.sentCount}/{send.total} sent
                     {send.failedCount > 0 && <span className={styles.failedText}> · {send.failedCount} failed</span>}

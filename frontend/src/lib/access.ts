@@ -27,6 +27,7 @@ export type SectionKey =
   | "quotation"
   | "profile"
   | "emails"
+  | "campaigns"
   | "users"
   | "backups";
 
@@ -46,6 +47,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "vendors", label: "Vendors", href: "/admin/vendors" },
   { key: "database", label: "Database", href: "/admin/database" },
   { key: "emails", label: "Emails", href: "/admin/emails" },
+  { key: "campaigns", label: "Campaigns", href: "/admin/campaigns" },
   { key: "orders", label: "Orders", href: "/admin/orders" },
   { key: "invoices", label: "Invoices", href: "/admin/invoices" },
   { key: "accounts", label: "Accounts", href: "/admin/accounts" },

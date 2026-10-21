@@ -3,8 +3,9 @@
 // ---------------------------------------------------------------------------
 // <EmailComposeModal> — write and send an email to one or more contacts
 // ---------------------------------------------------------------------------
-// Opened from the Leads or Clients tab of /admin/database with the chosen
-// rows. Only templates written for that audience are offered, so a client
+// Opened from the Leads or Clients tab of /admin/database, or from any tab
+// of a campaign's page (campaign-detail-page-client.tsx, which passes its
+// campaignId so the send counts towards it), with the chosen rows. Only templates written for that audience are offered, so a client
 // can't be sent a lead template. Picking one fills in the subject, message
 // and default attachments, all of which can then be changed for this send
 // only — the template itself is untouched. Files can also be added on the
@@ -51,9 +52,11 @@ type LoadState = "loading" | "loaded" | "error";
 export function EmailComposeModal({
   audience,
   recipients: initialRecipients,
+  campaignId = null,
   onClose,
 }: {
   audience: EmailAudience;
+  campaignId?: number | null;
   // Only contacts with an email address; the Database page filters.
   recipients: Contact[];
   // `sent` is true once at least one email went out, so the caller can
@@ -207,6 +210,7 @@ export function EmailComposeModal({
         templateAttachmentIds,
         includeSignature,
         files,
+        campaignId,
       });
       setSend(started);
     } catch (caught) {

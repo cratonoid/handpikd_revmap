@@ -8,6 +8,7 @@ from app.api.routes import (
     auth,
     authentication,
     backups,
+    campaigns,
     catalogues,
     categories,
     customer_invoices,
@@ -45,6 +46,7 @@ api_router.include_router(accounts.router)
 api_router.include_router(expenses.router)
 api_router.include_router(database_contacts.router)
 api_router.include_router(emails.router)
+api_router.include_router(campaigns.router)
 api_router.include_router(categories.router)
 api_router.include_router(vendors.router)
 api_router.include_router(products.router)

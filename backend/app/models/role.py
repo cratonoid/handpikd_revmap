@@ -29,6 +29,7 @@ class Section(str, Enum):
     quotation = "quotation"
     profile = "profile"
     emails = "emails"
+    campaigns = "campaigns"
     users = "users"
 
 

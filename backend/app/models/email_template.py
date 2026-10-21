@@ -1,6 +1,6 @@
 # Schema for the #email_templates collection: the reusable emails on the
 # admin's /admin/emails page (routes/emails.py). Each template is written for
-# exactly one audience — leads or clients — and the compose screen only
+# exactly one audience — leads, clients or vendors — and the compose screen only
 # offers a template to recipients of that type, so a client never receives
 # the cold-outreach email meant for a lead. Subject and body may carry
 # {{placeholders}}, filled in per recipient at send time (see
@@ -14,9 +14,11 @@ from pydantic import BaseModel, Field
 
 class EmailAudience(str, Enum):
     # Same values as ContactType's, so a contact's type compares directly.
-    # No vendor: the Emails module deliberately doesn't write to vendors.
     client = "client"
     lead = "lead"
+    # Added for campaigns (routes/campaigns.py), which cover every tab of
+    # the database. Vendors are still only emailed with a vendor template.
+    vendor = "vendor"
 
 
 class TemplateAttachment(BaseModel):

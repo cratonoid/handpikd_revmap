@@ -58,6 +58,11 @@ class EmailSend(Document):
     # is copied so history survives the template being renamed or deleted.
     template_id: int | None = None
     template_name: str | None = None
+    # Set when sent from a campaign (routes/campaigns.py), which reads its
+    # per-contact progress back from these rows. The name is copied for the
+    # same reason as template_name.
+    campaign_id: int | None = None
+    campaign_name: str | None = None
     # As composed, placeholders and all — each recipient got these with
     # their own details filled in.
     subject: str

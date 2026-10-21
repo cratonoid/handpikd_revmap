@@ -87,6 +87,9 @@ class SendEmailRequest(BaseModel):
     # left out were removed in the compose screen for this send only.
     template_attachment_ids: list[int] = []
     include_signature: bool = True
+    # Set when sending from a campaign's page; the send is then counted
+    # towards that campaign (routes/campaigns.py).
+    campaign_id: int | None = None
 
 
 class EmailRecipientItem(BaseModel):
@@ -105,6 +108,8 @@ class EmailSendItem(BaseModel):
     audience: EmailAudience
     template_id: int | None
     template_name: str | None
+    campaign_id: int | None = None
+    campaign_name: str | None = None
     subject: str
     body_html: str
     attachment_names: list[str]

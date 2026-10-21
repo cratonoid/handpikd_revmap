@@ -9,6 +9,8 @@ from pymongo.asynchronous.database import AsyncDatabase
 from app.core.config import settings
 from app.services.gst import TaxKind
 from app.models import (
+    Campaign,
+    CampaignIdCounter,
     CatalogueDetails,
     CatalogueIdCounter,
     CatalogueImageDetails,
@@ -521,7 +523,8 @@ DOCUMENT_MODELS = [
     EmailSend,
     EmailSendIdCounter,
     EmailSettings,
-
+    Campaign,
+    CampaignIdCounter,
 ]
 
 

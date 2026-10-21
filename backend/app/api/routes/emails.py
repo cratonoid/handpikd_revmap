@@ -1,9 +1,10 @@
 # Emails module: the admin's /admin/emails page (templates, signature, send
 # history) and the compose screen opened from /admin/database, which sends
 # templated, formatted emails to leads or clients through the company's
-# Titan mailbox. Vendors are deliberately out of scope.
+# Titan mailbox. The same compose screen also sends from a campaign's page
+# (routes/campaigns.py), which covers vendors too.
 #
-# Every template belongs to one audience (lead or client), and a send is
+# Every template belongs to one audience (lead, client or vendor), and a send is
 # refused unless the template and every recipient share it — so a client
 # can't be sent the cold-outreach email written for a lead by picking the
 # wrong template. Delivery itself runs in the background
@@ -19,6 +20,7 @@ from pydantic import ValidationError
 from app.api.deps import require_section
 from app.core.config import settings
 from app.models import (
+    Campaign,
     DatabaseContact,
     EmailAudience,
     EmailAttachment,
@@ -57,6 +59,10 @@ from app.services.email_render import unknown_placeholders
 router = APIRouter(prefix="/admin/email", tags=["emails"])
 
 _require_emails = require_section(Section.emails)
+# What the compose screen needs, which a campaign's page opens too: a role
+# with Campaigns but not Emails can send from a campaign without being able
+# to edit templates or the signature.
+_require_compose = require_section(Section.emails, Section.campaigns)
 
 # The signature logo rides along inside every single email, so it's kept
 # small, and to formats every mail client displays inline.
@@ -143,6 +149,8 @@ def _to_send_item(send: EmailSend) -> EmailSendItem:
         audience=send.audience,
         template_id=send.template_id,
         template_name=send.template_name,
+        campaign_id=send.campaign_id,
+        campaign_name=send.campaign_name,
         subject=send.subject,
         body_html=send.body_html,
         attachment_names=send.attachment_names,
@@ -168,7 +176,7 @@ async def _get_template_or_404(template_id: int) -> EmailTemplate:
 
 
 @router.get("/get_status", response_model=EmailStatusResponse)
-async def get_status(_: User | None = Depends(_require_emails)) -> EmailStatusResponse:
+async def get_status(_: User | None = Depends(_require_compose)) -> EmailStatusResponse:
     return EmailStatusResponse(
         configured=email_sender.is_configured(),
         from_address=settings.smtp_user,
@@ -194,7 +202,7 @@ async def test_connection(_: User | None = Depends(_require_emails)) -> dict[str
 
 
 @router.get("/get_templates", response_model=list[EmailTemplateItem])
-async def get_templates(_: User | None = Depends(_require_emails)) -> list[EmailTemplateItem]:
+async def get_templates(_: User | None = Depends(_require_compose)) -> list[EmailTemplateItem]:
     templates = await EmailTemplate.find_all().sort(+EmailTemplate.name).to_list()
     return [_to_template_item(template) for template in templates]
 
@@ -300,7 +308,7 @@ def _to_signature_item(row: EmailSettings | None) -> EmailSignatureItem:
 
 
 @router.get("/get_signature", response_model=EmailSignatureItem)
-async def get_signature(_: User | None = Depends(_require_emails)) -> EmailSignatureItem:
+async def get_signature(_: User | None = Depends(_require_compose)) -> EmailSignatureItem:
     return _to_signature_item(await email_signature.get_settings_row())
 
 
@@ -317,7 +325,7 @@ async def update_signature(
 
 
 @router.get("/get_signature_logo")
-async def get_signature_logo(_: User | None = Depends(_require_emails)) -> Response:
+async def get_signature_logo(_: User | None = Depends(_require_compose)) -> Response:
     # The logo emails carry right now, for the Signature tab and the
     # compose preview. Served even while switched off, so the tab can show
     # what turning it back on would add.
@@ -370,7 +378,7 @@ async def reset_signature_logo(_: User | None = Depends(_require_emails)) -> Ema
 async def send_email(
     payload: str = Form(...),
     files: list[UploadFile] = File(default=[]),
-    _: User | None = Depends(_require_emails),
+    _: User | None = Depends(_require_compose),
 ) -> SendEmailResponse:
     try:
         request = SendEmailRequest.model_validate(json.loads(payload))
@@ -396,6 +404,12 @@ async def send_email(
             raise _bad_request(
                 f"“{template.name}” is a {template.audience.value} template and can't be sent to {request.audience.value}s"
             )
+
+    campaign: Campaign | None = None
+    if request.campaign_id is not None:
+        campaign = await Campaign.get(request.campaign_id)
+        if campaign is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="campaign not found")
 
     contacts = {contact.id: contact for contact in await DatabaseContact.find({"_id": {"$in": contact_ids}}).to_list()}
     recipients: list[EmailRecipient] = []
@@ -444,6 +458,8 @@ async def send_email(
         audience=request.audience,
         template_id=template.id if template else None,
         template_name=template.name if template else None,
+        campaign_id=campaign.id if campaign else None,
+        campaign_name=campaign.name if campaign else None,
         subject=subject,
         body_html=request.body_html,
         attachment_names=[attachment.filename for attachment in attachments],
@@ -457,7 +473,7 @@ async def send_email(
 
 
 @router.get("/get_send", response_model=EmailSendItem)
-async def get_send(send_id: int, _: User | None = Depends(_require_emails)) -> EmailSendItem:
+async def get_send(send_id: int, _: User | None = Depends(_require_compose)) -> EmailSendItem:
     send = await EmailSend.get(send_id)
     if send is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="send not found")

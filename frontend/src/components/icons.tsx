@@ -64,6 +64,18 @@ export function MailIcon(props: IconProps) {
   );
 }
 
+// A megaphone — the admin's Campaigns page, which mails out to the
+// database's leads, clients and vendors.
+export function MegaphoneIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 10v4a1 1 0 0 0 1 1h2.5L15 19V5L7.5 9H5a1 1 0 0 0-1 1Z" />
+      <path d="M7.5 15l1.2 4.2a1 1 0 0 0 1 .8H11" />
+      <path d="M18 9.5a3.5 3.5 0 0 1 0 5" />
+    </svg>
+  );
+}
+
 export function PhoneIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
