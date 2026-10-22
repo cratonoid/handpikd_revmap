@@ -25,12 +25,14 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { ContactFormModal } from "@/components/admin/contact-form-modal";
 import { EmailComposeModal } from "@/components/admin/email-compose-modal";
+import { LeadChannelFilters, NO_CHANNEL_FILTERS, type LeadChannelFilterValues } from "@/components/admin/lead-channel-filters";
 import { StatusSelect } from "@/components/admin/status-select";
 import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import {
   deleteContact,
   fetchContacts,
   LEAD_STATUS_OPTIONS,
+  matchesChannelFilter,
   OUTREACH_OPTIONS,
   SD_STATUS_OPTIONS,
   updateLeadStatus,
@@ -68,6 +70,8 @@ export function DatabasePageClient() {
 
   const [tab, setTab] = useState<ContactType>("lead");
   const [search, setSearch] = useState("");
+  // Leads only: the other tabs have no tick-box columns.
+  const [channelFilters, setChannelFilters] = useState<LeadChannelFilterValues>(NO_CHANNEL_FILTERS);
   const [modalState, setModalState] = useState<ModalState>(null);
 
   const [rowError, setRowError] = useState<string | null>(null);
@@ -107,6 +111,12 @@ export function DatabasePageClient() {
 
   const visibleContacts = contacts
     .filter((contact) => contact.type === tab)
+    .filter(
+      (contact) =>
+        !isLead ||
+        (matchesChannelFilter(channelFilters.dataPresent, contact.outreachChannels) &&
+          matchesChannelFilter(channelFilters.sentStatus, contact.sentChannels)),
+    )
     .filter((contact) =>
       matchesSearch(search, [
         contact.name,
@@ -281,6 +291,8 @@ export function DatabasePageClient() {
             </button>
           ))}
         </div>
+
+        {isLead && <LeadChannelFilters value={channelFilters} onChange={setChannelFilters} />}
 
         <TableSearchInput
           value={search}
@@ -534,7 +546,9 @@ export function DatabasePageClient() {
         {loadState === "error" && <p className={styles.formError}>{loadError}</p>}
         {loadState === "loaded" && visibleContacts.length === 0 && (
           <p className={styles.pageSubtext}>
-            {search ? `No ${activeTab.label.toLowerCase()} match your search.` : `No ${activeTab.label.toLowerCase()} yet.`}
+            {contacts.some((contact) => contact.type === tab)
+              ? `No ${activeTab.label.toLowerCase()} match these filters.`
+              : `No ${activeTab.label.toLowerCase()} yet.`}
           </p>
         )}
       </div>

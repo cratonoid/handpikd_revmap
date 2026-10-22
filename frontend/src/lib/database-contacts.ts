@@ -37,6 +37,26 @@ export const OUTREACH_OPTIONS: { value: OutreachChannel; label: string }[] = [
   { value: "mail", label: "Mail" },
 ];
 
+// The Leads filters on /admin/database and a campaign's page, one per
+// tick-box column. A single channel matches whether or not the other one is
+// ticked too; "both" and "none" are exact.
+export type ChannelFilter = "all" | OutreachChannel | "both" | "none";
+
+export const CHANNEL_FILTER_OPTIONS: { value: ChannelFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "mail", label: "Mail" },
+  { value: "both", label: "Both" },
+  { value: "none", label: "None" },
+];
+
+export function matchesChannelFilter(filter: ChannelFilter, channels: OutreachChannel[]): boolean {
+  if (filter === "all") return true;
+  if (filter === "both") return channels.includes("whatsapp") && channels.includes("mail");
+  if (filter === "none") return channels.length === 0;
+  return channels.includes(filter);
+}
+
 export type Contact = {
   id: number;
   type: ContactType;

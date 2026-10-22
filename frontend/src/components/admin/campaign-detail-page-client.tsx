@@ -21,9 +21,10 @@ import Link from "next/link";
 import { Button } from "@/components/button";
 import { CampaignFormModal } from "@/components/admin/campaign-form-modal";
 import { EmailComposeModal } from "@/components/admin/email-compose-modal";
+import { LeadChannelFilters, NO_CHANNEL_FILTERS, type LeadChannelFilterValues } from "@/components/admin/lead-channel-filters";
 import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import { fetchCampaign, type CampaignContactStatus, type CampaignDetail } from "@/lib/campaigns";
-import { fetchContacts, type Contact, type ContactType } from "@/lib/database-contacts";
+import { fetchContacts, matchesChannelFilter, type Contact, type ContactType } from "@/lib/database-contacts";
 import { AUDIENCE_LABELS, RECIPIENT_STATUS_LABELS } from "@/lib/emails";
 import { formatDate, formatDateTime } from "@/lib/format-date";
 import styles from "@/styles/dashboard.module.css";
@@ -78,6 +79,8 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
   const [tab, setTab] = useState<ContactType>("lead");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  // Leads only, as on /admin/database.
+  const [channelFilters, setChannelFilters] = useState<LeadChannelFilterValues>(NO_CHANNEL_FILTERS);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [composeFor, setComposeFor] = useState<Contact[] | null>(null);
   const [editing, setEditing] = useState(false);
@@ -149,6 +152,12 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
   const tabContacts = contacts.filter((contact) => contact.type === tab);
   const visibleContacts = tabContacts
     .filter((contact) => matchesFilter(statusFilter, statuses.get(contact.id)))
+    .filter(
+      (contact) =>
+        !isLead ||
+        (matchesChannelFilter(channelFilters.dataPresent, contact.outreachChannels) &&
+          matchesChannelFilter(channelFilters.sentStatus, contact.sentChannels)),
+    )
     .filter((contact) =>
       matchesSearch(search, [contact.name, contact.contactPerson, contact.contactRole, contact.email, contact.phone, contact.vendorType]),
     );
@@ -251,6 +260,8 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
                 </option>
               ))}
             </select>
+
+            {isLead && <LeadChannelFilters value={channelFilters} onChange={setChannelFilters} />}
 
             <TableSearchInput
               value={search}
