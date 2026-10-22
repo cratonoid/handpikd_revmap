@@ -9,13 +9,16 @@
 // editable number: the balance is whatever is left on the lots that haven't
 // expired.
 //
-// Adding and withdrawing points save straight away through their own
-// endpoints — there is no separate Save to confirm them.
+// Adding, editing and withdrawing points save straight away through their
+// own endpoints — there is no separate Save to confirm them. Editing is
+// mostly for the lots a paid invoice adds on its own, whose size and expiry
+// nobody picked; a lot can't be cut below what orders have already spent.
 import { useCallback, useEffect, useState, type KeyboardEvent } from "react";
 import { addDaysToDateValue, nowAsDateValue } from "@/lib/datetime-input";
 import { formatDate } from "@/lib/format-date";
 import {
   addCustomerPoints,
+  editCustomerPointsLot,
   fetchCustomerPoints,
   POINTS_VALIDITY_DAYS,
   revokeCustomerPointsLot,
@@ -47,6 +50,8 @@ export function CustomerPointsSection({ custId }: { custId: number }) {
   const [error, setError] = useState<string | null>(null);
   // Withdrawing can't be undone, so it takes a second click on the same row.
   const [confirmingLotId, setConfirmingLotId] = useState<number | null>(null);
+  // The lot being edited in place, with its draft points and expiry.
+  const [editing, setEditing] = useState<{ lotId: number; points: string; expiresOn: string } | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -96,8 +101,55 @@ export function CustomerPointsSection({ custId }: { custId: number }) {
     setBusy(false);
   }
 
+  function startEdit(lot: PointsLot) {
+    setConfirmingLotId(null);
+    setError(null);
+    setEditing({ lotId: lot.id, points: String(lot.points), expiresOn: lot.expiresOn });
+  }
+
+  async function handleSaveEdit(lot: PointsLot) {
+    if (!editing) return;
+    const value = Number(editing.points);
+    if (!Number.isInteger(value) || value <= 0) {
+      setError("Enter a whole number of points above 0.");
+      return;
+    }
+    if (value < lot.used) {
+      setError(`${lot.used} of these points have already been spent, so it can't go below ${lot.used}.`);
+      return;
+    }
+    if (!editing.expiresOn || (editing.expiresOn !== lot.expiresOn && editing.expiresOn <= nowAsDateValue())) {
+      setError("The expiry date has to be after today.");
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    const failure = await editCustomerPointsLot(lot.id, value, editing.expiresOn);
+    if (failure) {
+      setError(failure);
+    } else {
+      setEditing(null);
+      await reload();
+    }
+    setBusy(false);
+  }
+
+  // Enter saves the row and Escape drops the draft, rather than Enter
+  // submitting the whole client form.
+  function editKeys(event: KeyboardEvent<HTMLInputElement>, lot: PointsLot) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void handleSaveEdit(lot);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setEditing(null);
+    }
+  }
+
   async function handleRevoke(lotId: number) {
     setConfirmingLotId(null);
+    setEditing(null);
     setBusy(true);
     setError(null);
     const failure = await revokeCustomerPointsLot(lotId);
@@ -164,7 +216,7 @@ export function CustomerPointsSection({ custId }: { custId: number }) {
       <p className={styles.formHint}>
         Points expire on the date picked — three weeks from today unless you change it — and are worth nothing from
         that day on. Paid invoices add 5% of their total before tax automatically, expiring three weeks after the
-        invoice date.
+        invoice date — use Edit on a row to change its points or expiry.
       </p>
 
       {error && (
@@ -187,32 +239,94 @@ export function CustomerPointsSection({ custId }: { custId: number }) {
               </tr>
             </thead>
             <tbody>
-              {points.lots.map((lot) => (
-                <tr key={lot.id} className={lot.status === "active" ? undefined : styles.pointsLotInactive}>
-                  <td className={styles.pointsLotsCell}>{lot.points}</td>
-                  <td className={styles.pointsLotsCell}>{lot.status === "active" ? lot.remaining : 0}</td>
-                  <td className={styles.pointsLotsCell}>{formatDate(lot.expiresOn)}</td>
-                  <td className={styles.pointsLotsCell} title={lot.note || undefined}>
-                    {SOURCE_LABELS[lot.source]}
-                    {lot.note && <span className={styles.pointsLotNote}> · {lot.note}</span>}
-                  </td>
-                  <td className={styles.pointsLotsCell}>{STATUS_LABELS[lot.status]}</td>
-                  <td className={styles.pointsLotsCell}>
-                    {lot.status === "active" && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          confirmingLotId === lot.id ? void handleRevoke(lot.id) : setConfirmingLotId(lot.id)
-                        }
-                        disabled={busy}
-                        className={styles.linkButton}
-                      >
-                        {confirmingLotId === lot.id ? "Confirm withdraw" : "Withdraw"}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {points.lots.map((lot) => {
+                const draft = editing?.lotId === lot.id ? editing : null;
+                return (
+                  <tr
+                    key={lot.id}
+                    className={lot.status === "active" || draft ? undefined : styles.pointsLotInactive}
+                  >
+                    <td className={styles.pointsLotsCell}>
+                      {draft ? (
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={draft.points}
+                          onChange={(e) => setEditing({ ...draft, points: e.target.value.replace(/\D/g, "") })}
+                          onKeyDown={(e) => editKeys(e, lot)}
+                          aria-label="Points"
+                          autoFocus
+                          className={`${styles.formInput} ${styles.pointsLotInput}`}
+                        />
+                      ) : (
+                        lot.points
+                      )}
+                    </td>
+                    <td className={styles.pointsLotsCell}>{lot.status === "active" ? lot.remaining : 0}</td>
+                    <td className={styles.pointsLotsCell}>
+                      {draft ? (
+                        <input
+                          type="date"
+                          value={draft.expiresOn}
+                          onChange={(e) => setEditing({ ...draft, expiresOn: e.target.value })}
+                          onKeyDown={(e) => editKeys(e, lot)}
+                          aria-label="Points expire on"
+                          className={`${styles.formInput} ${styles.paidOnInput}`}
+                        />
+                      ) : (
+                        formatDate(lot.expiresOn)
+                      )}
+                    </td>
+                    <td className={styles.pointsLotsCell} title={lot.note || undefined}>
+                      {SOURCE_LABELS[lot.source]}
+                      {lot.note && <span className={styles.pointsLotNote}> · {lot.note}</span>}
+                    </td>
+                    <td className={styles.pointsLotsCell}>{STATUS_LABELS[lot.status]}</td>
+                    <td className={styles.pointsLotsCell}>
+                      {draft ? (
+                        <div className={styles.pointsLotActions}>
+                          <button
+                            type="button"
+                            onClick={() => void handleSaveEdit(lot)}
+                            disabled={busy}
+                            className={styles.linkButton}
+                          >
+                            Save
+                          </button>
+                          <button type="button" onClick={() => setEditing(null)} className={styles.linkButton}>
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className={styles.pointsLotActions}>
+                          {lot.status !== "revoked" && (
+                            <button
+                              type="button"
+                              onClick={() => startEdit(lot)}
+                              disabled={busy}
+                              className={styles.linkButton}
+                            >
+                              Edit
+                            </button>
+                          )}
+                          {lot.status === "active" && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                confirmingLotId === lot.id ? void handleRevoke(lot.id) : setConfirmingLotId(lot.id)
+                              }
+                              disabled={busy}
+                              className={styles.linkButton}
+                            >
+                              {confirmingLotId === lot.id ? "Confirm withdraw" : "Withdraw"}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

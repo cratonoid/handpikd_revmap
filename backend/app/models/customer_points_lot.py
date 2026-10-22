@@ -33,7 +33,9 @@ class PointsSource(str, Enum):
 class CustomerPointsLot(Document):
     id: int
     cust_id: int  # FK -> CustomerDetails.id
-    points: int  # As granted. Never edited afterwards.
+    # As granted, unless an admin has since edited it (never below used —
+    # see edit_lot in services/customer_points.py).
+    points: int
     # Taken by sales-order redemptions (SalesOrders.points_allocations).
     # Moves back down when an order's redemption is reduced or the order is
     # deleted.

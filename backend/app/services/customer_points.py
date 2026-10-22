@@ -6,7 +6,9 @@
 #
 #   - Every grant expires POINTS_VALIDITY (3 weeks) after it starts unless
 #     the admin picks another date: from today for points added by hand, from
-#     the invoice's own date for points earned off one.
+#     the invoice's own date for points earned off one. An admin can later
+#     change any lot's points and expiry (edit_lot) — e.g. to adjust what an
+#     invoice earned — but never below what has already been spent from it.
 #   - A lot is worth nothing from its expiry date on. Nothing has to run on
 #     that day — expiry is decided whenever the balance is read.
 #   - Marking a standard invoice paid earns INVOICE_REWARD_RATE (5%) of its
@@ -116,6 +118,41 @@ async def grant_points(
     )
     await lot.insert()
     return lot
+
+
+async def edit_lot(lot_id: int, points: int, expires_on: date) -> None:
+    """Change a lot's size and expiry, e.g. to adjust an invoice's reward.
+
+    Points can't go below what orders have already spent from the lot, and a
+    new expiry has to be after today — withdrawing is how a lot is ended
+    early. Leaving the expiry as it was is always allowed, so an expired
+    lot's points can still be corrected for the record.
+    """
+    lot = await CustomerPointsLot.get(lot_id)
+    if lot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="points not found")
+    if lot.is_revoked:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="withdrawn points can't be edited")
+    if expires_on != lot.expires_at.date() and expires_on <= today():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="the expiry date must be after today, or the points would be worth nothing",
+        )
+
+    # Conditional on `used` in the database, not off the copy read above, so
+    # an order spending from the lot at the same moment can't leave it
+    # holding fewer points than were taken.
+    result = await CustomerPointsLot.get_pymongo_collection().update_one(
+        {"_id": lot_id, "is_revoked": False, "used": {"$lte": points}},
+        {"$set": {"points": points, "expires_at": _expires_at(expires_on)}},
+    )
+    if result.matched_count == 0:
+        fresh = await CustomerPointsLot.get(lot_id)
+        used = fresh.used if fresh is not None else lot.used
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"{used} of these points have already been spent on orders, so it can't be set below {used}",
+        )
 
 
 # ---------------------------------------------------------------------------

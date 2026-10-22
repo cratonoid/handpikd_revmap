@@ -5408,6 +5408,20 @@ select.formInput:disabled {
   color: color-mix(in srgb, var(--color-ink) 65%, transparent);
 }
 
+/* The points figure while a lot is being edited in place — same compact
+   field as .paidOnInput, sized for a few digits. */
+.pointsLotInput {
+  width: 5rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8125rem;
+}
+
+/* Edit / Withdraw side by side in a lot's row. */
+.pointsLotActions {
+  display: flex;
+  gap: 0.75rem;
+}
+
 /* The points balance/limit line under the sales order form's "Redeem points"
    field, right-aligned with the field above it. */
 .orderPointsHint {
@@ -5428,6 +5442,15 @@ select.formInput:disabled {
 
 /* "Expiring next" on the Clients page's Points view, when the batch goes
    within a week (client-points-tab.tsx) — worth a reminder to the client. */
+/* The fine print under the client dashboard's Points card
+   (customer/dashboard-page-client.tsx). */
+.statTerms {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+}
+
 .pointsExpiringSoon {
   font-weight: 600;
   color: var(--color-red);

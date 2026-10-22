@@ -104,12 +104,14 @@ export function CustomerDashboardPageClient() {
       value: ready ? formatAmount(summary.overdueAmount) : "—",
       caption: ready ? `${summary.overdueCount} past its due date` : null,
       urgent: false,
+      terms: null,
     },
     {
       label: "Paid",
       value: ready ? formatAmount(summary.paidAmount) : "—",
       caption: ready ? `${summary.paidCount} invoice(s) settled` : null,
       urgent: false,
+      terms: null,
     },
     {
       label: "Points",
@@ -117,6 +119,9 @@ export function CustomerDashboardPageClient() {
       caption: points ? expiryCaption(points) : pointsFailed ? "Couldn't load your points" : null,
       urgent:
         points?.nextExpiryInDays != null && points.nextExpiryInDays <= EXPIRING_SOON_DAYS,
+      // Points are earned once an order's invoice is paid, so they can't come
+      // off that same order — said up front so nobody expects them to.
+      terms: "*Points earned on your current order can only be redeemed on your next order.",
     },
   ];
 
@@ -147,6 +152,7 @@ export function CustomerDashboardPageClient() {
                 {stat.caption}
               </p>
             )}
+            {stat.terms && <p className={styles.statTerms}>{stat.terms}</p>}
           </div>
         ))}
       </div>

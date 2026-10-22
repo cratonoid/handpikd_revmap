@@ -40,6 +40,7 @@ class _Lot:
 class _UpdateResult:
     def __init__(self, modified: bool) -> None:
         self.modified_count = 1 if modified else 0
+        self.matched_count = self.modified_count
 
 
 class _Store:
@@ -63,6 +64,13 @@ class _Store:
     # -- the subset of the pymongo collection the service uses --------------
     async def update_one(self, query: dict, update: dict) -> _UpdateResult:
         lot = self.lots[query["_id"]]
+        if "$set" in update:
+            # edit_lot: conditional on not dropping below what's been spent.
+            if lot.is_revoked or lot.used > query["used"]["$lte"]:
+                return _UpdateResult(False)
+            lot.points = update["$set"]["points"]
+            lot.expires_at = update["$set"]["expires_at"]
+            return _UpdateResult(True)
         delta = update["$inc"]["used"]
         if query.get("is_revoked") is False and lot.is_revoked:
             return _UpdateResult(False)
@@ -84,6 +92,10 @@ def store(monkeypatch):
         @staticmethod
         def get_pymongo_collection():
             return store
+
+        @staticmethod
+        async def get(lot_id):
+            return store.lots.get(lot_id)
 
         @staticmethod
         async def find_one(*_conditions):
@@ -389,3 +401,55 @@ def test_a_client_with_no_points_has_no_days_until_expiry(monkeypatch):
 
     assert balance.available_points == 0
     assert balance.next_expiry_in_days is None
+
+
+# ---------------------------------------------------------------------------
+# Editing a lot
+# ---------------------------------------------------------------------------
+
+
+def _edit(lot_id: int, points: int, expires_on: date) -> None:
+    asyncio.run(customer_points.edit_lot(lot_id, points, expires_on))
+
+
+def test_an_invoice_reward_can_be_resized_and_given_a_new_expiry(store, monkeypatch):
+    monkeypatch.setattr(customer_points, "today", lambda: TODAY)
+    _sync(_Invoice())
+    lot = next(iter(store.lots.values()))
+
+    _edit(lot.id, 80, TODAY + timedelta(days=60))
+
+    assert lot.points == 80
+    assert lot.expires_at.date() == TODAY + timedelta(days=60)
+
+
+def test_a_lot_cannot_be_cut_below_what_has_been_spent(store, monkeypatch):
+    monkeypatch.setattr(customer_points, "today", lambda: TODAY)
+    lot = store.add(1, 100, TODAY + timedelta(days=5), used=40)
+
+    with pytest.raises(HTTPException):
+        _edit(lot.id, 39, TODAY + timedelta(days=5))
+    assert lot.points == 100
+
+    _edit(lot.id, 40, TODAY + timedelta(days=5))
+    assert lot.points == 40
+
+
+def test_a_new_expiry_has_to_be_after_today_but_an_old_one_can_stay(store, monkeypatch):
+    monkeypatch.setattr(customer_points, "today", lambda: TODAY)
+    expired = store.add(1, 100, TODAY - timedelta(days=1))
+
+    with pytest.raises(HTTPException):
+        _edit(expired.id, 100, TODAY)
+
+    _edit(expired.id, 90, TODAY - timedelta(days=1))
+    assert expired.points == 90
+
+
+def test_withdrawn_points_cannot_be_edited(store, monkeypatch):
+    monkeypatch.setattr(customer_points, "today", lambda: TODAY)
+    lot = store.add(1, 100, TODAY + timedelta(days=5), is_revoked=True)
+
+    with pytest.raises(HTTPException):
+        _edit(lot.id, 50, TODAY + timedelta(days=5))
+    assert lot.points == 100

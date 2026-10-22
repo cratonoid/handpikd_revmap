@@ -28,6 +28,8 @@ from app.schemas.admin import (
     CustomerPointsLotItem,
     CustomerPointsResponse,
     CustomerPointsSummaryItem,
+    EditCustomerPointsLotRequest,
+    EditCustomerPointsLotResponse,
     RevokeCustomerPointsLotRequest,
     RevokeCustomerPointsLotResponse,
     UpdateCustomerDetailsRequest,
@@ -37,6 +39,7 @@ from app.services.counters import get_next_id
 from app.services.customer_points import (
     available_points,
     default_expiry,
+    edit_lot,
     get_customer_lots,
     grant_points,
     is_live,
@@ -384,6 +387,18 @@ async def add_customer_points(
 
     await grant_points(payload.cust_id, payload.points, expires_on, PointsSource.manual, note=payload.note.strip())
     return AddCustomerPointsResponse(message="points added successfully")
+
+
+@router.post("/edit_customer_points_lot", response_model=EditCustomerPointsLotResponse)
+async def edit_customer_points_lot(
+    payload: EditCustomerPointsLotRequest,
+    _: User | None = Depends(require_section(Section.clients)),
+) -> EditCustomerPointsLotResponse:
+    # Mainly for the points a paid invoice earns automatically, whose size
+    # and expiry the admin didn't get to pick. The invoice won't re-size the
+    # lot later: sync_invoice_reward only ever revokes or reinstates it.
+    await edit_lot(payload.lot_id, payload.points, payload.expires_on)
+    return EditCustomerPointsLotResponse(message="points updated")
 
 
 @router.post("/revoke_customer_points_lot", response_model=RevokeCustomerPointsLotResponse)

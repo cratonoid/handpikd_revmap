@@ -130,6 +130,16 @@ export function addCustomerPoints(
   });
 }
 
+// Any lot that hasn't been withdrawn — mostly for the points a paid invoice
+// adds on its own. The backend refuses points below what's already spent.
+export function editCustomerPointsLot(lotId: number, points: number, expiresOn: string): Promise<string | null> {
+  return postForError("/admin/edit_customer_points_lot", {
+    lot_id: lotId,
+    points,
+    expires_on: expiresOn,
+  });
+}
+
 export function revokeCustomerPointsLot(lotId: number): Promise<string | null> {
   return postForError("/admin/revoke_customer_points_lot", { lot_id: lotId });
 }

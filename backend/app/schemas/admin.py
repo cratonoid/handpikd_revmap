@@ -167,6 +167,17 @@ class AddCustomerPointsResponse(BaseModel):
     message: str
 
 
+class EditCustomerPointsLotRequest(BaseModel):
+    lot_id: int
+    # At least what orders have already spent from the lot.
+    points: int = Field(gt=0)
+    expires_on: date
+
+
+class EditCustomerPointsLotResponse(BaseModel):
+    message: str
+
+
 class RevokeCustomerPointsLotRequest(BaseModel):
     lot_id: int
 
