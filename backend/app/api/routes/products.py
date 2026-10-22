@@ -396,8 +396,8 @@ async def get_public_categories() -> list[PublicCategoryNode]:
 async def get_public_products() -> list[PublicProductItem]:
     # is_unbilled is excluded on top of the two flags, rather than trusted to
     # ride along inside is_visible: unbilled products are created with
-    # is_visible False and services/inventory.py refuses to flip it on, but
-    # nothing stops an admin toggling it by hand from the product form, and
+    # is_visible False, but nothing stops an admin toggling it by hand from
+    # the product form, and
     # goods bought off a local market — no HSN code, no photos, no selling
     # price — have no business on the storefront either way. See
     # ProductDetails.is_unbilled. Existing products match this filter thanks

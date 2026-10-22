@@ -40,9 +40,8 @@ class ProductDetails(Document):
     # flag, not migrating rows between collections.
     #
     # Two things must hold wherever this is True, both enforced rather than
-    # assumed: it never becomes storefront-visible (services/inventory.py's
-    # _set_product_visibility refuses to show one on restock, and
-    # get_public_products filters it out), and it never lands on a GST
+    # assumed: it never becomes storefront-visible (get_public_products
+    # filters it out), and it never lands on a GST
     # purchase order (routes/orders.py's _validate_products_belong_to_vendor
     # rejects it). Identity is the NAME, since "" is the only HSN code these
     # have to be told apart by — see _validate_hsn_code_product_name in

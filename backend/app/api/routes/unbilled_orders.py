@@ -214,9 +214,8 @@ async def _create_missing_products(
             category_ids=[],
             moq=1,
             description="",
-            # Never on the storefront. services/inventory.py's
-            # _set_product_visibility also refuses to flip this on when stock
-            # arrives, which is the path that would otherwise undo it.
+            # Never on the storefront (get_public_products also filters
+            # unbilled products out).
             is_visible=False,
             is_unbilled=True,
         ).insert()

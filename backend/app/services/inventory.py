@@ -134,46 +134,26 @@ async def stock_shortfall_labels(shortfalls: list[tuple[int, int, int]]) -> dict
     return labels
 
 
-async def _set_product_visibility(product_id: int, is_visible: bool) -> None:
-    product = await ProductDetails.get(product_id)
-    if product is None:
-        return
-
-    # An unbilled product must never be shown on the storefront, and
-    # restocking one is the only way it could have been: the caller below
-    # turns visibility ON whenever stock arrives, which for these would put
-    # goods bought off a local market — no HSN, no catalogue entry, no
-    # selling price yet — in front of customers. Hiding one on sell-out is
-    # still allowed through (it is already hidden, so it is a no-op), because
-    # the rule is about surfacing them, not about the flag's value.
-    if is_visible and product.is_unbilled:
-        return
-
-    if product.is_visible != is_visible:
-        product.is_visible = is_visible
-        await product.save()
-
-
 async def _adjust_inventory_quantity(product_id: int, delta: int) -> None:
+    # Stock only — a product's storefront visibility is never touched here.
+    # It is set by hand on /admin/products and nowhere else, so a product
+    # that sells out stays as shown, and one created hidden (e.g. from an
+    # invoice line on the purchase order screen) stays hidden when the order
+    # that created it stocks it in.
     inventory = await Inventory.find_one(Inventory.product_id == product_id)
     if inventory is None:
         new_quantity = max(delta, 0)
         if new_quantity > 0:
             inventory_id = await get_next_id(InventoryIdCounter, "next_inventory_id", Inventory)
             await Inventory(id=inventory_id, product_id=product_id, quantity=new_quantity).insert()
-            await _set_product_visibility(product_id, True)
         return
 
     inventory.quantity += delta
     if inventory.quantity <= 0:
-        # Out of stock: drop the inventory row and hide the product from the
-        # catalogue, but keep ProductDetails so it can resurface on restock.
+        # Out of stock: drop the inventory row, keeping ProductDetails.
         await inventory.delete()
-        await _set_product_visibility(product_id, False)
     else:
         await inventory.save()
-        if delta > 0:
-            await _set_product_visibility(product_id, True)
 
 
 async def _apply_stock_deltas(stock_deltas: dict[int, int]) -> None:

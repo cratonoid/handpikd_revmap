@@ -22,7 +22,8 @@
 // The "Customer" header carries the same multiselect filter as the sales
 // orders table (components/admin/column-filter-dropdown.tsx), labelled name
 // plus department. Its options come from the current Standard/Proforma view
-// only, and switching views clears it.
+// only, and switching views clears it. The Standard view's "Status" header
+// has the same dropdown for Paid/Unpaid, cleared the same way.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { ColumnFilterDropdown } from "@/components/admin/column-filter-dropdown";
@@ -74,6 +75,10 @@ const STATUS_OPTIONS: readonly { value: InvoiceStatus; label: string }[] = [
   { value: "paid", label: STATUS_LABEL.paid },
 ];
 
+// The "Status" header's filter. ColumnFilterDropdown works in numeric
+// values, so each status is keyed by its position in STATUS_OPTIONS.
+const STATUS_FILTER_OPTIONS = STATUS_OPTIONS.map((option, index) => ({ value: index, label: option.label }));
+
 export function InvoicesTab() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [salesOrders, setSalesOrders] = useState<SalesOrder[]>([]);
@@ -99,6 +104,9 @@ export function InvoicesTab() {
   // Customer ids ticked in the dropdown beside the "Customer" header. Empty
   // means no filter.
   const [customerFilterIds, setCustomerFilterIds] = useState<number[]>([]);
+  // Indexes into STATUS_OPTIONS ticked beside the "Status" header (standard
+  // view only). Empty means no filter.
+  const [statusFilterIndexes, setStatusFilterIndexes] = useState<number[]>([]);
 
   const salesOrdersById = new Map(salesOrders.map((order) => [order.id, order]));
   const customersById = new Map(customers.map((c) => [c.id, c]));
@@ -123,17 +131,20 @@ export function InvoicesTab() {
     })
     .sort((a, b) => a.label.localeCompare(b.label));
   const customerFilterSet = new Set(customerFilterIds);
+  const statusFilterSet = new Set(statusFilterIndexes.map((index) => STATUS_OPTIONS[index].value));
   const visibleInvoices = invoicesOfType
     .filter((invoice) => {
       if (customerFilterSet.size === 0) return true;
       const custId = invoiceCustId(invoice);
       return custId !== undefined && customerFilterSet.has(custId);
     })
+    .filter((invoice) => statusFilterSet.size === 0 || statusFilterSet.has(invoice.status))
     .sort(byNewestFirst);
 
   function handleInvoiceTypeChange(nextType: InvoiceType) {
     setInvoiceType(nextType);
     setCustomerFilterIds([]);
+    setStatusFilterIndexes([]);
   }
 
   function loadAll() {
@@ -380,7 +391,21 @@ export function InvoicesTab() {
                 </span>
               </th>
               {invoiceType === "proforma" && <th className={styles.tableHeadCell}>Due date</th>}
-              {invoiceType === "standard" && <th className={styles.tableHeadCell}>Status</th>}
+              {invoiceType === "standard" && (
+                <th className={styles.tableHeadCell}>
+                  <span className={styles.tableHeadControls}>
+                    Status
+                    <ColumnFilterDropdown
+                      label="Filter by status"
+                      searchPlaceholder="Search statuses…"
+                      emptyMessage="No statuses match."
+                      options={STATUS_FILTER_OPTIONS}
+                      selectedValues={statusFilterIndexes}
+                      onChange={setStatusFilterIndexes}
+                    />
+                  </span>
+                </th>
+              )}
               {invoiceType === "standard" && <th className={styles.tableHeadCell}>Paid on</th>}
               <th className={styles.tableHeadCell}>Amount</th>
               <th className={styles.tableHeadCell}>PDF</th>
@@ -467,8 +492,8 @@ export function InvoicesTab() {
         {loadState === "loading" && <p className={styles.pageSubtext}>Loading invoices…</p>}
         {loadState === "loaded" && visibleInvoices.length === 0 && (
           <p className={styles.pageSubtext}>
-            {customerFilterIds.length > 0
-              ? "No invoices for the selected customers."
+            {customerFilterIds.length > 0 || statusFilterIndexes.length > 0
+              ? "No invoices match the selected filters."
               : invoiceType === "standard"
                 ? "No invoices raised yet."
                 : "No proforma invoices raised yet."}
