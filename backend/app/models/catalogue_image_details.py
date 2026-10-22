@@ -2,6 +2,7 @@
 # page, in page order (ascending id; see _replace_pages in
 # routes/catalogues.py).
 from beanie import Document
+from pymongo import IndexModel
 
 
 class CatalogueImageDetails(Document):
@@ -21,3 +22,5 @@ class CatalogueImageDetails(Document):
 
     class Settings:
         name = "catalogue_image_details"
+        # Pages are always read by catalogue (see _pages_by_catalogue_id).
+        indexes = [IndexModel("catalogue_id", name="catalogue_id")]

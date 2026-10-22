@@ -18,6 +18,10 @@ ENV NEXT_PUBLIC_MEDIA_BASE_URL=$NEXT_PUBLIC_MEDIA_BASE_URL
 # Google Analytics 4 measurement ID — empty means no GA tag is rendered.
 ARG NEXT_PUBLIC_GA_ID=""
 ENV NEXT_PUBLIC_GA_ID=$NEXT_PUBLIC_GA_ID
+# Where next.config.ts's /media rewrite sends the image optimizer's fetches
+# of uploaded media: the backend service on the compose network.
+ARG MEDIA_PROXY_ORIGIN=http://backend:8000
+ENV MEDIA_PROXY_ORIGIN=$MEDIA_PROXY_ORIGIN
 
 RUN npm run build
 

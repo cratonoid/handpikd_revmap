@@ -31,6 +31,8 @@
 # single request (the previous design) meant a multi-page catalogue could
 # produce a 100+MB request and blow past nginx's client_max_body_size — one
 # request per page keeps each bounded to a single rendered page's size.
+from dataclasses import dataclass
+
 from beanie.operators import NE, In
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 
@@ -111,20 +113,37 @@ def _require_page_categories_within(page_category_ids: list[int], catalogue_cate
         )
 
 
+# A CatalogueImageDetails row as the readers below need it: just a page's
+# image and categories.
+@dataclass(slots=True)
+class _PageRow:
+    image_path: str
+    category_ids: list[int]
+
+
 # The pages one category shows, in page order.
-def _image_paths_in_category(pages: list[CatalogueImageDetails], category_id: int) -> list[str]:
+def _image_paths_in_category(pages: list[_PageRow], category_id: int) -> list[str]:
     return [page.image_path for page in pages if category_id in page.category_ids]
 
 
-async def _pages_by_catalogue_id(catalogue_ids: list[int]) -> dict[int, list[CatalogueImageDetails]]:
-    pages = (
-        await CatalogueImageDetails.find(In(CatalogueImageDetails.catalogue_id, catalogue_ids))
-        .sort(+CatalogueImageDetails.id)
-        .to_list()
+# Read through pymongo into plain _PageRows rather than Beanie documents:
+# every page of every catalogue comes through here — thousands of rows for
+# the storefront's /catalogue — and building a validated Document for each
+# one was what made get_public_catalogues take several seconds.
+async def _pages_by_catalogue_id(catalogue_ids: list[int]) -> dict[int, list[_PageRow]]:
+    cursor = (
+        CatalogueImageDetails.get_pymongo_collection()
+        .find(
+            {"catalogue_id": {"$in": catalogue_ids}},
+            {"_id": 0, "catalogue_id": 1, "image_path": 1, "category_ids": 1},
+        )
+        .sort("_id", 1)
     )
-    by_catalogue: dict[int, list[CatalogueImageDetails]] = {}
-    for page in pages:
-        by_catalogue.setdefault(page.catalogue_id, []).append(page)
+    by_catalogue: dict[int, list[_PageRow]] = {}
+    async for row in cursor:
+        by_catalogue.setdefault(row["catalogue_id"], []).append(
+            _PageRow(image_path=row["image_path"], category_ids=row.get("category_ids", []))
+        )
     return by_catalogue
 
 

@@ -27,6 +27,20 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // Uploaded media lives on the backend. Browsers never reach this rewrite
+  // in production (nginx sends /media/ straight to the backend), but the
+  // image optimizer fetches "/media/..." sources from this server itself, so
+  // they need to be proxied on. Baked in at build time: the Dockerfile sets
+  // MEDIA_PROXY_ORIGIN to the backend's compose hostname; dev falls back to
+  // the local backend.
+  async rewrites() {
+    return [
+      {
+        source: "/media/:path*",
+        destination: `${process.env.MEDIA_PROXY_ORIGIN ?? "http://localhost:8000"}/media/:path*`,
+      },
+    ];
+  },
   async redirects() {
     return [
       {
