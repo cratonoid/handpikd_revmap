@@ -947,3 +947,85 @@ def test_a_bare_rate_in_an_item_row_is_not_read_as_one():
     without_summary = [[row for row in page if row[0] not in (410, 422, 434)]]
 
     assert extract_invoice_from_text(_pdf(without_summary), OUR_GSTIN) is None
+
+
+# Blipingo Packaging (Vyapar): the invoice number is a bare serial, "36",
+# printed alone in the cell under its "Invoice No." label. The rupee signs
+# are left out because _pdf's base-14 font has no glyph for them.
+BLIPINGO_LAYOUT = [
+    [
+        (60, [(266, "Tax"), (289, "Invoice")]),
+        (80, [(302, "Invoice"), (334, "No."), (434, "Date")]),
+        (92, [(94, "Blipingo"), (162, "Packaging"), (302, "36"), (434, "20-09-2026")]),
+        (104, [(94, "BTM"), (114, "1st"), (130, "Stage"), (160, "Bengaluru-560029")]),
+        (116, [(94, "GSTIN:"), (126, "29HXFPD4068C1ZH")]),
+        (140, [(37, "Bill"), (55, "To")]),
+        (152, [(37, "Handpikd")]),
+        (164, [(37, "GSTIN"), (64, "Number:"), (100, "08DINPA7100K1ZA")]),
+        (
+            200,
+            [
+                (37, "#"), (60, "Item"), (80, "Name"), (300, "HSN/"), (320, "SAC"),
+                (380, "Quantity"), (440, "Unit"), (480, "Price/"), (510, "Unit"), (560, "Amount"),
+            ],
+        ),
+        (212, [(60, "Tusk"), (80, "paper"), (105, "bag")]),
+        (
+            224,
+            [
+                (37, "1"), (60, "back"), (80, "Matt"), (105, "lamination"),
+                (300, "48101390"), (380, "100"), (400, "Bag"), (480, "60.00"), (560, "6,000.00"),
+            ],
+        ),
+        (236, [(60, "print"), (80, ")")]),
+        (250, [(37, "Total"), (380, "100"), (560, "6,000.00")]),
+        (270, [(37, "Payment"), (77, "Mode"), (302, "Tax"), (319, "(18.0%)"), (523, "1,080.00")]),
+        (282, [(37, "Cash"), (302, "Total"), (521, "7,080.00")]),
+        (
+            310,
+            [
+                (66, "HSN/"), (92, "SAC"), (172, "Taxable"), (208, "Amount"),
+                (452, "Total"), (476, "Tax"), (493, "Amount"),
+            ],
+        ),
+        (322, [(66, "48101390"), (172, "6,000.00"), (300, "18.0%"), (380, "1,080.00"), (493, "1,080.00")]),
+        (334, [(66, "Total"), (172, "6,000.00"), (380, "1,080.00"), (493, "1,080.00")]),
+    ]
+]
+
+
+def test_reads_a_bare_serial_invoice_number_under_its_label():
+    # Two digits is shorter than any invoice number this column lookahead
+    # used to accept, so the whole invoice went to the Claude fallback.
+    extracted = extract_invoice_from_text(_pdf(BLIPINGO_LAYOUT), OUR_GSTIN)
+
+    assert extracted is not None
+    assert extracted.invoice_no == "36"
+    assert extracted.invoice_date.date().isoformat() == "2026-09-20"
+    assert extracted.vendor_gstin == "29HXFPD4068C1ZH"
+
+    (item,) = extracted.line_items
+    assert item.hsn_code == "48101390"
+    assert item.quantity == 100
+    assert item.rate == 60.0
+    assert item.gst_perc == 18.0
+
+
+def test_reads_the_grand_total_from_a_vyapar_amounts_box():
+    # The item table's own "Total" row sums the lines before tax, and the
+    # bill's total sits in the amounts box beside "Cash" — the payment mode
+    # printed in the left-hand column at the same height.
+    lines = [
+        "Total 100 ₹ 6,000.00",
+        "Invoice Amount In Words Amounts",
+        "Seven Thousand and Eighty Rupees only Sub Total ₹ 6,000.00",
+        "Payment Mode Tax (18.0%) ₹ 1,080.00",
+        "Cash Total ₹ 7,080.00",
+        "Received ₹ 3,540.00",
+        "Balance ₹ 3,540.00",
+        "HSN/ SAC Taxable Amount Total Tax Amount",
+        "48101390 ₹ 6,000.00 18.0% ₹ 1,080.00 ₹ 1,080.00",
+        "Total ₹ 6,000.00 ₹ 1,080.00 ₹ 1,080.00",
+    ]
+
+    assert _find_printed_total(lines) == 7080.00

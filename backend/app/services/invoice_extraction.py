@@ -94,6 +94,20 @@ _GST_RATES = frozenset({0.1, 0.25, 1.0, 1.5, 3.0, 5.0, 6.0, 12.0, 18.0, 28.0, 40
 # at all; it costs nothing, since no invoice prints a real ī here.
 _CURRENCY_TOTAL_ROW_RE = re.compile(r"^total\b.*(?:₹|ī|\bRs\.?\b|\bINR\b)", re.IGNORECASE)
 
+# The amounts box Vyapar prints at the foot of its invoices: "Sub Total",
+# then a "Tax (18.0%)" row, then "Total ₹ 7,080.00". The box sits in the
+# right-hand column, so each of its rows is joined to whatever the left-hand
+# column prints at that height ("Seven Thousand ... Rupees only Sub Total",
+# "Cash Total") and none of them opens with its own label. The "Total" is
+# told apart from the "Sub Total" above it by the word before it, and from
+# the HSN summary's "Total ₹ 6,000.00" further down by sitting within a few
+# rows of the "Sub Total".
+_SUB_TOTAL_RE = re.compile(r"\bsub\s*total\b", re.IGNORECASE)
+_AMOUNTS_BOX_TOTAL_RE = re.compile(
+    r"(?<!sub\s)(?<!sub)\btotal\s*(?:₹|ī|\bRs\.?|\bINR\b)\s*(\d[\d,]*(?:\.\d+)?)", re.IGNORECASE
+)
+_AMOUNTS_BOX_ROWS = 4
+
 # How far apart two words may sit vertically and still count as one row, as
 # a fraction of the page's typical line height. Invoices set the cells of a
 # single row in different fonts and sizes — Tally prints a row's description,
@@ -305,7 +319,14 @@ def _find_invoice_no(rows: list[Row]) -> str | None:
             continue
         for following in rows[index + 1 : index + 3]:
             candidate = (following.word_in_column(column) or "").strip(" .:-")
-            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9/\-_]{2,}", candidate):
+            # Three characters or more, except a bare serial: Vyapar numbers
+            # its invoices 1, 2, 3 ... and prints Blipingo's "36" alone in
+            # the cell under the label. Letters that short are prose ("No"),
+            # but digits that short are still an invoice number.
+            if not (
+                candidate.isdigit()
+                or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9/\-_]{2,}", candidate)
+            ):
                 continue
             # A digit rules out the ordinary prose a wide row can put in this
             # column ("Delivery"); every invoice number carries one. The date
@@ -370,6 +391,14 @@ def _find_printed_total(lines: list[str]) -> float | None:
         if numbers:
             return max(numbers)
 
+    # Then a Vyapar-style amounts box, ahead of the bare-"Total" row because
+    # its item table ends in "Total 100 ₹ 6,000.00" — the sum of the lines
+    # before tax, which the rule below would otherwise take for the total of
+    # a bill for ₹ 7,080.
+    amounts_box_total = _amounts_box_total(lines)
+    if amounts_box_total is not None:
+        return amounts_box_total
+
     # Only then the bare-"Total"-with-a-currency-symbol row. Second because
     # it's the looser of the two rules, and because an invoice that labels
     # its total properly shouldn't have that reading overridden by a row
@@ -385,6 +414,18 @@ def _find_printed_total(lines: list[str]) -> float | None:
         numbers = [_to_number(match.group(0)) for match in _NUMBER_RE.finditer(line)]
         if numbers:
             return max(numbers)
+    return None
+
+
+def _amounts_box_total(lines: list[str]) -> float | None:
+    """The "Total" a few rows under a "Sub Total", where an invoice has one."""
+    for index, line in enumerate(lines):
+        if _SUB_TOTAL_RE.search(line) is None:
+            continue
+        for following in lines[index + 1 : index + 1 + _AMOUNTS_BOX_ROWS]:
+            match = _AMOUNTS_BOX_TOTAL_RE.search(following)
+            if match is not None:
+                return _to_number(match.group(1))
     return None
 
 
