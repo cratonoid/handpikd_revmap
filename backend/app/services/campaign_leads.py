@@ -59,7 +59,7 @@ async def warm_contact_ids() -> set[int]:
             {"contact_id": 1},
         )
     }
-    warm.update(
+    warm |= {
         row["_id"]
         async for row in DatabaseContact.get_pymongo_collection().find(
             {
@@ -68,7 +68,7 @@ async def warm_contact_ids() -> set[int]:
             },
             {"_id": 1},
         )
-    )
+    }
     return warm
 
 
