@@ -43,6 +43,7 @@ def _make_send(recipients):
         body_html="<p>Hi {{contact_person}} at {{name}}</p>",
         recipients=recipients,
         status=EmailSendStatus.sending,
+        campaign_id=None,
         updated_at=None,
     )
 

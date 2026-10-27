@@ -17,34 +17,37 @@
 //
 // Leads and clients can be emailed from here: tick rows (or use a row's
 // Email button) and <EmailComposeModal> sends each one their own copy.
-// Leads also have two pairs of WhatsApp / Mail tick boxes: "Data present"
-// for the channels we have details for, and "Sent status" for the channels
-// they've been reached on; emailing a lead ticks Sent status Mail itself.
 // Double-clicking a row opens its edit popup.
+//
+// A lead's outreach — Status, SD Status, Sent status — is kept per campaign
+// (campaign-detail-page-client.tsx). Here a lead only shows Cold (never
+// reached) or Warm (reached at least once, in any campaign), worked out by
+// the backend, plus its "Data present" WhatsApp / Mail tick boxes, which
+// every campaign shares. The Leads table filters from its headers: a funnel
+// on Status and Data present (<ColumnFilterDropdown>, as on the sales
+// orders' Customer column). Ticking several values in one funnel matches
+// any of them; funnels combine with each other and with the search.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { ContactFormModal } from "@/components/admin/contact-form-modal";
 import { EmailComposeModal } from "@/components/admin/email-compose-modal";
-import { LeadChannelFilters, NO_CHANNEL_FILTERS, type LeadChannelFilterValues } from "@/components/admin/lead-channel-filters";
-import { StatusSelect } from "@/components/admin/status-select";
+import { ColumnFilterDropdown } from "@/components/admin/column-filter-dropdown";
 import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import {
+  CHANNEL_FILTER_CHOICES,
   deleteContact,
   fetchContacts,
-  LEAD_STATUS_OPTIONS,
-  matchesChannelFilter,
+  LEAD_TEMPERATURE_OPTIONS,
+  matchesChannelFilters,
   OUTREACH_OPTIONS,
-  SD_STATUS_OPTIONS,
-  updateLeadStatus,
-  updateSdStatus,
-  updateChannels,
-  type ChannelColumn,
+  updateDataPresent,
+  type ChannelFilterChoice,
   type Contact,
   type ContactType,
-  type LeadStatus,
+  type LeadTemperature,
   type OutreachChannel,
-  type SdStatus,
 } from "@/lib/database-contacts";
+import { formatDate } from "@/lib/format-date";
 import styles from "@/styles/dashboard.module.css";
 import emailStyles from "@/styles/emails.module.css";
 
@@ -57,11 +60,10 @@ const TABS: { key: ContactType; label: string; singular: string }[] = [
   { key: "vendor", label: "Vendors", singular: "vendor" },
 ];
 
-// The Leads table's two WhatsApp / Mail tick-box columns.
-const CHANNEL_COLUMNS: { key: ChannelColumn; label: string; field: "outreachChannels" | "sentChannels" }[] = [
-  { key: "dataPresent", label: "Data present", field: "outreachChannels" },
-  { key: "sentStatus", label: "Sent status", field: "sentChannels" },
-];
+// Backend datetimes are naive UTC.
+function utc(value: string): string {
+  return /[zZ]|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`;
+}
 
 export function DatabasePageClient() {
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -70,14 +72,14 @@ export function DatabasePageClient() {
 
   const [tab, setTab] = useState<ContactType>("lead");
   const [search, setSearch] = useState("");
-  // Leads only: the other tabs have no tick-box columns.
-  const [channelFilters, setChannelFilters] = useState<LeadChannelFilterValues>(NO_CHANNEL_FILTERS);
+  // Leads-only header filters; empty means no filter.
+  const [temperatureFilter, setTemperatureFilter] = useState<LeadTemperature[]>([]);
+  const [dataPresentFilter, setDataPresentFilter] = useState<ChannelFilterChoice[]>([]);
   const [modalState, setModalState] = useState<ModalState>(null);
 
   const [rowError, setRowError] = useState<string | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
-  const [statusSavingId, setStatusSavingId] = useState<number | null>(null);
   const [channelsSavingId, setChannelsSavingId] = useState<number | null>(null);
 
   // Rows ticked for emailing, on the current tab only.
@@ -114,8 +116,8 @@ export function DatabasePageClient() {
     .filter(
       (contact) =>
         !isLead ||
-        (matchesChannelFilter(channelFilters.dataPresent, contact.outreachChannels) &&
-          matchesChannelFilter(channelFilters.sentStatus, contact.sentChannels)),
+        ((temperatureFilter.length === 0 || temperatureFilter.includes(contact.temperature)) &&
+          matchesChannelFilters(dataPresentFilter, contact.outreachChannels)),
     )
     .filter((contact) =>
       matchesSearch(search, [
@@ -132,8 +134,8 @@ export function DatabasePageClient() {
 
   // Selection may include rows the search currently hides; they still count.
   // Left out of bulk sends: addresses that bounced (until corrected), and
-  // leads already emailed — status Sent with Sent status Mail ticked — so a batch never
-  // repeats the same outreach. The row's own Email button still works, for
+  // leads already emailed from here (the Database row's old Sent + Mail), so
+  // a batch never repeats the same outreach. The row's own Email button still works, for
   // a deliberate follow-up or retry.
   const alreadyMailed = (contact: Contact) =>
     contact.type === "lead" && contact.leadStatus === "sent" && contact.sentChannels.includes("mail");
@@ -191,62 +193,17 @@ export function DatabasePageClient() {
 
   // Applied straight away and rolled back if the backend refuses, the same
   // as the expenses table's status dropdown.
-  async function handleStatusChange(contact: Contact, nextStatus: LeadStatus) {
-    if (nextStatus === contact.leadStatus) return;
-
-    const previousStatus = contact.leadStatus;
-    const applyStatus = (value: LeadStatus) =>
-      setContacts((current) =>
-        current.map((row) => (row.id === contact.id ? { ...row, leadStatus: value } : row)),
-      );
-
-    setRowError(null);
-    setStatusSavingId(contact.id);
-    applyStatus(nextStatus);
-    try {
-      await updateLeadStatus(contact.id, nextStatus);
-    } catch (caught) {
-      applyStatus(previousStatus);
-      setRowError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
-    } finally {
-      setStatusSavingId(null);
-    }
-  }
-
-  // Same optimistic save as the status dropdown above.
-  async function handleSdStatusChange(contact: Contact, nextSdStatus: SdStatus) {
-    if (nextSdStatus === contact.sdStatus) return;
-
-    const previous = contact.sdStatus;
-    const apply = (value: SdStatus | "") =>
-      setContacts((current) => current.map((row) => (row.id === contact.id ? { ...row, sdStatus: value } : row)));
-
-    setRowError(null);
-    setStatusSavingId(contact.id);
-    apply(nextSdStatus);
-    try {
-      await updateSdStatus(contact.id, nextSdStatus);
-    } catch (caught) {
-      apply(previous);
-      setRowError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
-    } finally {
-      setStatusSavingId(null);
-    }
-  }
-
-  // Applied straight away and rolled back if the backend refuses, like the
-  // status dropdown above.
-  async function handleChannelToggle(contact: Contact, column: (typeof CHANNEL_COLUMNS)[number], channel: OutreachChannel) {
-    const previous = contact[column.field];
+  async function handleDataPresentToggle(contact: Contact, channel: OutreachChannel) {
+    const previous = contact.outreachChannels;
     const next = previous.includes(channel) ? previous.filter((value) => value !== channel) : [...previous, channel];
     const apply = (value: OutreachChannel[]) =>
-      setContacts((current) => current.map((row) => (row.id === contact.id ? { ...row, [column.field]: value } : row)));
+      setContacts((current) => current.map((row) => (row.id === contact.id ? { ...row, outreachChannels: value } : row)));
 
     setRowError(null);
     setChannelsSavingId(contact.id);
     apply(next);
     try {
-      await updateChannels(contact.id, column.key, next);
+      await updateDataPresent(contact.id, next);
     } catch (caught) {
       apply(previous);
       setRowError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
@@ -292,8 +249,6 @@ export function DatabasePageClient() {
           ))}
         </div>
 
-        {isLead && <LeadChannelFilters value={channelFilters} onChange={setChannelFilters} />}
-
         <TableSearchInput
           value={search}
           onChange={setSearch}
@@ -316,7 +271,7 @@ export function DatabasePageClient() {
               title={
                 `Tick ${activeTab.label.toLowerCase()} to email several at once. ` +
                 (isLead
-                  ? "Leads without an email, already emailed (Sent + Sent status Mail), or whose email bounced can't be ticked."
+                  ? "Leads without an email, already emailed from here, or whose email bounced can't be ticked. To work leads through a campaign, use the Campaigns page."
                   : "Rows without an email, or whose email bounced, can't be ticked.")
               }
             >
@@ -355,14 +310,34 @@ export function DatabasePageClient() {
               <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>{nameLabel}</th>
               {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Contact person / Role</th>}
               <th className={`${styles.tableHeadCell} ${styles.databaseColPhone}`}>Phone no.</th>
-              {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>Status</th>}
-              {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>SD Status</th>}
-              {isLead &&
-                CHANNEL_COLUMNS.map((column) => (
-                  <th key={column.key} className={`${styles.tableHeadCell} ${emailStyles.colOutreach}`}>
-                    {column.label}
-                  </th>
-                ))}
+              {isLead && (
+                <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>
+                  <span className={styles.tableHeadControls}>
+                    Status
+                    <ColumnFilterDropdown
+                      label="Filter by status"
+                      searchable={false}
+                      options={LEAD_TEMPERATURE_OPTIONS}
+                      selectedValues={temperatureFilter}
+                      onChange={setTemperatureFilter}
+                    />
+                  </span>
+                </th>
+              )}
+              {isLead && (
+                <th className={`${styles.tableHeadCell} ${emailStyles.colOutreach}`}>
+                  <span className={styles.tableHeadControls}>
+                    Data present
+                    <ColumnFilterDropdown
+                      label="Filter by data present"
+                      searchable={false}
+                      options={CHANNEL_FILTER_CHOICES}
+                      selectedValues={dataPresentFilter}
+                      onChange={setDataPresentFilter}
+                    />
+                  </span>
+                </th>
+              )}
               {isVendor && (
                 <>
                   <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Type</th>
@@ -370,6 +345,7 @@ export function DatabasePageClient() {
                   <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Description</th>
                 </>
               )}
+              <th className={`${styles.tableHeadCell} ${emailStyles.colCreated}`}>Created at</th>
               <th className={`${styles.tableHeadCell} ${styles.databaseColActions}`}>
                 <span className="sr-only">Actions</span>
               </th>
@@ -431,50 +407,35 @@ export function DatabasePageClient() {
                 </td>
                 {isLead && (
                   <td className={styles.tableCell}>
-                    <StatusSelect
-                      value={contact.leadStatus}
-                      options={LEAD_STATUS_OPTIONS}
-                      label={`Status for ${contact.name}`}
-                      disabled={statusSavingId === contact.id}
-                      onChange={(nextStatus) => void handleStatusChange(contact, nextStatus)}
-                    />
+                    <span
+                      className={`${emailStyles.leadTemperature} ${emailStyles[`leadTemperature_${contact.temperature}`]}`}
+                      title={
+                        contact.temperature === "warm"
+                          ? "Reached at least once, in a campaign or before campaigns"
+                          : "Not reached yet"
+                      }
+                    >
+                      {contact.temperature === "warm" ? "Warm" : "Cold"}
+                    </span>
                   </td>
                 )}
                 {isLead && (
                   <td className={styles.tableCell}>
-                    <StatusSelect<SdStatus | "">
-                      value={contact.sdStatus}
-                      options={SD_STATUS_OPTIONS}
-                      label={`SD status for ${contact.name}`}
-                      disabled={statusSavingId === contact.id}
-                      onChange={(next) => {
-                        if (next) void handleSdStatusChange(contact, next);
-                      }}
-                    />
+                    <div className={emailStyles.outreachGroup} role="group" aria-label={`Data present for ${contact.name}`}>
+                      {OUTREACH_OPTIONS.map((option) => (
+                        <label key={option.value} className={emailStyles.outreachOption}>
+                          <input
+                            type="checkbox"
+                            checked={contact.outreachChannels.includes(option.value)}
+                            onChange={() => void handleDataPresentToggle(contact, option.value)}
+                            disabled={channelsSavingId === contact.id}
+                          />
+                          {option.label}
+                        </label>
+                      ))}
+                    </div>
                   </td>
                 )}
-                {isLead &&
-                  CHANNEL_COLUMNS.map((column) => (
-                    <td key={column.key} className={styles.tableCell}>
-                      <div
-                        className={emailStyles.outreachGroup}
-                        role="group"
-                        aria-label={`${column.label} for ${contact.name}`}
-                      >
-                        {OUTREACH_OPTIONS.map((option) => (
-                          <label key={option.value} className={emailStyles.outreachOption}>
-                            <input
-                              type="checkbox"
-                              checked={contact[column.field].includes(option.value)}
-                              onChange={() => void handleChannelToggle(contact, column, option.value)}
-                              disabled={channelsSavingId === contact.id}
-                            />
-                            {option.label}
-                          </label>
-                        ))}
-                      </div>
-                    </td>
-                  ))}
                 {isVendor && (
                   <>
                     <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.vendorType}>
@@ -488,6 +449,7 @@ export function DatabasePageClient() {
                     </td>
                   </>
                 )}
+                <td className={styles.tableCell}>{formatDate(utc(contact.createdAt))}</td>
                 <td className={styles.tableCell}>
                   {confirmingDeleteId === contact.id ? (
                     <div className={styles.deleteConfirmRow}>

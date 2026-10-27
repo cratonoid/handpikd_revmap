@@ -8,11 +8,30 @@
 # admins (bypassed entirely when settings.auth_enabled is False, matching
 # require_staff in api/deps.py).
 #
+# Leads now belong to campaigns (routes/campaigns.py), which keep their own
+# Status, SD Status and Sent status per lead; the lead_status, sd_status and
+# sent_channels stored here are what the leads had before that, kept as the
+# record of past outreach. Each lead reads back as Cold or Warm (see
+# services/campaign_leads.py). A campaign's page adds and edits leads
+# through these same endpoints, so a team account with Campaigns but not
+# Database may do that much: add a lead into a campaign, and edit a lead.
+#
 # Same add / update-or-delete shape as routes/expenses.py.
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.api.deps import require_section
-from app.models import Section, ContactType, DatabaseContact, DatabaseContactIdCounter, LeadStatus, OutreachChannel, SdStatus, User
+from app.api.deps import get_allowed_sections, require_section
+from app.models import (
+    Campaign,
+    CampaignLead,
+    ContactType,
+    DatabaseContact,
+    DatabaseContactIdCounter,
+    LeadStatus,
+    OutreachChannel,
+    SdStatus,
+    Section,
+    User,
+)
 from app.schemas.database_contacts import (
     AddContactRequest,
     AddContactResponse,
@@ -20,6 +39,7 @@ from app.schemas.database_contacts import (
     UpdateContactRequest,
     UpdateContactResponse,
 )
+from app.services import campaign_leads
 from app.services.counters import get_next_id
 
 router = APIRouter(prefix="/admin/database", tags=["database"])
@@ -27,7 +47,8 @@ router = APIRouter(prefix="/admin/database", tags=["database"])
 _VENDOR_ONLY_FIELDS = ("vendor_type", "description", "location")
 
 
-def _to_item(contact: DatabaseContact) -> ContactItem:
+def _to_item(contact: DatabaseContact, warm: bool = False) -> ContactItem:
+    is_lead = contact.contact_type == ContactType.lead
     return ContactItem(
         contact_id=contact.id,
         contact_type=contact.contact_type,
@@ -40,6 +61,7 @@ def _to_item(contact: DatabaseContact) -> ContactItem:
         contact_person=contact.contact_person,
         contact_role=contact.contact_role if contact.contact_type == ContactType.lead else None,
         lead_status=(contact.lead_status or LeadStatus.new) if contact.contact_type == ContactType.lead else None,
+        temperature=("warm" if warm else "cold") if is_lead else None,
         sd_status=contact.sd_status if contact.contact_type == ContactType.lead else None,
         outreach_channels=_ordered_channels(contact.outreach_channels) if contact.contact_type == ContactType.lead else [],
         sent_channels=_ordered_channels(contact.sent_channels) if contact.contact_type == ContactType.lead else [],
@@ -70,6 +92,17 @@ def _optional(value: str | None) -> str | None:
     return value.strip() or None
 
 
+async def _has_database_section(user: User | None) -> bool:
+    if user is None:
+        return True
+    allowed = await get_allowed_sections(user)
+    return allowed is None or Section.database in allowed
+
+
+def _forbidden(detail: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+
 def _clean_email(value: str | None) -> str | None:
     email = _optional(value)
     if email is not None and ("@" not in email or " " in email):
@@ -89,16 +122,26 @@ async def get_contacts(
         DatabaseContact.contact_type == contact_type
     )
     contacts = await query.sort(-DatabaseContact.id).to_list()
-    return [_to_item(contact) for contact in contacts]
+    warm = await campaign_leads.warm_contact_ids() if any(c.contact_type == ContactType.lead for c in contacts) else set()
+    return [_to_item(contact, contact.id in warm) for contact in contacts]
 
 
 @router.post("/add_contact", response_model=AddContactResponse)
 async def add_contact(
     payload: AddContactRequest,
-    _: User | None = Depends(require_section(Section.database)),
+    current_user: User | None = Depends(require_section(Section.database, Section.campaigns)),
 ) -> AddContactResponse:
     is_vendor = payload.contact_type == ContactType.vendor
     is_lead = payload.contact_type == ContactType.lead
+    if payload.campaign_id is not None and not is_lead:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="only leads can be added to a campaign")
+    if payload.campaign_id is None and not await _has_database_section(current_user):
+        raise _forbidden("you can only add leads from a campaign")
+    campaign = None
+    if payload.campaign_id is not None:
+        campaign = await Campaign.get(payload.campaign_id)
+        if campaign is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="campaign not found")
     contact = DatabaseContact(
         id=0,
         contact_type=payload.contact_type,
@@ -119,6 +162,8 @@ async def add_contact(
     # doesn't burn a number.
     contact.id = await get_next_id(DatabaseContactIdCounter, "next_database_contact_id", DatabaseContact)
     await contact.insert()
+    if campaign is not None:
+        await campaign_leads.add_leads(campaign.id, [contact.id])
 
     return AddContactResponse(message="contact added successfully", contact=_to_item(contact))
 
@@ -126,13 +171,16 @@ async def add_contact(
 @router.post("/update_contact", response_model=UpdateContactResponse)
 async def update_contact(
     payload: UpdateContactRequest,
-    _: User | None = Depends(require_section(Section.database)),
+    current_user: User | None = Depends(require_section(Section.database, Section.campaigns)),
 ) -> UpdateContactResponse:
     contact = await DatabaseContact.get(payload.contact_id)
     if contact is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="contact not found")
+    if not await _has_database_section(current_user) and (payload.delete or contact.contact_type != ContactType.lead):
+        raise _forbidden("only the Database page can delete contacts or edit clients and vendors")
 
     if payload.delete:
+        await CampaignLead.find({"contact_id": contact.id}).delete()
         await contact.delete()
         return UpdateContactResponse(message="contact deleted successfully")
 
@@ -181,4 +229,5 @@ async def update_contact(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no changes specified")
 
     await contact.save()
-    return UpdateContactResponse(message="contact updated successfully", contact=_to_item(contact))
+    warm = contact.contact_type == ContactType.lead and contact.id in await campaign_leads.warm_contact_ids()
+    return UpdateContactResponse(message="contact updated successfully", contact=_to_item(contact, warm))

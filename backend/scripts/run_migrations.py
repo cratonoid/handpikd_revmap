@@ -134,6 +134,11 @@ MIGRATIONS: list[tuple[str, str, str]] = [
         AUTO,
         "price_list_details.pdf_path -> file_path",
     ),
+    (
+        "migrate_leads_into_campaigns",
+        MANUAL,
+        "leads Eneffen..Rupifi -> Diwali 2026, later leads -> Christmas and New Year (dry run without --apply)",
+    ),
 ]
 
 LEDGER_COLLECTION = "schema_migrations"

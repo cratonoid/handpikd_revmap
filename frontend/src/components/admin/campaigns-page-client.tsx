@@ -3,9 +3,9 @@
 // ---------------------------------------------------------------------------
 // <CampaignsPageClient> — the interactive half of /admin/campaigns
 // ---------------------------------------------------------------------------
-// Every campaign, newest first, with how many contacts it has reached. A new
-// campaign opens straight onto its own page (campaign-detail-page-client.tsx),
-// where the whole Database is listed and mail is sent. Delete asks once
+// Every campaign, newest first, with how many leads it has and how many of
+// them are Sent. A new campaign opens straight onto its own page
+// (campaign-detail-page-client.tsx), where its leads are added and worked. Delete asks once
 // inline, the same way the Database table does; the campaign's sends stay in
 // the Emails page's history.
 import { useEffect, useState } from "react";
@@ -104,7 +104,8 @@ export function CampaignsPageClient() {
               <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Campaign</th>
               <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Description</th>
               <th className={styles.tableHeadCell}>Created</th>
-              <th className={styles.tableHeadCell}>Reached</th>
+              <th className={styles.tableHeadCell}>Leads</th>
+              <th className={styles.tableHeadCell}>Sent</th>
               <th className={styles.tableHeadCell}>Last sent</th>
               <th className={`${styles.tableHeadCell} ${styles.databaseColActions}`}>
                 <span className="sr-only">Actions</span>
@@ -130,8 +131,9 @@ export function CampaignsPageClient() {
                   {campaign.description || "—"}
                 </td>
                 <td className={styles.tableCell}>{formatDate(utc(campaign.createdAt))}</td>
+                <td className={styles.tableCell}>{campaign.leadCount}</td>
                 <td className={styles.tableCell}>
-                  {campaign.sentCount}
+                  {campaign.sentLeadCount}
                   {campaign.failedCount > 0 && <span className={emailStyles.failedText}> · {campaign.failedCount} failed</span>}
                   {campaign.bouncedCount > 0 && (
                     <span className={emailStyles.failedText}> · {campaign.bouncedCount} bounced</span>

@@ -11,6 +11,8 @@ from app.services.gst import TaxKind
 from app.models import (
     Campaign,
     CampaignIdCounter,
+    CampaignLead,
+    CampaignLeadIdCounter,
     CatalogueDetails,
     CatalogueIdCounter,
     CatalogueImageDetails,
@@ -525,6 +527,8 @@ DOCUMENT_MODELS = [
     EmailSettings,
     Campaign,
     CampaignIdCounter,
+    CampaignLead,
+    CampaignLeadIdCounter,
 ]
 
 

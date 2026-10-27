@@ -35,6 +35,7 @@ from app.models import (
     OutreachChannel,
     RecipientStatus,
 )
+from app.services import campaign_leads
 from app.services.email_render import build_html_document, fill_body, fill_subject, html_to_text, placeholder_values
 from app.services.email_signature import LOGO_CID, LogoImage, Signature
 
@@ -197,8 +198,9 @@ def friendly_error(error: Exception) -> str:
 
 
 async def _mark_contact_emailed(contact_id: int) -> None:
-    # A lead that's been emailed is "sent" and has Mail ticked under Sent
-    # status; clients carry neither. Looked up fresh because the
+    # A lead that's been emailed is "sent" and has Mail ticked on its
+    # Database row, which keeps it Warm however it was emailed (see
+    # services/campaign_leads.py); clients carry neither. Looked up fresh because the
     # contact may have been edited or deleted since the send started.
     contact = await DatabaseContact.get(contact_id)
     if contact is None or contact.contact_type != ContactType.lead:
@@ -265,6 +267,8 @@ async def _run_send(send_id: int, signature: Signature | None, attachments: list
                 except Exception:  # noqa: BLE001 — the send itself succeeded
                     logger.exception("email send %s: couldn't file message to the Sent folder", send_id)
                 await _mark_contact_emailed(recipient.contact_id)
+                if send.campaign_id is not None:
+                    await campaign_leads.mark_emailed(send.campaign_id, recipient.contact_id)
 
             send.updated_at = _now()
             await send.save()

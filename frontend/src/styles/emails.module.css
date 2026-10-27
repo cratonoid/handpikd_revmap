@@ -619,6 +619,31 @@
   width: 9.5rem;
 }
 
+.colCreated {
+  width: 7.5rem;
+}
+
+/* A lead's Cold / Warm standing on /admin/database. Same pill shape as
+   .campaignStatus. */
+.leadTemperature {
+  display: inline-block;
+  border-radius: 9999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.leadTemperature_cold {
+  background-color: color-mix(in srgb, var(--color-status-new) 12%, transparent);
+  color: var(--color-status-new);
+}
+
+.leadTemperature_warm {
+  background-color: color-mix(in srgb, var(--color-status-processing) 12%, transparent);
+  color: var(--color-status-processing);
+}
+
 /* Double-clicking a database row opens its edit popup. */
 .editableRow {
   cursor: pointer;
@@ -790,4 +815,39 @@
    campaign tables. */
 .contactRole {
   color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+}
+
+/* The "Add leads from the Database" picker on a campaign's page. */
+.leadPickList {
+  display: flex;
+  flex-direction: column;
+  max-height: 22rem;
+  overflow-y: auto;
+  border: 1px solid color-mix(in srgb, var(--color-ink) 14%, transparent);
+  border-radius: 0.5rem;
+}
+
+.leadPickRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.leadPickRow + .leadPickRow {
+  border-top: 1px solid color-mix(in srgb, var(--color-ink) 8%, transparent);
+}
+
+.leadPickRowAll {
+  font-weight: 600;
+}
+
+.leadPickName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

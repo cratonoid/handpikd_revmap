@@ -26,22 +26,27 @@
 //
 // Selections apply as each checkbox is clicked, like the form multiselect;
 // an empty selection means "no filter" rather than "match nothing".
+//
+// Values are ids (customers, vendors) or string codes (the lead status
+// columns of components/admin/database-page-client.tsx). Short fixed lists
+// pass searchable={false} to drop the search box.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FunnelIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
-export type ColumnFilterOption = {
-  value: number;
+export type ColumnFilterOption<T extends string | number = number> = {
+  value: T;
   label: string;
 };
 
 const PANEL_WIDTH_PX = 260;
 
-export function ColumnFilterDropdown({
+export function ColumnFilterDropdown<T extends string | number = number>({
   label,
   searchPlaceholder = "Search…",
   emptyMessage = "Nothing matches.",
+  searchable = true,
   options,
   selectedValues,
   onChange,
@@ -51,9 +56,10 @@ export function ColumnFilterDropdown({
   label: string;
   searchPlaceholder?: string;
   emptyMessage?: string;
-  options: ColumnFilterOption[];
-  selectedValues: number[];
-  onChange: (values: number[]) => void;
+  searchable?: boolean;
+  options: ColumnFilterOption<T>[];
+  selectedValues: T[];
+  onChange: (values: T[]) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -124,7 +130,7 @@ export function ColumnFilterDropdown({
     };
   }, [open]);
 
-  function toggleValue(value: number) {
+  function toggleValue(value: T) {
     onChange(selectedSet.has(value) ? selectedValues.filter((v) => v !== value) : [...selectedValues, value]);
   }
 
@@ -172,14 +178,16 @@ export function ColumnFilterDropdown({
             }}
             className={`${styles.selectPanel} ${styles.columnFilterPanel}`}
           >
-            <input
-              type="text"
-              autoFocus
-              placeholder={searchPlaceholder}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className={styles.selectSearchInput}
-            />
+            {searchable && (
+              <input
+                type="text"
+                autoFocus
+                placeholder={searchPlaceholder}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className={styles.selectSearchInput}
+              />
+            )}
 
             <div
               role="option"

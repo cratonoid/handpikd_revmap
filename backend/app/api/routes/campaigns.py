@@ -2,28 +2,48 @@
 # components/admin/campaigns-page-client.tsx) and each campaign's own page
 # (campaign-detail-page-client.tsx).
 #
-# A campaign is a named mail-out over the whole /admin/database address
-# book — leads, clients and vendors, read live — so it never holds a copy of
-# the contacts. Mail goes out through the Emails module's /send with the
-# campaign's id attached (routes/emails.py); everything this module reports
-# about who has been sent what is worked out from those EmailSend rows.
+# A campaign is a named outreach to a list of leads from the /admin/database
+# address book. Which leads are in it, and each one's Status (unsent / sent),
+# SD Status and "Sent status" channels in this campaign, are CampaignLead
+# rows (models/campaign_lead.py); the lead's own details stay on its
+# Database row and are shared with every other campaign it's in. Mail goes
+# out through the Emails module's /send with the campaign's id attached
+# (routes/emails.py); the delivery results shown per lead are worked out
+# from those EmailSend rows.
 from collections.abc import Iterable
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import require_section
+from app.api.routes.database_contacts import _ordered_channels
 from app.api.routes.emails import _to_send_item
-from app.models import Campaign, CampaignIdCounter, EmailSend, RecipientStatus, Section, User
+from app.models import (
+    Campaign,
+    CampaignIdCounter,
+    CampaignLead,
+    CampaignLeadStatus,
+    EmailSend,
+    RecipientStatus,
+    SdStatus,
+    Section,
+    User,
+)
 from app.schemas.campaigns import (
+    AddCampaignLeadsRequest,
+    AddCampaignLeadsResponse,
     AddCampaignRequest,
     CampaignContactStatus,
     CampaignDetail,
     CampaignItem,
+    CampaignLeadItem,
     CampaignResponse,
+    UpdateCampaignLeadRequest,
+    UpdateCampaignLeadResponse,
     UpdateCampaignRequest,
 )
 from app.schemas.emails import EmailSendItem
+from app.services import campaign_leads
 from app.services.counters import get_next_id
 
 router = APIRouter(prefix="/admin/campaign", tags=["campaigns"])
@@ -75,13 +95,25 @@ def contact_statuses(sends: Iterable[EmailSendItem]) -> dict[int, CampaignContac
     return result
 
 
-def _to_item(campaign: Campaign, sends: list[EmailSendItem]) -> CampaignItem:
+def _to_lead_item(row: CampaignLead) -> CampaignLeadItem:
+    return CampaignLeadItem(
+        contact_id=row.contact_id,
+        status=row.status,
+        sd_status=row.sd_status,
+        sent_channels=_ordered_channels(row.sent_channels),
+        added_at=row.added_at,
+    )
+
+
+def _to_item(campaign: Campaign, sends: list[EmailSendItem], leads: list[CampaignLead]) -> CampaignItem:
     statuses = contact_statuses(sends).values()
     sent_times = [send.created_at for send in sends]
     return CampaignItem(
         campaign_id=campaign.id,
         name=campaign.name,
         description=campaign.description,
+        lead_count=len(leads),
+        sent_lead_count=sum(1 for row in leads if row.status == CampaignLeadStatus.sent),
         sent_count=sum(1 for entry in statuses if entry.status == RecipientStatus.sent),
         failed_count=sum(1 for entry in statuses if entry.status == RecipientStatus.failed),
         bounced_count=sum(1 for entry in statuses if entry.status == RecipientStatus.bounced),
@@ -102,6 +134,15 @@ async def _sends_for(campaign_ids: list[int]) -> dict[int, list[EmailSendItem]]:
     return by_campaign
 
 
+async def _leads_for(campaign_ids: list[int]) -> dict[int, list[CampaignLead]]:
+    by_campaign: dict[int, list[CampaignLead]] = {campaign_id: [] for campaign_id in campaign_ids}
+    if not campaign_ids:
+        return by_campaign
+    for row in await CampaignLead.find({"campaign_id": {"$in": campaign_ids}}).sort(-CampaignLead.id).to_list():
+        by_campaign[row.campaign_id].append(row)
+    return by_campaign
+
+
 async def _get_campaign_or_404(campaign_id: int) -> Campaign:
     campaign = await Campaign.get(campaign_id)
     if campaign is None:
@@ -112,16 +153,21 @@ async def _get_campaign_or_404(campaign_id: int) -> Campaign:
 @router.get("/get_campaigns", response_model=list[CampaignItem])
 async def get_campaigns(_: User | None = Depends(_require_campaigns)) -> list[CampaignItem]:
     campaigns = await Campaign.find_all().sort(-Campaign.id).to_list()
-    sends = await _sends_for([campaign.id for campaign in campaigns])
-    return [_to_item(campaign, sends[campaign.id]) for campaign in campaigns]
+    campaign_ids = [campaign.id for campaign in campaigns]
+    sends = await _sends_for(campaign_ids)
+    leads = await _leads_for(campaign_ids)
+    return [_to_item(campaign, sends[campaign.id], leads[campaign.id]) for campaign in campaigns]
 
 
 @router.get("/get_campaign", response_model=CampaignDetail)
 async def get_campaign(campaign_id: int, _: User | None = Depends(_require_campaigns)) -> CampaignDetail:
     campaign = await _get_campaign_or_404(campaign_id)
     sends = (await _sends_for([campaign.id]))[campaign.id]
+    leads = (await _leads_for([campaign.id]))[campaign.id]
     return CampaignDetail(
-        campaign=_to_item(campaign, sends),
+        campaign=_to_item(campaign, sends, leads),
+        # Newest-added first, like every other list.
+        leads=[_to_lead_item(row) for row in leads],
         contacts=list(contact_statuses(sends).values()),
         sends=sends,
     )
@@ -136,7 +182,7 @@ async def add_campaign(payload: AddCampaignRequest, _: User | None = Depends(_re
     )
     campaign.id = await get_next_id(CampaignIdCounter, "next_campaign_id", Campaign)
     await campaign.insert()
-    return CampaignResponse(message="campaign added successfully", campaign=_to_item(campaign, []))
+    return CampaignResponse(message="campaign added successfully", campaign=_to_item(campaign, [], []))
 
 
 @router.post("/update_campaign", response_model=CampaignResponse)
@@ -149,6 +195,8 @@ async def update_campaign(
     if payload.delete:
         # The campaign's EmailSend rows are kept: they're the record of mail
         # that really went out, and still list on the Emails page's Sent tab.
+        # Its lead list goes; the leads themselves stay in the Database.
+        await CampaignLead.find({"campaign_id": campaign.id}).delete()
         await campaign.delete()
         return CampaignResponse(message="campaign deleted successfully")
 
@@ -162,4 +210,45 @@ async def update_campaign(
     await campaign.save()
 
     sends = (await _sends_for([campaign.id]))[campaign.id]
-    return CampaignResponse(message="campaign updated successfully", campaign=_to_item(campaign, sends))
+    leads = (await _leads_for([campaign.id]))[campaign.id]
+    return CampaignResponse(message="campaign updated successfully", campaign=_to_item(campaign, sends, leads))
+
+
+# Existing Database leads into the campaign, as Unsent. New leads made from
+# the campaign's page go through /admin/database/add_contact with the
+# campaign's id instead, which adds them here too.
+@router.post("/add_leads", response_model=AddCampaignLeadsResponse)
+async def add_leads(
+    payload: AddCampaignLeadsRequest,
+    _: User | None = Depends(_require_campaigns),
+) -> AddCampaignLeadsResponse:
+    campaign = await _get_campaign_or_404(payload.campaign_id)
+    created = await campaign_leads.add_leads(campaign.id, payload.contact_ids)
+    return AddCampaignLeadsResponse(
+        message=f"{len(created)} lead(s) added", leads=[_to_lead_item(row) for row in created]
+    )
+
+
+@router.post("/update_lead", response_model=UpdateCampaignLeadResponse)
+async def update_lead(
+    payload: UpdateCampaignLeadRequest,
+    _: User | None = Depends(_require_campaigns),
+) -> UpdateCampaignLeadResponse:
+    row = await CampaignLead.find_one({"campaign_id": payload.campaign_id, "contact_id": payload.contact_id})
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="this lead isn't in the campaign")
+
+    if payload.remove:
+        await row.delete()
+        return UpdateCampaignLeadResponse(message="lead removed from the campaign")
+
+    if payload.status is None and payload.sd_status is None and payload.sent_channels is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no changes specified")
+    if payload.status is not None:
+        row.status = payload.status
+    if payload.sd_status is not None:
+        row.sd_status = SdStatus(payload.sd_status) if payload.sd_status else None
+    if payload.sent_channels is not None:
+        row.sent_channels = _ordered_channels(payload.sent_channels)
+    await row.save()
+    return UpdateCampaignLeadResponse(message="lead updated", lead=_to_lead_item(row))

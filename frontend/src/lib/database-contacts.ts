@@ -5,22 +5,27 @@
 // One list for all three tabs on /admin/database, told apart by `type`.
 // Name and phone are required; email is optional; vendors also carry a
 // type, description and location, all optional; leads carry an optional
-// contact person, a status that defaults to "new", the channels (WhatsApp /
-// mail) we have their details for ("Data present"), and the channels they've
-// been sent something on ("Sent status"). Optional fields come back
-// as "" rather than null so they drop straight into form inputs.
+// contact person and the channels (WhatsApp / mail) we have their details
+// for ("Data present"). Optional fields come back as "" rather than null so
+// they drop straight into form inputs.
+//
+// A lead's Status, SD Status and Sent status belong to each campaign it's in
+// (lib/campaigns.ts). Here a lead is only Cold (never reached) or Warm
+// (reached at least once, in any campaign).
 import { apiFetch } from "@/lib/api";
 
 export type ContactType = "client" | "lead" | "vendor";
 
 export type LeadStatus = "new" | "sent";
 
-export const LEAD_STATUS_OPTIONS: { value: LeadStatus; label: string }[] = [
-  { value: "new", label: "New" },
-  { value: "sent", label: "Sent" },
+export type LeadTemperature = "cold" | "warm";
+
+export const LEAD_TEMPERATURE_OPTIONS: { value: LeadTemperature; label: string }[] = [
+  { value: "cold", label: "Cold" },
+  { value: "warm", label: "Warm" },
 ];
 
-// The Leads table's "SD Status" dropdown. Optional: "" until one is picked.
+// A campaign's "SD Status" dropdown. Optional: "" until one is picked.
 export type SdStatus = "sdi" | "sdid" | "sdl" | "sdld";
 
 export const SD_STATUS_OPTIONS: { value: SdStatus; label: string }[] = [
@@ -37,24 +42,27 @@ export const OUTREACH_OPTIONS: { value: OutreachChannel; label: string }[] = [
   { value: "mail", label: "Mail" },
 ];
 
-// The Leads filters on /admin/database and a campaign's page, one per
-// tick-box column. A single channel matches whether or not the other one is
-// ticked too; "both" and "none" are exact.
-export type ChannelFilter = "all" | OutreachChannel | "both" | "none";
+// The header filters on the tick-box columns of /admin/database and a
+// campaign's page. A single channel matches whether or not the other one is
+// ticked too; "both" and "none" are exact. Picking several matches any of
+// them, and picking none is no filter.
+export type ChannelFilterChoice = OutreachChannel | "both" | "none";
 
-export const CHANNEL_FILTER_OPTIONS: { value: ChannelFilter; label: string }[] = [
-  { value: "all", label: "All" },
+export const CHANNEL_FILTER_CHOICES: { value: ChannelFilterChoice; label: string }[] = [
   { value: "whatsapp", label: "WhatsApp" },
   { value: "mail", label: "Mail" },
   { value: "both", label: "Both" },
   { value: "none", label: "None" },
 ];
 
-export function matchesChannelFilter(filter: ChannelFilter, channels: OutreachChannel[]): boolean {
-  if (filter === "all") return true;
+function matchesChannelFilter(filter: ChannelFilterChoice, channels: OutreachChannel[]): boolean {
   if (filter === "both") return channels.includes("whatsapp") && channels.includes("mail");
   if (filter === "none") return channels.length === 0;
   return channels.includes(filter);
+}
+
+export function matchesChannelFilters(filters: ChannelFilterChoice[], channels: OutreachChannel[]): boolean {
+  return filters.length === 0 || filters.some((filter) => matchesChannelFilter(filter, channels));
 }
 
 export type Contact = {
@@ -70,15 +78,16 @@ export type Contact = {
   contactPerson: string;
   // Lead-only: the contact person's role ("Marketing Head"); "" if not given.
   contactRole: string;
-  // Always "new" on client and vendor rows, where it isn't shown.
+  // From before campaigns kept their own per lead: the lead's old Status
+  // and Sent status, still used to tell if it was emailed from the Database
+  // page. Not shown or edited any more.
   leadStatus: LeadStatus;
-  // Lead-only; "" when none is set.
-  sdStatus: SdStatus | "";
-  // Lead-only "Data present" channels; [] on client and vendor rows.
-  outreachChannels: OutreachChannel[];
-  // Lead-only "Sent status" channels; [] on client and vendor rows. "mail" is
-  // also ticked by the backend whenever the lead is emailed from the app.
   sentChannels: OutreachChannel[];
+  // Lead-only; "cold" on client and vendor rows, where it isn't shown.
+  temperature: LeadTemperature;
+  // Lead-only "Data present" channels; [] on client and vendor rows. Shared
+  // by every campaign the lead is in.
+  outreachChannels: OutreachChannel[];
   // Why the last email the app sent to this address bounced; "" if it didn't.
   emailBounceReason: string;
   createdAt: string;
@@ -93,8 +102,6 @@ export type ContactFields = {
   location: string;
   contactPerson: string;
   contactRole: string;
-  leadStatus: LeadStatus;
-  sdStatus: SdStatus | "";
 };
 
 // Shape returned by the backend's ContactItem schema.
@@ -110,7 +117,7 @@ type ContactItemResponse = {
   contact_person: string | null;
   contact_role?: string | null;
   lead_status: LeadStatus | null;
-  sd_status?: SdStatus | null;
+  temperature?: LeadTemperature | null;
   outreach_channels?: OutreachChannel[];
   sent_channels?: OutreachChannel[];
   email_bounce_reason?: string | null;
@@ -130,7 +137,7 @@ function toContact(item: ContactItemResponse): Contact {
     contactPerson: item.contact_person ?? "",
     contactRole: item.contact_role ?? "",
     leadStatus: item.lead_status ?? "new",
-    sdStatus: item.sd_status ?? "",
+    temperature: item.temperature ?? "cold",
     outreachChannels: item.outreach_channels ?? [],
     sentChannels: item.sent_channels ?? [],
     emailBounceReason: item.email_bounce_reason ?? "",
@@ -149,8 +156,6 @@ function toRequestFields(fields: ContactFields) {
     location: fields.location,
     contact_person: fields.contactPerson,
     contact_role: fields.contactRole,
-    lead_status: fields.leadStatus,
-    sd_status: fields.sdStatus,
   };
 }
 
@@ -170,12 +175,14 @@ export async function fetchContacts(): Promise<Contact[]> {
   return items.map(toContact);
 }
 
-// Returns the created row. Throws an Error with a user-facing message.
-export async function addContact(type: ContactType, fields: ContactFields): Promise<Contact> {
+// Returns the created row. With `campaignId` (leads only) the new lead is
+// also put in that campaign, as Unsent. Throws an Error with a user-facing
+// message.
+export async function addContact(type: ContactType, fields: ContactFields, campaignId?: number): Promise<Contact> {
   const response = await apiFetch("/admin/database/add_contact", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contact_type: type, ...toRequestFields(fields) }),
+    body: JSON.stringify({ contact_type: type, ...toRequestFields(fields), campaign_id: campaignId ?? null }),
   });
   if (!response.ok) {
     throw new Error(await detailOr(response, "Something went wrong. Please try again."));
@@ -198,43 +205,13 @@ export async function updateContact(id: number, fields: ContactFields): Promise<
   return toContact(body.contact);
 }
 
-// Just the status, for the dropdown in the Leads table's Status column.
-// Throws an Error with a user-facing message on failure.
-export async function updateLeadStatus(id: number, status: LeadStatus): Promise<void> {
+// The full set of ticked "Data present" channels. Throws an Error with a
+// user-facing message on failure.
+export async function updateDataPresent(id: number, channels: OutreachChannel[]): Promise<void> {
   const response = await apiFetch("/admin/database/update_contact", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contact_id: id, lead_status: status }),
-  });
-  if (!response.ok) {
-    throw new Error(await detailOr(response, "Couldn't update the status. Please try again."));
-  }
-}
-
-// Just the SD status, for the dropdown in the Leads table's SD Status column.
-// Throws an Error with a user-facing message on failure.
-export async function updateSdStatus(id: number, sdStatus: SdStatus): Promise<void> {
-  const response = await apiFetch("/admin/database/update_contact", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contact_id: id, sd_status: sdStatus }),
-  });
-  if (!response.ok) {
-    throw new Error(await detailOr(response, "Couldn't update the SD status. Please try again."));
-  }
-}
-
-// Which of the Leads table's two tick-box columns a channel list belongs to.
-export type ChannelColumn = "dataPresent" | "sentStatus";
-
-// The full set of ticked channels for one of the Leads table's tick-box
-// columns. Throws an Error with a user-facing message on failure.
-export async function updateChannels(id: number, column: ChannelColumn, channels: OutreachChannel[]): Promise<void> {
-  const field = column === "dataPresent" ? "outreach_channels" : "sent_channels";
-  const response = await apiFetch("/admin/database/update_contact", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contact_id: id, [field]: channels }),
+    body: JSON.stringify({ contact_id: id, outreach_channels: channels }),
   });
   if (!response.ok) {
     throw new Error(await detailOr(response, "Couldn't update the channels. Please try again."));

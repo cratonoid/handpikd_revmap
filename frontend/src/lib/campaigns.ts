@@ -1,19 +1,41 @@
 // ---------------------------------------------------------------------------
-// Campaigns — named mail-outs over the whole Database address book
+// Campaigns — named outreach to a list of leads
 // ---------------------------------------------------------------------------
 // Backed by /admin/campaign/* (backend/app/api/routes/campaigns.py). A
-// campaign holds only a name and a note: its contacts are the live rows of
-// /admin/database (lib/database-contacts.ts), and its mail goes out through
-// the Emails module's sendEmail() with the campaign's id attached. Who has
-// been sent what comes back from fetchCampaign(), worked out on the server
-// from those sends.
+// campaign has its own list of leads from /admin/database
+// (lib/database-contacts.ts), and keeps each lead's Status (Unsent / Sent),
+// SD Status and Sent status for itself. The lead's details and Data present
+// are the Database row's, shared with every campaign. Mail goes out through
+// the Emails module's sendEmail() with the campaign's id attached, which
+// marks the lead Sent with Mail ticked here; the delivery results come back
+// from fetchCampaign(), worked out on the server from those sends.
 import { apiFetch } from "@/lib/api";
+import type { OutreachChannel, SdStatus } from "@/lib/database-contacts";
 import { toSend, type EmailSend, type RecipientStatus, type SendItemResponse } from "@/lib/emails";
+
+export type CampaignLeadStatus = "unsent" | "sent";
+
+export const CAMPAIGN_LEAD_STATUS_OPTIONS: { value: CampaignLeadStatus; label: string }[] = [
+  { value: "unsent", label: "Unsent" },
+  { value: "sent", label: "Sent" },
+];
+
+// One lead's row in a campaign: only the parts that are this campaign's own.
+export type CampaignLead = {
+  contactId: number;
+  status: CampaignLeadStatus;
+  // "" until one is picked.
+  sdStatus: SdStatus | "";
+  sentChannels: OutreachChannel[];
+  addedAt: string;
+};
 
 export type Campaign = {
   id: number;
   name: string;
   description: string;
+  leadCount: number;
+  sentLeadCount: number;
   // Distinct contacts reached (delivered, not bounced).
   sentCount: number;
   // Contacts whose latest attempt failed or bounced.
@@ -38,6 +60,8 @@ export type CampaignContactStatus = {
 
 export type CampaignDetail = {
   campaign: Campaign;
+  // Newest-added first.
+  leads: CampaignLead[];
   statuses: Map<number, CampaignContactStatus>;
   // Newest first.
   sends: EmailSend[];
@@ -47,6 +71,8 @@ type CampaignItemResponse = {
   campaign_id: number;
   name: string;
   description: string | null;
+  lead_count: number;
+  sent_lead_count: number;
   sent_count: number;
   failed_count: number;
   bounced_count: number;
@@ -56,8 +82,17 @@ type CampaignItemResponse = {
   updated_at: string;
 };
 
+type CampaignLeadResponse = {
+  contact_id: number;
+  status: CampaignLeadStatus;
+  sd_status: SdStatus | null;
+  sent_channels: OutreachChannel[];
+  added_at: string;
+};
+
 type CampaignDetailResponse = {
   campaign: CampaignItemResponse;
+  leads: CampaignLeadResponse[];
   contacts: {
     contact_id: number;
     status: RecipientStatus;
@@ -74,6 +109,8 @@ function toCampaign(item: CampaignItemResponse): Campaign {
     id: item.campaign_id,
     name: item.name,
     description: item.description ?? "",
+    leadCount: item.lead_count,
+    sentLeadCount: item.sent_lead_count,
     sentCount: item.sent_count,
     failedCount: item.failed_count,
     bouncedCount: item.bounced_count,
@@ -81,6 +118,16 @@ function toCampaign(item: CampaignItemResponse): Campaign {
     lastSentAt: item.last_sent_at,
     createdAt: item.created_at,
     updatedAt: item.updated_at,
+  };
+}
+
+function toCampaignLead(item: CampaignLeadResponse): CampaignLead {
+  return {
+    contactId: item.contact_id,
+    status: item.status,
+    sdStatus: item.sd_status ?? "",
+    sentChannels: item.sent_channels,
+    addedAt: item.added_at,
   };
 }
 
@@ -122,6 +169,7 @@ export async function fetchCampaign(id: number): Promise<CampaignDetail> {
   const body: CampaignDetailResponse = await response.json();
   return {
     campaign: toCampaign(body.campaign),
+    leads: body.leads.map(toCampaignLead),
     statuses: new Map(
       body.contacts.map((entry) => [
         entry.contact_id,
@@ -161,5 +209,45 @@ export async function deleteCampaign(id: number): Promise<void> {
     "/admin/campaign/update_campaign",
     { campaign_id: id, delete: true },
     "Couldn't delete the campaign. Please try again.",
+  );
+}
+
+// Existing Database leads into the campaign, as Unsent; ones already in it
+// are skipped. Returns the rows that were added.
+export async function addCampaignLeads(campaignId: number, contactIds: number[]): Promise<CampaignLead[]> {
+  const response = await postJson(
+    "/admin/campaign/add_leads",
+    { campaign_id: campaignId, contact_ids: contactIds },
+    "Couldn't add the leads. Please try again.",
+  );
+  const body: { leads: CampaignLeadResponse[] } = await response.json();
+  return body.leads.map(toCampaignLead);
+}
+
+// One of a lead's campaign columns. "" clears the SD status.
+export async function updateCampaignLead(
+  campaignId: number,
+  contactId: number,
+  fields: { status?: CampaignLeadStatus; sdStatus?: SdStatus | ""; sentChannels?: OutreachChannel[] },
+): Promise<void> {
+  await postJson(
+    "/admin/campaign/update_lead",
+    {
+      campaign_id: campaignId,
+      contact_id: contactId,
+      status: fields.status,
+      sd_status: fields.sdStatus,
+      sent_channels: fields.sentChannels,
+    },
+    "Couldn't save the change. Please try again.",
+  );
+}
+
+// Takes the lead out of the campaign; it stays in the Database.
+export async function removeCampaignLead(campaignId: number, contactId: number): Promise<void> {
+  await postJson(
+    "/admin/campaign/update_lead",
+    { campaign_id: campaignId, contact_id: contactId, remove: true },
+    "Couldn't remove the lead. Please try again.",
   );
 }

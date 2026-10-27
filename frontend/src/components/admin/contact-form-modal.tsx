@@ -6,24 +6,16 @@
 // One form for clients, leads and vendors (components/admin/
 // database-page-client.tsx): name and phone are required, email is
 // optional, and vendors get three more optional fields — type, description
-// and location, while leads get an optional contact person and role, and a status
-// dropdown (New / Sent, defaulting to New). "add" mode starts blank; "edit" mode is pre-filled from the
-// row. Saving goes through lib/database-contacts.ts and any backend error is
+// and location, while leads get an optional contact person and role. A
+// lead's Status and SD Status are set per campaign, in the campaign's table,
+// not here. "add" mode starts blank; "edit" mode is pre-filled from the
+// row. A campaign's page passes `campaignId` so a new lead goes straight
+// into that campaign as well as the Database. Saving goes through lib/database-contacts.ts and any backend error is
 // shown here instead of closing the modal.
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { XMarkIcon } from "@/components/icons";
-import {
-  addContact,
-  LEAD_STATUS_OPTIONS,
-  SD_STATUS_OPTIONS,
-  updateContact,
-  type Contact,
-  type ContactFields,
-  type ContactType,
-  type LeadStatus,
-  type SdStatus,
-} from "@/lib/database-contacts";
+import { addContact, updateContact, type Contact, type ContactFields, type ContactType } from "@/lib/database-contacts";
 import styles from "@/styles/dashboard.module.css";
 
 const EMPTY_FIELDS: ContactFields = {
@@ -35,8 +27,6 @@ const EMPTY_FIELDS: ContactFields = {
   location: "",
   contactPerson: "",
   contactRole: "",
-  leadStatus: "new",
-  sdStatus: "",
 };
 
 // Loose on purpose: only catches obvious typos. The backend applies the same
@@ -47,6 +37,7 @@ export function ContactFormModal({
   type,
   typeLabel,
   initialContact,
+  campaignId,
   onClose,
   onSaved,
 }: {
@@ -55,6 +46,8 @@ export function ContactFormModal({
   typeLabel: string;
   // Present in edit mode, absent in add mode.
   initialContact?: Contact;
+  // Add mode, leads only: also add the new lead to this campaign.
+  campaignId?: number;
   onClose: () => void;
   onSaved: (contact: Contact) => void;
 }) {
@@ -74,15 +67,13 @@ export function ContactFormModal({
           location: initialContact.location,
           contactPerson: initialContact.contactPerson,
           contactRole: initialContact.contactRole,
-          leadStatus: initialContact.leadStatus,
-          sdStatus: initialContact.sdStatus,
         }
       : EMPTY_FIELDS,
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function setField(key: Exclude<keyof ContactFields, "leadStatus" | "sdStatus">, value: string) {
+  function setField(key: keyof ContactFields, value: string) {
     setFields((current) => ({ ...current, [key]: value }));
   }
 
@@ -97,8 +88,6 @@ export function ContactFormModal({
       location: isVendor ? fields.location.trim() : "",
       contactPerson: isLead ? fields.contactPerson.trim() : "",
       contactRole: isLead ? fields.contactRole.trim() : "",
-      leadStatus: fields.leadStatus,
-      sdStatus: isLead ? fields.sdStatus : "",
     };
     if (!trimmed.name) {
       setError(`Enter a ${nameLabel.toLowerCase()}.`);
@@ -118,7 +107,7 @@ export function ContactFormModal({
     try {
       const saved = initialContact
         ? await updateContact(initialContact.id, trimmed)
-        : await addContact(type, trimmed);
+        : await addContact(type, trimmed, isLead ? campaignId : undefined);
       onSaved(saved);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
@@ -220,53 +209,6 @@ export function ContactFormModal({
                 disabled={saving}
               />
             </div>
-
-            {isLead && (
-              <div>
-                <label htmlFor="contactLeadStatus" className={styles.formLabel}>
-                  Status
-                </label>
-                <select
-                  id="contactLeadStatus"
-                  value={fields.leadStatus}
-                  onChange={(event) =>
-                    setFields((current) => ({ ...current, leadStatus: event.target.value as LeadStatus }))
-                  }
-                  className={styles.formInput}
-                  disabled={saving}
-                >
-                  {LEAD_STATUS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {isLead && (
-              <div>
-                <label htmlFor="contactSdStatus" className={styles.formLabel}>
-                  SD Status
-                </label>
-                <select
-                  id="contactSdStatus"
-                  value={fields.sdStatus}
-                  onChange={(event) =>
-                    setFields((current) => ({ ...current, sdStatus: event.target.value as SdStatus | "" }))
-                  }
-                  className={styles.formInput}
-                  disabled={saving}
-                >
-                  <option value="">—</option>
-                  {SD_STATUS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             {isVendor && (
               <>

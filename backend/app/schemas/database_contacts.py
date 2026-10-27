@@ -20,6 +20,9 @@ class ContactItem(BaseModel):
     contact_person: str | None
     contact_role: str | None = None
     lead_status: LeadStatus | None
+    # Lead-only: "warm" once the lead has been reached at least once (in
+    # any campaign, or before campaigns tracked it), "cold" until then.
+    temperature: Literal["cold", "warm"] | None = None
     # Lead-only; None until one is picked.
     sd_status: SdStatus | None = None
     # Lead-only; [] on client and vendor rows.
@@ -47,6 +50,9 @@ class AddContactRequest(BaseModel):
     sd_status: SdStatus | Literal[""] | None = None
     outreach_channels: list[OutreachChannel] | None = None
     sent_channels: list[OutreachChannel] | None = None
+    # Lead-only: also put the new lead in this campaign, as Unsent. Required
+    # for a team account that has Campaigns but not Database.
+    campaign_id: int | None = None
 
 
 class AddContactResponse(BaseModel):
