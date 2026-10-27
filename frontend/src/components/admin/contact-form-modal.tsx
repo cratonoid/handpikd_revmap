@@ -9,8 +9,8 @@
 // and location, while leads get an optional contact person and role. A
 // lead's Status and SD Status are set per campaign, in the campaign's table,
 // not here. "add" mode starts blank; "edit" mode is pre-filled from the
-// row. A campaign's page passes `campaignId` so a new lead goes straight
-// into that campaign as well as the Database. Saving goes through lib/database-contacts.ts and any backend error is
+// row. A campaign's page uses it too; a lead added there is a Database lead
+// like any other, so it's in every campaign. Saving goes through lib/database-contacts.ts and any backend error is
 // shown here instead of closing the modal.
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
@@ -37,7 +37,6 @@ export function ContactFormModal({
   type,
   typeLabel,
   initialContact,
-  campaignId,
   onClose,
   onSaved,
 }: {
@@ -46,8 +45,6 @@ export function ContactFormModal({
   typeLabel: string;
   // Present in edit mode, absent in add mode.
   initialContact?: Contact;
-  // Add mode, leads only: also add the new lead to this campaign.
-  campaignId?: number;
   onClose: () => void;
   onSaved: (contact: Contact) => void;
 }) {
@@ -107,7 +104,7 @@ export function ContactFormModal({
     try {
       const saved = initialContact
         ? await updateContact(initialContact.id, trimmed)
-        : await addContact(type, trimmed, isLead ? campaignId : undefined);
+        : await addContact(type, trimmed);
       onSaved(saved);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");

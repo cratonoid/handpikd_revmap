@@ -3,16 +3,14 @@
 // ---------------------------------------------------------------------------
 // <CampaignDetailPageClient> — one campaign's page, /admin/campaigns/[id]
 // ---------------------------------------------------------------------------
-// The campaign's own list of leads (lib/campaigns.ts), laid out like the
-// Database's Leads table. Per lead, three columns belong to this campaign
-// alone: Status (Unsent / Sent), SD Status and Sent status (WhatsApp /
-// Mail). The rest — name, contact person, phone, email and Data present —
-// is the lead's Database row (lib/database-contacts.ts), so editing it here
-// changes it in the Database and in every other campaign too, and a lead
-// added here with "+ Add new lead" is added to the Database as well.
-// "Add from Database" brings in leads that are already there. Removing a
-// lead takes it out of this campaign only. Each column header has a funnel
-// filter, as on /admin/database.
+// Every Database lead, laid out like the Database's Leads table. Per lead,
+// three columns belong to this campaign alone (lib/campaigns.ts): Status
+// (Unsent / Sent), SD Status and Sent status (WhatsApp / Mail), so a lead
+// Sent in one campaign is still Unsent in the next. The rest — name, contact
+// person, phone, email and Data present — is the lead's Database row
+// (lib/database-contacts.ts), so editing it here changes it everywhere, and
+// a lead added here with "+ Add new lead" joins the Database and so every
+// campaign. Each column header has a funnel filter, as on /admin/database.
 //
 // Tick rows and "Send mail" opens <EmailComposeModal>; the send carries the
 // campaign's id, and each delivered email marks that lead Sent with Mail
@@ -24,7 +22,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/button";
-import { CampaignAddLeadsModal } from "@/components/admin/campaign-add-leads-modal";
 import { CampaignFormModal } from "@/components/admin/campaign-form-modal";
 import { ColumnFilterDropdown } from "@/components/admin/column-filter-dropdown";
 import { ContactFormModal } from "@/components/admin/contact-form-modal";
@@ -33,8 +30,8 @@ import { StatusSelect } from "@/components/admin/status-select";
 import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import {
   CAMPAIGN_LEAD_STATUS_OPTIONS,
+  campaignLeadFor,
   fetchCampaign,
-  removeCampaignLead,
   updateCampaignLead,
   type CampaignContactStatus,
   type CampaignDetail,
@@ -100,9 +97,7 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
   const [composeFor, setComposeFor] = useState<Contact[] | null>(null);
   const [editingCampaign, setEditingCampaign] = useState(false);
   const [contactModal, setContactModal] = useState<ContactModalState>(null);
-  const [pickingLeads, setPickingLeads] = useState(false);
   const [savingId, setSavingId] = useState<number | null>(null);
-  const [confirmingRemoveId, setConfirmingRemoveId] = useState<number | null>(null);
 
   const reload = useCallback(async () => {
     const [nextDetail, nextContacts] = await Promise.all([fetchCampaign(campaignId), fetchContacts()]);
@@ -157,15 +152,9 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
   }
 
   const { campaign, leads, statuses, sends } = detail;
-  const contactsById = new Map(contacts.map((contact) => [contact.id, contact]));
-  // A lead deleted from the Database since is dropped from the campaign too
-  // by the backend; one missing here is only a stale read, so it's skipped.
-  const rows = leads.flatMap((lead) => {
-    const contact = contactsById.get(lead.contactId);
-    return contact ? [{ lead, contact }] : [];
-  });
-  const memberIds = new Set(leads.map((lead) => lead.contactId));
-  const leadsNotInCampaign = contacts.filter((contact) => contact.type === "lead" && !memberIds.has(contact.id));
+  const rows = contacts
+    .filter((contact) => contact.type === "lead")
+    .map((contact) => ({ contact, lead: campaignLeadFor(leads, contact.id) }));
 
   const canBulkEmail = ({ lead, contact }: (typeof rows)[number]) =>
     Boolean(contact.email) &&
@@ -201,14 +190,12 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
   }
 
   function patchLead(contactId: number, patch: Partial<CampaignLead>) {
-    setDetail((current) =>
-      current
-        ? {
-            ...current,
-            leads: current.leads.map((lead) => (lead.contactId === contactId ? { ...lead, ...patch } : lead)),
-          }
-        : current,
-    );
+    setDetail((current) => {
+      if (!current) return current;
+      const next = new Map(current.leads);
+      next.set(contactId, { ...campaignLeadFor(current.leads, contactId), ...patch });
+      return { ...current, leads: next };
+    });
   }
 
   // Applied straight away and rolled back if the backend refuses, like the
@@ -254,47 +241,14 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
     }
   }
 
-  async function handleRemove(contactId: number) {
-    setRowError(null);
-    setSavingId(contactId);
-    try {
-      await removeCampaignLead(campaign.id, contactId);
-      setDetail((current) =>
-        current ? { ...current, leads: current.leads.filter((lead) => lead.contactId !== contactId) } : current,
-      );
-      setSelectedIds((current) => current.filter((id) => id !== contactId));
-      setConfirmingRemoveId(null);
-    } catch (caught) {
-      setRowError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
-    } finally {
-      setSavingId(null);
-    }
-  }
-
+  // A new lead goes on top, matching the Database's newest-first order.
   function handleContactSaved(saved: Contact) {
-    const isNew = !contactsById.has(saved.id);
-    setContacts((current) => (isNew ? [saved, ...current] : current.map((row) => (row.id === saved.id ? saved : row))));
-    if (isNew) {
-      // The backend put it in this campaign as Unsent; shown at once rather
-      // than waiting for a re-read.
-      setDetail((current) =>
-        current
-          ? {
-              ...current,
-              leads: [
-                { contactId: saved.id, status: "unsent", sdStatus: "", sentChannels: [], addedAt: new Date().toISOString() },
-                ...current.leads,
-              ],
-            }
-          : current,
-      );
-    }
+    setContacts((current) =>
+      current.some((row) => row.id === saved.id)
+        ? current.map((row) => (row.id === saved.id ? saved : row))
+        : [saved, ...current],
+    );
     setContactModal(null);
-  }
-
-  function handleLeadsAdded(added: CampaignLead[]) {
-    setDetail((current) => (current ? { ...current, leads: [...added, ...current.leads] } : current));
-    setPickingLeads(false);
   }
 
   function handleComposeClosed(sent: boolean) {
@@ -305,7 +259,7 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
     reload().catch(() => setRowError("Emails were sent, but the list couldn't refresh. Reload the page to see them."));
   }
 
-  const sentLeads = leads.filter((lead) => lead.status === "sent").length;
+  const sentLeads = rows.filter(({ lead }) => lead.status === "sent").length;
 
   return (
     <>
@@ -332,7 +286,7 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
                 className={`${styles.viewToggleButton} ${view === option.key ? styles.viewToggleButtonActive : ""}`}
               >
                 {option.label}
-                {option.key === "leads" && ` (${leads.length})`}
+                {option.key === "leads" && ` (${rows.length})`}
               </button>
             ))}
           </div>
@@ -366,9 +320,6 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
                 title="Tick leads to mail them. Leads already Sent in this campaign, without an email, or whose email bounced can't be ticked."
               >
                 {selectedRows.length === 0 ? "Send mail" : `Send mail to ${selectedRows.length}`}
-              </Button>
-              <Button type="button" variant="secondary" onClick={() => setPickingLeads(true)}>
-                Add from Database
               </Button>
               <Button type="button" variant="primary" onClick={() => setContactModal({ mode: "add" })}>
                 + Add new lead
@@ -569,53 +520,24 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
                         <LastEmailPill entry={entry} />
                       </td>
                       <td className={styles.tableCell}>
-                        {confirmingRemoveId === contact.id ? (
-                          <div className={styles.deleteConfirmRow}>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmingRemoveId(null)}
-                              disabled={saving}
-                              className={styles.expenseRowButton}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleRemove(contact.id)}
-                              disabled={saving}
-                              title="Takes the lead out of this campaign. It stays in the Database."
-                              className={`${styles.expenseRowButton} ${styles.expenseRowButtonDanger}`}
-                            >
-                              {saving ? "Removing…" : "Yes, remove"}
-                            </button>
-                          </div>
-                        ) : (
-                          <div className={styles.deleteConfirmRow}>
-                            <button
-                              type="button"
-                              onClick={() => setComposeFor([contact])}
-                              disabled={!contact.email || entry?.status === "pending"}
-                              title={contact.email ? `Mail ${contact.email}` : "Add an email address to this lead first"}
-                              className={styles.expenseRowButton}
-                            >
-                              {lead.status === "sent" ? "Resend" : "Send"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setContactModal({ mode: "edit", contact })}
-                              className={styles.expenseRowButton}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmingRemoveId(contact.id)}
-                              className={`${styles.expenseRowButton} ${styles.expenseRowButtonDanger}`}
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        )}
+                        <div className={styles.deleteConfirmRow}>
+                          <button
+                            type="button"
+                            onClick={() => setComposeFor([contact])}
+                            disabled={!contact.email || entry?.status === "pending"}
+                            title={contact.email ? `Mail ${contact.email}` : "Add an email address to this lead first"}
+                            className={styles.expenseRowButton}
+                          >
+                            {lead.status === "sent" ? "Resend" : "Send"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setContactModal({ mode: "edit", contact })}
+                            className={styles.expenseRowButton}
+                          >
+                            Edit
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -625,7 +547,7 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
             {visibleRows.length === 0 && (
               <p className={styles.pageSubtext}>
                 {rows.length === 0
-                  ? "No leads in this campaign yet. Add new ones, or bring in leads from the Database."
+                  ? "No leads in the Database yet. Add one with + Add new lead."
                   : "No leads match these filters."}
               </p>
             )}
@@ -639,11 +561,11 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
             <div className={styles.statCard}>
               <p className={styles.statLabel}>Sent</p>
               <p className={styles.statValue}>{sentLeads}</p>
-              <p className={styles.statCaption}>of {leads.length} leads in this campaign</p>
+              <p className={styles.statCaption}>of {rows.length} leads</p>
             </div>
             <div className={styles.statCard}>
               <p className={styles.statLabel}>Unsent</p>
-              <p className={styles.statValue}>{leads.length - sentLeads}</p>
+              <p className={styles.statValue}>{rows.length - sentLeads}</p>
               <p className={styles.statCaption}>leads still to reach</p>
             </div>
             <div className={styles.statCard}>
@@ -706,18 +628,8 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
           type="lead"
           typeLabel="lead"
           initialContact={contactModal.mode === "edit" ? contactModal.contact : undefined}
-          campaignId={campaign.id}
           onClose={() => setContactModal(null)}
           onSaved={handleContactSaved}
-        />
-      )}
-
-      {pickingLeads && (
-        <CampaignAddLeadsModal
-          campaignId={campaign.id}
-          leads={leadsNotInCampaign}
-          onClose={() => setPickingLeads(false)}
-          onAdded={handleLeadsAdded}
         />
       )}
 

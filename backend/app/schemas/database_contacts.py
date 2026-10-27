@@ -50,9 +50,6 @@ class AddContactRequest(BaseModel):
     sd_status: SdStatus | Literal[""] | None = None
     outreach_channels: list[OutreachChannel] | None = None
     sent_channels: list[OutreachChannel] | None = None
-    # Lead-only: also put the new lead in this campaign, as Unsent. Required
-    # for a team account that has Campaigns but not Database.
-    campaign_id: int | None = None
 
 
 class AddContactResponse(BaseModel):

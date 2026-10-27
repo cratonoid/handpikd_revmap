@@ -12,16 +12,16 @@
 # Status, SD Status and Sent status per lead; the lead_status, sd_status and
 # sent_channels stored here are what the leads had before that, kept as the
 # record of past outreach. Each lead reads back as Cold or Warm (see
-# services/campaign_leads.py). A campaign's page adds and edits leads
-# through these same endpoints, so a team account with Campaigns but not
-# Database may do that much: add a lead into a campaign, and edit a lead.
+# services/campaign_leads.py). Every lead is in every campaign. A
+# campaign's page adds and edits leads through these same endpoints, so a
+# team account with Campaigns but not Database may do that much: add a
+# lead, and edit a lead.
 #
 # Same add / update-or-delete shape as routes/expenses.py.
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import get_allowed_sections, require_section
 from app.models import (
-    Campaign,
     CampaignLead,
     ContactType,
     DatabaseContact,
@@ -133,15 +133,8 @@ async def add_contact(
 ) -> AddContactResponse:
     is_vendor = payload.contact_type == ContactType.vendor
     is_lead = payload.contact_type == ContactType.lead
-    if payload.campaign_id is not None and not is_lead:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="only leads can be added to a campaign")
-    if payload.campaign_id is None and not await _has_database_section(current_user):
-        raise _forbidden("you can only add leads from a campaign")
-    campaign = None
-    if payload.campaign_id is not None:
-        campaign = await Campaign.get(payload.campaign_id)
-        if campaign is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="campaign not found")
+    if not is_lead and not await _has_database_section(current_user):
+        raise _forbidden("only the Database page can add clients and vendors")
     contact = DatabaseContact(
         id=0,
         contact_type=payload.contact_type,
@@ -162,8 +155,6 @@ async def add_contact(
     # doesn't burn a number.
     contact.id = await get_next_id(DatabaseContactIdCounter, "next_database_contact_id", DatabaseContact)
     await contact.insert()
-    if campaign is not None:
-        await campaign_leads.add_leads(campaign.id, [contact.id])
 
     return AddContactResponse(message="contact added successfully", contact=_to_item(contact))
 

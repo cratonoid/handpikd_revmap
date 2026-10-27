@@ -1,8 +1,10 @@
-# Campaign membership: which leads are in which campaign (models/
-# campaign_lead.py), shared by routes/campaigns.py, routes/database_contacts.py
-# and the email sender.
-from collections.abc import Iterable
-
+# A lead's standing in each campaign (models/campaign_lead.py), shared by
+# routes/campaigns.py, routes/database_contacts.py and the email sender.
+#
+# Every Database lead is in every campaign. A CampaignLead row only exists
+# once something has been set for that lead in that campaign; until then
+# the lead reads as Unsent with nothing ticked, so a new lead shows up in
+# every campaign, and a new campaign holds every lead, with no rows written.
 from pymongo.errors import DuplicateKeyError
 
 from app.models import (
@@ -17,36 +19,22 @@ from app.models import (
 from app.services.counters import get_next_id
 
 
-async def add_leads(campaign_id: int, contact_ids: Iterable[int]) -> list[CampaignLead]:
-    """Adds leads to a campaign as Unsent; ones already in it are left as they are.
-
-    Returns only the rows it created. Anything that isn't a lead is skipped.
-    """
-    wanted = list(dict.fromkeys(contact_ids))
-    if not wanted:
-        return []
-    leads = await DatabaseContact.find(
-        {"_id": {"$in": wanted}, "contact_type": ContactType.lead.value}
-    ).to_list()
-    lead_ids = {lead.id for lead in leads}
-    existing = {
-        row.contact_id
-        for row in await CampaignLead.find({"campaign_id": campaign_id, "contact_id": {"$in": wanted}}).to_list()
-    }
-
-    created: list[CampaignLead] = []
-    for contact_id in wanted:
-        if contact_id not in lead_ids or contact_id in existing:
-            continue
-        row = CampaignLead(id=0, campaign_id=campaign_id, contact_id=contact_id)
-        row.id = await get_next_id(CampaignLeadIdCounter, "next_campaign_lead_id", CampaignLead)
-        try:
-            await row.insert()
-        except DuplicateKeyError:
-            # Added by a second request in the meantime; it's in either way.
-            continue
-        created.append(row)
-    return created
+async def get_or_create(campaign_id: int, contact_id: int) -> CampaignLead:
+    """The lead's row in the campaign, written as Unsent if it has none yet."""
+    row = await CampaignLead.find_one({"campaign_id": campaign_id, "contact_id": contact_id})
+    if row is not None:
+        return row
+    row = CampaignLead(id=0, campaign_id=campaign_id, contact_id=contact_id)
+    row.id = await get_next_id(CampaignLeadIdCounter, "next_campaign_lead_id", CampaignLead)
+    try:
+        await row.insert()
+    except DuplicateKeyError:
+        # Written by a second request in the meantime; use that one.
+        existing = await CampaignLead.find_one({"campaign_id": campaign_id, "contact_id": contact_id})
+        if existing is None:
+            raise
+        return existing
+    return row
 
 
 async def warm_contact_ids() -> set[int]:
@@ -74,9 +62,10 @@ async def warm_contact_ids() -> set[int]:
 
 async def mark_emailed(campaign_id: int, contact_id: int) -> None:
     """A lead emailed from a campaign is Sent there, with Mail ticked."""
-    row = await CampaignLead.find_one({"campaign_id": campaign_id, "contact_id": contact_id})
-    if row is None:
+    contact = await DatabaseContact.get(contact_id)
+    if contact is None or contact.contact_type != ContactType.lead:
         return
+    row = await get_or_create(campaign_id, contact_id)
     channels = list(row.sent_channels or [])
     if OutreachChannel.mail not in channels:
         channels.append(OutreachChannel.mail)

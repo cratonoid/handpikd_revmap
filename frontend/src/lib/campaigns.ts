@@ -1,10 +1,10 @@
 // ---------------------------------------------------------------------------
-// Campaigns — named outreach to a list of leads
+// Campaigns — named outreach to every Database lead
 // ---------------------------------------------------------------------------
-// Backed by /admin/campaign/* (backend/app/api/routes/campaigns.py). A
-// campaign has its own list of leads from /admin/database
-// (lib/database-contacts.ts), and keeps each lead's Status (Unsent / Sent),
-// SD Status and Sent status for itself. The lead's details and Data present
+// Backed by /admin/campaign/* (backend/app/api/routes/campaigns.py). Every
+// lead in /admin/database (lib/database-contacts.ts) is in every campaign,
+// and each campaign keeps the lead's Status (Unsent / Sent), SD Status and
+// Sent status for itself. The lead's details and Data present
 // are the Database row's, shared with every campaign. Mail goes out through
 // the Emails module's sendEmail() with the campaign's id attached, which
 // marks the lead Sent with Mail ticked here; the delivery results come back
@@ -20,7 +20,9 @@ export const CAMPAIGN_LEAD_STATUS_OPTIONS: { value: CampaignLeadStatus; label: s
   { value: "sent", label: "Sent" },
 ];
 
-// One lead's row in a campaign: only the parts that are this campaign's own.
+// One lead's standing in a campaign: only the parts that are this
+// campaign's own. Leads with nothing set yet aren't sent by the backend;
+// campaignLeadFor() fills them in as Unsent.
 export type CampaignLead = {
   contactId: number;
   status: CampaignLeadStatus;
@@ -29,6 +31,10 @@ export type CampaignLead = {
   sentChannels: OutreachChannel[];
   addedAt: string;
 };
+
+export function campaignLeadFor(leads: Map<number, CampaignLead>, contactId: number): CampaignLead {
+  return leads.get(contactId) ?? { contactId, status: "unsent", sdStatus: "", sentChannels: [], addedAt: "" };
+}
 
 export type Campaign = {
   id: number;
@@ -60,8 +66,8 @@ export type CampaignContactStatus = {
 
 export type CampaignDetail = {
   campaign: Campaign;
-  // Newest-added first.
-  leads: CampaignLead[];
+  // By lead id; only leads with something set in this campaign.
+  leads: Map<number, CampaignLead>;
   statuses: Map<number, CampaignContactStatus>;
   // Newest first.
   sends: EmailSend[];
@@ -169,7 +175,7 @@ export async function fetchCampaign(id: number): Promise<CampaignDetail> {
   const body: CampaignDetailResponse = await response.json();
   return {
     campaign: toCampaign(body.campaign),
-    leads: body.leads.map(toCampaignLead),
+    leads: new Map(body.leads.map((item) => [item.contact_id, toCampaignLead(item)])),
     statuses: new Map(
       body.contacts.map((entry) => [
         entry.contact_id,
@@ -212,18 +218,6 @@ export async function deleteCampaign(id: number): Promise<void> {
   );
 }
 
-// Existing Database leads into the campaign, as Unsent; ones already in it
-// are skipped. Returns the rows that were added.
-export async function addCampaignLeads(campaignId: number, contactIds: number[]): Promise<CampaignLead[]> {
-  const response = await postJson(
-    "/admin/campaign/add_leads",
-    { campaign_id: campaignId, contact_ids: contactIds },
-    "Couldn't add the leads. Please try again.",
-  );
-  const body: { leads: CampaignLeadResponse[] } = await response.json();
-  return body.leads.map(toCampaignLead);
-}
-
 // One of a lead's campaign columns. "" clears the SD status.
 export async function updateCampaignLead(
   campaignId: number,
@@ -240,14 +234,5 @@ export async function updateCampaignLead(
       sent_channels: fields.sentChannels,
     },
     "Couldn't save the change. Please try again.",
-  );
-}
-
-// Takes the lead out of the campaign; it stays in the Database.
-export async function removeCampaignLead(campaignId: number, contactId: number): Promise<void> {
-  await postJson(
-    "/admin/campaign/update_lead",
-    { campaign_id: campaignId, contact_id: contactId, remove: true },
-    "Couldn't remove the lead. Please try again.",
   );
 }

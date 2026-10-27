@@ -1,5 +1,7 @@
-# Schema for the #campaign_leads collection: which leads belong to which
-# campaign, and where each one stands in it. One row per (campaign, lead).
+# Schema for the #campaign_leads collection: where a lead stands in one
+# campaign. At most one row per (campaign, lead). Every Database lead is in
+# every campaign; a lead with no row in a campaign is Unsent there with
+# nothing set (see services/campaign_leads.py).
 #
 # The lead's own details — name, phone, email, contact person and the
 # "Data present" channels — stay on its DatabaseContact row and are shared

@@ -15,7 +15,7 @@ class CampaignItem(BaseModel):
     campaign_id: int
     name: str
     description: str | None
-    # Leads in the campaign, and how many of them are Sent.
+    # Every Database lead is in every campaign; how many are Sent in this one.
     lead_count: int
     sent_lead_count: int
     # Distinct contacts with a delivered (not bounced) email from this
@@ -42,8 +42,9 @@ class CampaignContactStatus(BaseModel):
     attempts: int
 
 
-# One lead's row in a campaign: the parts that are this campaign's own. The
-# lead's details come from the Database (routes/database_contacts.py).
+# One lead's standing in a campaign: the parts that are this campaign's own.
+# Only leads with something set are listed; the rest are Unsent. The lead's
+# details come from the Database (routes/database_contacts.py).
 class CampaignLeadItem(BaseModel):
     contact_id: int
     status: CampaignLeadStatus
@@ -74,18 +75,7 @@ class UpdateCampaignRequest(BaseModel):
     delete: bool = False
 
 
-class AddCampaignLeadsRequest(BaseModel):
-    campaign_id: int
-    contact_ids: list[int] = Field(min_length=1)
-
-
-class AddCampaignLeadsResponse(BaseModel):
-    message: str
-    leads: list[CampaignLeadItem]
-
-
-# None leaves a field as it is; "" clears the SD status. `remove` on its own
-# takes the lead out of the campaign (it stays in the Database).
+# None leaves a field as it is; "" clears the SD status.
 class UpdateCampaignLeadRequest(BaseModel):
     campaign_id: int
     contact_id: int
@@ -93,7 +83,6 @@ class UpdateCampaignLeadRequest(BaseModel):
     sd_status: SdStatus | Literal[""] | None = None
     # The full set of ticked channels, not a delta; [] unticks both.
     sent_channels: list[OutreachChannel] | None = None
-    remove: bool = False
 
 
 class UpdateCampaignLeadResponse(BaseModel):

@@ -816,38 +816,3 @@
 .contactRole {
   color: color-mix(in srgb, var(--color-ink) 72%, transparent);
 }
-
-/* The "Add leads from the Database" picker on a campaign's page. */
-.leadPickList {
-  display: flex;
-  flex-direction: column;
-  max-height: 22rem;
-  overflow-y: auto;
-  border: 1px solid color-mix(in srgb, var(--color-ink) 14%, transparent);
-  border-radius: 0.5rem;
-}
-
-.leadPickRow {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  cursor: pointer;
-}
-
-.leadPickRow + .leadPickRow {
-  border-top: 1px solid color-mix(in srgb, var(--color-ink) 8%, transparent);
-}
-
-.leadPickRowAll {
-  font-weight: 600;
-}
-
-.leadPickName {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}

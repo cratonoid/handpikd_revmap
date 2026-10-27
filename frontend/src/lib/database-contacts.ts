@@ -175,14 +175,13 @@ export async function fetchContacts(): Promise<Contact[]> {
   return items.map(toContact);
 }
 
-// Returns the created row. With `campaignId` (leads only) the new lead is
-// also put in that campaign, as Unsent. Throws an Error with a user-facing
-// message.
-export async function addContact(type: ContactType, fields: ContactFields, campaignId?: number): Promise<Contact> {
+// Returns the created row. A new lead is in every campaign straight away,
+// as Unsent. Throws an Error with a user-facing message.
+export async function addContact(type: ContactType, fields: ContactFields): Promise<Contact> {
   const response = await apiFetch("/admin/database/add_contact", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ contact_type: type, ...toRequestFields(fields), campaign_id: campaignId ?? null }),
+    body: JSON.stringify({ contact_type: type, ...toRequestFields(fields) }),
   });
   if (!response.ok) {
     throw new Error(await detailOr(response, "Something went wrong. Please try again."));
