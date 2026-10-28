@@ -766,6 +766,14 @@
   width: 9rem;
 }
 
+/* A campaign's leads table has more fixed-width columns than the Database's,
+   which at .databaseTable's 44rem minimum squeezed Company name and Contact
+   person to nothing. This keeps ~9rem each for them; .tableWrap scrolls.
+   Doubled class to beat .databaseTable whichever stylesheet loads last. */
+.campaignLeadsTable.campaignLeadsTable {
+  min-width: 86rem;
+}
+
 .colCampaignAction {
   width: 6rem;
 }

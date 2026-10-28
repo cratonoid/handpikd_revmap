@@ -11,7 +11,7 @@
 // (lib/database-contacts.ts), so editing it here changes it everywhere, and
 // a lead added here with "+ Add new lead" joins the Database and so every
 // campaign. Each column header has a funnel filter, as on /admin/database.
-// The leads sit in two sections, Warm and Cold, by the lead's Database
+// The leads sit under two tabs, Warm and Cold, by the lead's Database
 // standing (reached at least once, in any campaign, or not); the filters and
 // search apply to both.
 //
@@ -107,6 +107,7 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
   const [rowError, setRowError] = useState<string | null>(null);
 
   const [view, setView] = useState<View>("leads");
+  const [section, setSection] = useState<LeadTemperature>("warm");
   const [search, setSearch] = useState("");
   // Header filters; empty means no filter.
   const [statusFilter, setStatusFilter] = useState<CampaignLeadStatus[]>([]);
@@ -192,7 +193,12 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
       matchesSearch(search, [contact.name, contact.contactPerson, contact.contactRole, contact.email, contact.phone]),
     );
 
-  const selectedRows = rows.filter((row) => canBulkEmail(row) && selectedIds.includes(row.contact.id));
+  const activeSection = LEAD_SECTIONS.find((option) => option.key === section) ?? LEAD_SECTIONS[0];
+  const sectionRows = rows.filter(({ contact }) => contact.temperature === section);
+  const sectionVisible = visibleRows.filter(({ contact }) => contact.temperature === section);
+  const sectionCount = (key: LeadTemperature) => rows.filter(({ contact }) => contact.temperature === key).length;
+
+  const selectedRows = sectionRows.filter((row) => canBulkEmail(row) && selectedIds.includes(row.contact.id));
 
   function toggleSelected(id: number) {
     setSelectedIds((current) => (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]));
@@ -298,7 +304,7 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
       selectableVisible.length > 0 && selectableVisible.every((row) => selectedIds.includes(row.contact.id));
     return (
       <div className={styles.tableWrap}>
-        <table className={`${styles.table} ${styles.databaseTable}`}>
+        <table className={`${styles.table} ${styles.databaseTable} ${emailStyles.campaignLeadsTable}`}>
           <thead>
             <tr>
               <th className={`${styles.tableHeadCell} ${emailStyles.colSelect}`}>
@@ -572,6 +578,25 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
               placeholder="Search company name, email or phone…"
             />
 
+            <div className={styles.viewToggle} role="tablist" aria-label="Warm or cold leads">
+              {LEAD_SECTIONS.map((option) => (
+                <button
+                  key={option.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={section === option.key}
+                  onClick={() => {
+                    // Ticks don't carry across: Send mail only mails the tab in view.
+                    if (option.key !== section) setSelectedIds([]);
+                    setSection(option.key);
+                  }}
+                  className={`${styles.viewToggleButton} ${section === option.key ? styles.viewToggleButtonActive : ""}`}
+                >
+                  {option.label} ({sectionCount(option.key)})
+                </button>
+              ))}
+            </div>
+
             <div className={styles.filterToggleRowEndGroup}>
               {selectedRows.length > 0 && (
                 <button type="button" onClick={() => setSelectedIds([])} className={emailStyles.smallButton}>
@@ -599,25 +624,7 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
             </p>
           )}
 
-          {LEAD_SECTIONS.map((section) => {
-            const sectionRows = rows.filter(({ contact }) => contact.temperature === section.key);
-            const sectionVisible = visibleRows.filter(({ contact }) => contact.temperature === section.key);
-            return (
-              <section key={section.key} aria-label={`${section.label} leads`}>
-                <div className={styles.dashboardSectionHeader}>
-                  <h2 className={styles.dashboardSectionTitle}>
-                    <span className={`${emailStyles.leadTemperature} ${emailStyles[`leadTemperature_${section.key}`]}`}>
-                      {section.label}
-                    </span>{" "}
-                    {sectionVisible.length === sectionRows.length
-                      ? `${sectionRows.length} lead${sectionRows.length === 1 ? "" : "s"}`
-                      : `${sectionVisible.length} of ${sectionRows.length} leads`}
-                  </h2>
-                </div>
-                {renderLeadsTable(sectionRows, sectionVisible, section.emptyText)}
-              </section>
-            );
-          })}
+          {renderLeadsTable(sectionRows, sectionVisible, activeSection.emptyText)}
         </>
       )}
 
