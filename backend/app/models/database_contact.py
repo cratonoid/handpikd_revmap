@@ -23,12 +23,11 @@ class LeadStatus(str, Enum):
 
 
 # Lead-only "SD Status" column in the Leads table. Unlike lead_status it has
-# no default: a lead has none until one is picked.
+# no default: a lead has none until one is picked. Used to also have "sdid"
+# and "sdld" (folded into sdi / sdl by scripts/migrate_sd_status_to_sdi_sdl.py).
 class SdStatus(str, Enum):
     sdi = "sdi"
-    sdid = "sdid"
     sdl = "sdl"
-    sdld = "sdld"
 
 
 class OutreachChannel(str, Enum):

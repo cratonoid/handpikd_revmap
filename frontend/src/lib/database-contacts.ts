@@ -26,13 +26,11 @@ export const LEAD_TEMPERATURE_OPTIONS: { value: LeadTemperature; label: string }
 ];
 
 // A campaign's "SD Status" dropdown. Optional: "" until one is picked.
-export type SdStatus = "sdi" | "sdid" | "sdl" | "sdld";
+export type SdStatus = "sdi" | "sdl";
 
 export const SD_STATUS_OPTIONS: { value: SdStatus; label: string }[] = [
   { value: "sdi", label: "SDI" },
-  { value: "sdid", label: "SDID" },
   { value: "sdl", label: "SDL" },
-  { value: "sdld", label: "SDLD" },
 ];
 
 export type OutreachChannel = "whatsapp" | "mail";

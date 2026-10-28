@@ -11,6 +11,9 @@
 // (lib/database-contacts.ts), so editing it here changes it everywhere, and
 // a lead added here with "+ Add new lead" joins the Database and so every
 // campaign. Each column header has a funnel filter, as on /admin/database.
+// The leads sit in two sections, Warm and Cold, by the lead's Database
+// standing (reached at least once, in any campaign, or not); the filters and
+// search apply to both.
 //
 // Tick rows and "Send mail" opens <EmailComposeModal>; the send carries the
 // campaign's id, and each delivered email marks that lead Sent with Mail
@@ -47,6 +50,7 @@ import {
   updateDataPresent,
   type ChannelFilterChoice,
   type Contact,
+  type LeadTemperature,
   type OutreachChannel,
   type SdStatus,
 } from "@/lib/database-contacts";
@@ -62,6 +66,23 @@ type ContactModalState = { mode: "add" } | { mode: "edit"; contact: Contact } | 
 const VIEWS: { key: View; label: string }[] = [
   { key: "leads", label: "Leads" },
   { key: "summary", label: "Summary" },
+];
+
+const LEAD_SECTIONS: {
+  key: LeadTemperature;
+  label: string;
+  emptyText: string;
+}[] = [
+  {
+    key: "warm",
+    label: "Warm",
+    emptyText: "No warm leads yet. A lead turns Warm once it's reached in any campaign.",
+  },
+  {
+    key: "cold",
+    label: "Cold",
+    emptyText: "No cold leads. Add one with + Add new lead.",
+  },
 ];
 
 const SD_STATUS_FILTER_CHOICES: { value: SdStatus | ""; label: string }[] = [
@@ -172,20 +193,17 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
     );
 
   const selectedRows = rows.filter((row) => canBulkEmail(row) && selectedIds.includes(row.contact.id));
-  const selectableVisible = visibleRows.filter(canBulkEmail);
-  const allVisibleSelected =
-    selectableVisible.length > 0 && selectableVisible.every((row) => selectedIds.includes(row.contact.id));
 
   function toggleSelected(id: number) {
     setSelectedIds((current) => (current.includes(id) ? current.filter((value) => value !== id) : [...current, id]));
   }
 
-  function toggleAllVisible() {
-    const visibleIds = selectableVisible.map((row) => row.contact.id);
+  function toggleAllSelectable(selectable: typeof rows, allSelected: boolean) {
+    const ids = selectable.map((row) => row.contact.id);
     setSelectedIds((current) =>
-      allVisibleSelected
-        ? current.filter((id) => !visibleIds.includes(id))
-        : [...current, ...visibleIds.filter((id) => !current.includes(id))],
+      allSelected
+        ? current.filter((id) => !ids.includes(id))
+        : [...current, ...ids.filter((id) => !current.includes(id))],
     );
   }
 
@@ -193,14 +211,20 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
     setDetail((current) => {
       if (!current) return current;
       const next = new Map(current.leads);
-      next.set(contactId, { ...campaignLeadFor(current.leads, contactId), ...patch });
+      next.set(contactId, {
+        ...campaignLeadFor(current.leads, contactId),
+        ...patch,
+      });
       return { ...current, leads: next };
     });
   }
 
   // Applied straight away and rolled back if the backend refuses, like the
   // Database table's tick boxes.
-  async function saveLead(lead: CampaignLead, patch: Partial<Pick<CampaignLead, "status" | "sdStatus" | "sentChannels">>) {
+  async function saveLead(
+    lead: CampaignLead,
+    patch: Partial<Pick<CampaignLead, "status" | "sdStatus" | "sentChannels">>,
+  ) {
     const previous: Partial<CampaignLead> = {};
     for (const key of Object.keys(patch) as (keyof typeof patch)[]) {
       Object.assign(previous, { [key]: lead[key] });
@@ -210,6 +234,13 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
     patchLead(lead.contactId, patch);
     try {
       await updateCampaignLead(campaign.id, lead.contactId, patch);
+      // Reaching the lead here makes it Warm. Undoing that can leave it Warm
+      // from another campaign, so that direction waits for the next load.
+      if (patch.status === "sent" || (patch.sentChannels && patch.sentChannels.length > 0)) {
+        setContacts((current) =>
+          current.map((row) => (row.id === lead.contactId ? { ...row, temperature: "warm" } : row)),
+        );
+      }
     } catch (caught) {
       patchLead(lead.contactId, previous);
       setRowError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
@@ -226,7 +257,9 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
     const previous = contact.outreachChannels;
     const next = toggleChannel(previous, channel);
     const apply = (value: OutreachChannel[]) =>
-      setContacts((current) => current.map((row) => (row.id === contact.id ? { ...row, outreachChannels: value } : row)));
+      setContacts((current) =>
+        current.map((row) => (row.id === contact.id ? { ...row, outreachChannels: value } : row)),
+      );
 
     setRowError(null);
     setSavingId(contact.id);
@@ -257,6 +290,239 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
     setSelectedIds([]);
     setRowError(null);
     reload().catch(() => setRowError("Emails were sent, but the list couldn't refresh. Reload the page to see them."));
+  }
+
+  function renderLeadsTable(sectionRows: typeof rows, sectionVisible: typeof rows, emptyText: string) {
+    const selectableVisible = sectionVisible.filter(canBulkEmail);
+    const allVisibleSelected =
+      selectableVisible.length > 0 && selectableVisible.every((row) => selectedIds.includes(row.contact.id));
+    return (
+      <div className={styles.tableWrap}>
+        <table className={`${styles.table} ${styles.databaseTable}`}>
+          <thead>
+            <tr>
+              <th className={`${styles.tableHeadCell} ${emailStyles.colSelect}`}>
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={() => toggleAllSelectable(selectableVisible, allVisibleSelected)}
+                  disabled={selectableVisible.length === 0}
+                  aria-label="Select all unsent leads with an email"
+                  className={emailStyles.rowCheckbox}
+                />
+              </th>
+              <th className={`${styles.tableHeadCell} ${styles.databaseColSerial}`}>S.No</th>
+              <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Company name</th>
+              <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Contact person / Role</th>
+              <th className={`${styles.tableHeadCell} ${styles.databaseColPhone}`}>Phone no.</th>
+              <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>
+                <span className={styles.tableHeadControls}>
+                  Status
+                  <ColumnFilterDropdown
+                    label="Filter by status"
+                    searchable={false}
+                    options={CAMPAIGN_LEAD_STATUS_OPTIONS}
+                    selectedValues={statusFilter}
+                    onChange={setStatusFilter}
+                  />
+                </span>
+              </th>
+              <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>
+                <span className={styles.tableHeadControls}>
+                  SD Status
+                  <ColumnFilterDropdown
+                    label="Filter by SD status"
+                    searchable={false}
+                    options={SD_STATUS_FILTER_CHOICES}
+                    selectedValues={sdStatusFilter}
+                    onChange={setSdStatusFilter}
+                  />
+                </span>
+              </th>
+              <th className={`${styles.tableHeadCell} ${emailStyles.colOutreach}`}>
+                <span className={styles.tableHeadControls}>
+                  Data present
+                  <ColumnFilterDropdown
+                    label="Filter by data present"
+                    searchable={false}
+                    options={CHANNEL_FILTER_CHOICES}
+                    selectedValues={dataPresentFilter}
+                    onChange={setDataPresentFilter}
+                  />
+                </span>
+              </th>
+              <th className={`${styles.tableHeadCell} ${emailStyles.colOutreach}`}>
+                <span className={styles.tableHeadControls}>
+                  Sent status
+                  <ColumnFilterDropdown
+                    label="Filter by sent status"
+                    searchable={false}
+                    options={CHANNEL_FILTER_CHOICES}
+                    selectedValues={sentStatusFilter}
+                    onChange={setSentStatusFilter}
+                  />
+                </span>
+              </th>
+              <th className={`${styles.tableHeadCell} ${emailStyles.colCampaignStatus}`}>Last email</th>
+              <th className={`${styles.tableHeadCell} ${styles.databaseColActions}`}>
+                <span className="sr-only">Actions</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sectionVisible.map((row, index) => {
+              const { lead, contact } = row;
+              const entry = statuses.get(contact.id);
+              const saving = savingId === contact.id;
+              return (
+                <tr
+                  key={contact.id}
+                  className={`${styles.tableRow} ${emailStyles.editableRow}`}
+                  onDoubleClick={(event) => {
+                    // Double-clicking a control in the row shouldn't open the popup.
+                    if ((event.target as HTMLElement).closest("button, input, select, label, a")) return;
+                    setContactModal({ mode: "edit", contact });
+                  }}
+                  title="Double-click to edit"
+                >
+                  <td className={styles.tableCell}>
+                    <input
+                      type="checkbox"
+                      checked={canBulkEmail(row) && selectedIds.includes(contact.id)}
+                      onChange={() => toggleSelected(contact.id)}
+                      disabled={!canBulkEmail(row)}
+                      title={
+                        !contact.email
+                          ? "No email address"
+                          : contact.emailBounceReason
+                            ? "The last email to this address bounced. Fix the address to include it again."
+                            : lead.status === "sent"
+                              ? "Already Sent in this campaign. Use the row's Resend button to send again."
+                              : undefined
+                      }
+                      aria-label={`Select ${contact.name}`}
+                      className={emailStyles.rowCheckbox}
+                    />
+                  </td>
+                  <td className={styles.tableCell}>{index + 1}</td>
+                  <td
+                    className={`${styles.tableCell} ${styles.tableCellPrimary} ${styles.databaseCellClip}`}
+                    title={[contact.name, contact.email].filter(Boolean).join(" · ")}
+                  >
+                    {contact.name}
+                    {contact.emailBounceReason && (
+                      <span className={emailStyles.bouncedBadge} title={`Email bounced: ${contact.emailBounceReason}`}>
+                        Bounced
+                      </span>
+                    )}
+                  </td>
+                  <td
+                    className={`${styles.tableCell} ${styles.databaseCellClip}`}
+                    title={[contact.contactPerson, contact.contactRole].filter(Boolean).join(" · ")}
+                  >
+                    {contact.contactPerson || "—"}
+                    {contact.contactRole && <span className={emailStyles.contactRole}> · {contact.contactRole}</span>}
+                  </td>
+                  <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.phone}>
+                    {contact.phone}
+                  </td>
+                  <td className={styles.tableCell}>
+                    <StatusSelect
+                      value={lead.status}
+                      options={CAMPAIGN_LEAD_STATUS_OPTIONS}
+                      label={`Status for ${contact.name}`}
+                      disabled={saving}
+                      onChange={(next) => {
+                        if (next !== lead.status) void saveLead(lead, { status: next });
+                      }}
+                    />
+                  </td>
+                  <td className={styles.tableCell}>
+                    <StatusSelect<SdStatus | "">
+                      value={lead.sdStatus}
+                      options={SD_STATUS_OPTIONS}
+                      label={`SD status for ${contact.name}`}
+                      disabled={saving}
+                      onChange={(next) => {
+                        if (next && next !== lead.sdStatus) void saveLead(lead, { sdStatus: next });
+                      }}
+                    />
+                  </td>
+                  <td className={styles.tableCell}>
+                    <div
+                      className={emailStyles.outreachGroup}
+                      role="group"
+                      aria-label={`Data present for ${contact.name}`}
+                    >
+                      {OUTREACH_OPTIONS.map((option) => (
+                        <label key={option.value} className={emailStyles.outreachOption}>
+                          <input
+                            type="checkbox"
+                            checked={contact.outreachChannels.includes(option.value)}
+                            onChange={() => void handleDataPresentToggle(contact, option.value)}
+                            disabled={saving}
+                          />
+                          {option.label}
+                        </label>
+                      ))}
+                    </div>
+                  </td>
+                  <td className={styles.tableCell}>
+                    <div
+                      className={emailStyles.outreachGroup}
+                      role="group"
+                      aria-label={`Sent status for ${contact.name}`}
+                    >
+                      {OUTREACH_OPTIONS.map((option) => (
+                        <label key={option.value} className={emailStyles.outreachOption}>
+                          <input
+                            type="checkbox"
+                            checked={lead.sentChannels.includes(option.value)}
+                            onChange={() =>
+                              void saveLead(lead, {
+                                sentChannels: toggleChannel(lead.sentChannels, option.value),
+                              })
+                            }
+                            disabled={saving}
+                          />
+                          {option.label}
+                        </label>
+                      ))}
+                    </div>
+                  </td>
+                  <td className={styles.tableCell}>
+                    <LastEmailPill entry={entry} />
+                  </td>
+                  <td className={styles.tableCell}>
+                    <div className={styles.deleteConfirmRow}>
+                      <button
+                        type="button"
+                        onClick={() => setComposeFor([contact])}
+                        disabled={!contact.email || entry?.status === "pending"}
+                        title={contact.email ? `Mail ${contact.email}` : "Add an email address to this lead first"}
+                        className={styles.expenseRowButton}
+                      >
+                        {lead.status === "sent" ? "Resend" : "Send"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setContactModal({ mode: "edit", contact })}
+                        className={styles.expenseRowButton}
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {sectionVisible.length === 0 && (
+          <p className={styles.pageSubtext}>{sectionRows.length === 0 ? emptyText : "No leads match these filters."}</p>
+        )}
+      </div>
+    );
   }
 
   const sentLeads = rows.filter(({ lead }) => lead.status === "sent").length;
@@ -333,225 +599,25 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
             </p>
           )}
 
-          <div className={styles.tableWrap}>
-            <table className={`${styles.table} ${styles.databaseTable}`}>
-              <thead>
-                <tr>
-                  <th className={`${styles.tableHeadCell} ${emailStyles.colSelect}`}>
-                    <input
-                      type="checkbox"
-                      checked={allVisibleSelected}
-                      onChange={toggleAllVisible}
-                      disabled={selectableVisible.length === 0}
-                      aria-label="Select all unsent leads with an email"
-                      className={emailStyles.rowCheckbox}
-                    />
-                  </th>
-                  <th className={`${styles.tableHeadCell} ${styles.databaseColSerial}`}>S.No</th>
-                  <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Company name</th>
-                  <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Contact person / Role</th>
-                  <th className={`${styles.tableHeadCell} ${styles.databaseColPhone}`}>Phone no.</th>
-                  <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>
-                    <span className={styles.tableHeadControls}>
-                      Status
-                      <ColumnFilterDropdown
-                        label="Filter by status"
-                        searchable={false}
-                        options={CAMPAIGN_LEAD_STATUS_OPTIONS}
-                        selectedValues={statusFilter}
-                        onChange={setStatusFilter}
-                      />
-                    </span>
-                  </th>
-                  <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>
-                    <span className={styles.tableHeadControls}>
-                      SD Status
-                      <ColumnFilterDropdown
-                        label="Filter by SD status"
-                        searchable={false}
-                        options={SD_STATUS_FILTER_CHOICES}
-                        selectedValues={sdStatusFilter}
-                        onChange={setSdStatusFilter}
-                      />
-                    </span>
-                  </th>
-                  <th className={`${styles.tableHeadCell} ${emailStyles.colOutreach}`}>
-                    <span className={styles.tableHeadControls}>
-                      Data present
-                      <ColumnFilterDropdown
-                        label="Filter by data present"
-                        searchable={false}
-                        options={CHANNEL_FILTER_CHOICES}
-                        selectedValues={dataPresentFilter}
-                        onChange={setDataPresentFilter}
-                      />
-                    </span>
-                  </th>
-                  <th className={`${styles.tableHeadCell} ${emailStyles.colOutreach}`}>
-                    <span className={styles.tableHeadControls}>
-                      Sent status
-                      <ColumnFilterDropdown
-                        label="Filter by sent status"
-                        searchable={false}
-                        options={CHANNEL_FILTER_CHOICES}
-                        selectedValues={sentStatusFilter}
-                        onChange={setSentStatusFilter}
-                      />
-                    </span>
-                  </th>
-                  <th className={`${styles.tableHeadCell} ${emailStyles.colCampaignStatus}`}>Last email</th>
-                  <th className={`${styles.tableHeadCell} ${styles.databaseColActions}`}>
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRows.map((row, index) => {
-                  const { lead, contact } = row;
-                  const entry = statuses.get(contact.id);
-                  const saving = savingId === contact.id;
-                  return (
-                    <tr
-                      key={contact.id}
-                      className={`${styles.tableRow} ${emailStyles.editableRow}`}
-                      onDoubleClick={(event) => {
-                        // Double-clicking a control in the row shouldn't open the popup.
-                        if ((event.target as HTMLElement).closest("button, input, select, label, a")) return;
-                        setContactModal({ mode: "edit", contact });
-                      }}
-                      title="Double-click to edit"
-                    >
-                      <td className={styles.tableCell}>
-                        <input
-                          type="checkbox"
-                          checked={canBulkEmail(row) && selectedIds.includes(contact.id)}
-                          onChange={() => toggleSelected(contact.id)}
-                          disabled={!canBulkEmail(row)}
-                          title={
-                            !contact.email
-                              ? "No email address"
-                              : contact.emailBounceReason
-                                ? "The last email to this address bounced. Fix the address to include it again."
-                                : lead.status === "sent"
-                                  ? "Already Sent in this campaign. Use the row's Resend button to send again."
-                                  : undefined
-                          }
-                          aria-label={`Select ${contact.name}`}
-                          className={emailStyles.rowCheckbox}
-                        />
-                      </td>
-                      <td className={styles.tableCell}>{index + 1}</td>
-                      <td
-                        className={`${styles.tableCell} ${styles.tableCellPrimary} ${styles.databaseCellClip}`}
-                        title={[contact.name, contact.email].filter(Boolean).join(" · ")}
-                      >
-                        {contact.name}
-                        {contact.emailBounceReason && (
-                          <span className={emailStyles.bouncedBadge} title={`Email bounced: ${contact.emailBounceReason}`}>
-                            Bounced
-                          </span>
-                        )}
-                      </td>
-                      <td
-                        className={`${styles.tableCell} ${styles.databaseCellClip}`}
-                        title={[contact.contactPerson, contact.contactRole].filter(Boolean).join(" · ")}
-                      >
-                        {contact.contactPerson || "—"}
-                        {contact.contactRole && <span className={emailStyles.contactRole}> · {contact.contactRole}</span>}
-                      </td>
-                      <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.phone}>
-                        {contact.phone}
-                      </td>
-                      <td className={styles.tableCell}>
-                        <StatusSelect
-                          value={lead.status}
-                          options={CAMPAIGN_LEAD_STATUS_OPTIONS}
-                          label={`Status for ${contact.name}`}
-                          disabled={saving}
-                          onChange={(next) => {
-                            if (next !== lead.status) void saveLead(lead, { status: next });
-                          }}
-                        />
-                      </td>
-                      <td className={styles.tableCell}>
-                        <StatusSelect<SdStatus | "">
-                          value={lead.sdStatus}
-                          options={SD_STATUS_OPTIONS}
-                          label={`SD status for ${contact.name}`}
-                          disabled={saving}
-                          onChange={(next) => {
-                            if (next && next !== lead.sdStatus) void saveLead(lead, { sdStatus: next });
-                          }}
-                        />
-                      </td>
-                      <td className={styles.tableCell}>
-                        <div className={emailStyles.outreachGroup} role="group" aria-label={`Data present for ${contact.name}`}>
-                          {OUTREACH_OPTIONS.map((option) => (
-                            <label key={option.value} className={emailStyles.outreachOption}>
-                              <input
-                                type="checkbox"
-                                checked={contact.outreachChannels.includes(option.value)}
-                                onChange={() => void handleDataPresentToggle(contact, option.value)}
-                                disabled={saving}
-                              />
-                              {option.label}
-                            </label>
-                          ))}
-                        </div>
-                      </td>
-                      <td className={styles.tableCell}>
-                        <div className={emailStyles.outreachGroup} role="group" aria-label={`Sent status for ${contact.name}`}>
-                          {OUTREACH_OPTIONS.map((option) => (
-                            <label key={option.value} className={emailStyles.outreachOption}>
-                              <input
-                                type="checkbox"
-                                checked={lead.sentChannels.includes(option.value)}
-                                onChange={() =>
-                                  void saveLead(lead, { sentChannels: toggleChannel(lead.sentChannels, option.value) })
-                                }
-                                disabled={saving}
-                              />
-                              {option.label}
-                            </label>
-                          ))}
-                        </div>
-                      </td>
-                      <td className={styles.tableCell}>
-                        <LastEmailPill entry={entry} />
-                      </td>
-                      <td className={styles.tableCell}>
-                        <div className={styles.deleteConfirmRow}>
-                          <button
-                            type="button"
-                            onClick={() => setComposeFor([contact])}
-                            disabled={!contact.email || entry?.status === "pending"}
-                            title={contact.email ? `Mail ${contact.email}` : "Add an email address to this lead first"}
-                            className={styles.expenseRowButton}
-                          >
-                            {lead.status === "sent" ? "Resend" : "Send"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setContactModal({ mode: "edit", contact })}
-                            className={styles.expenseRowButton}
-                          >
-                            Edit
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {visibleRows.length === 0 && (
-              <p className={styles.pageSubtext}>
-                {rows.length === 0
-                  ? "No leads in the Database yet. Add one with + Add new lead."
-                  : "No leads match these filters."}
-              </p>
-            )}
-          </div>
+          {LEAD_SECTIONS.map((section) => {
+            const sectionRows = rows.filter(({ contact }) => contact.temperature === section.key);
+            const sectionVisible = visibleRows.filter(({ contact }) => contact.temperature === section.key);
+            return (
+              <section key={section.key} aria-label={`${section.label} leads`}>
+                <div className={styles.dashboardSectionHeader}>
+                  <h2 className={styles.dashboardSectionTitle}>
+                    <span className={`${emailStyles.leadTemperature} ${emailStyles[`leadTemperature_${section.key}`]}`}>
+                      {section.label}
+                    </span>{" "}
+                    {sectionVisible.length === sectionRows.length
+                      ? `${sectionRows.length} lead${sectionRows.length === 1 ? "" : "s"}`
+                      : `${sectionVisible.length} of ${sectionRows.length} leads`}
+                  </h2>
+                </div>
+                {renderLeadsTable(sectionRows, sectionVisible, section.emptyText)}
+              </section>
+            );
+          })}
         </>
       )}
 
@@ -596,7 +662,8 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
                   <tr key={send.id} className={styles.tableRow}>
                     <td className={styles.tableCell}>{formatDateTime(utc(send.createdAt))}</td>
                     <td className={styles.tableCell}>
-                      {send.total} {AUDIENCE_LABELS[send.audience][send.total === 1 ? "singular" : "plural"].toLowerCase()}
+                      {send.total}{" "}
+                      {AUDIENCE_LABELS[send.audience][send.total === 1 ? "singular" : "plural"].toLowerCase()}
                     </td>
                     <td className={styles.tableCell}>{send.templateName || "—"}</td>
                     <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={send.subject}>
@@ -604,21 +671,32 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
                     </td>
                     <td className={styles.tableCell}>
                       {send.sentCount}/{send.total} sent
-                      {send.failedCount > 0 && <span className={emailStyles.failedText}> · {send.failedCount} failed</span>}
-                      {send.bouncedCount > 0 && <span className={emailStyles.failedText}> · {send.bouncedCount} bounced</span>}
+                      {send.failedCount > 0 && (
+                        <span className={emailStyles.failedText}> · {send.failedCount} failed</span>
+                      )}
+                      {send.bouncedCount > 0 && (
+                        <span className={emailStyles.failedText}> · {send.bouncedCount} bounced</span>
+                      )}
                       {!send.done && " · sending…"}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {sends.length === 0 && <p className={styles.pageSubtext}>Nothing sent yet. Tick leads and press Send mail.</p>}
+            {sends.length === 0 && (
+              <p className={styles.pageSubtext}>Nothing sent yet. Tick leads and press Send mail.</p>
+            )}
           </div>
         </>
       )}
 
       {composeFor && (
-        <EmailComposeModal audience="lead" recipients={composeFor} campaignId={campaign.id} onClose={handleComposeClosed} />
+        <EmailComposeModal
+          audience="lead"
+          recipients={composeFor}
+          campaignId={campaign.id}
+          onClose={handleComposeClosed}
+        />
       )}
 
       {contactModal && (

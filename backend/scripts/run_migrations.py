@@ -139,6 +139,11 @@ MIGRATIONS: list[tuple[str, str, str]] = [
         MANUAL,
         "leads Eneffen..Rupifi -> Diwali 2026, later leads -> Christmas and New Year (dry run without --apply)",
     ),
+    (
+        "migrate_sd_status_to_sdi_sdl",
+        AUTO,
+        "campaign_leads / database_contacts.sd_status: sdid -> sdi, sdld -> sdl",
+    ),
 ]
 
 LEDGER_COLLECTION = "schema_migrations"
