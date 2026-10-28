@@ -240,5 +240,10 @@ async def update_lead(
         row.sd_status = SdStatus(payload.sd_status) if payload.sd_status else None
     if payload.sent_channels is not None:
         row.sent_channels = _ordered_channels(payload.sent_channels)
+        # A Status sent alongside the ticks wins over the rule.
+        if payload.status is None:
+            campaign_leads.apply_rule(row, contact.outreach_channels)
     await row.save()
-    return UpdateCampaignLeadResponse(message="lead updated", lead=_to_lead_item(row))
+    return UpdateCampaignLeadResponse(
+        message="lead updated", lead=_to_lead_item(row), warm=await campaign_leads.is_warm(contact)
+    )

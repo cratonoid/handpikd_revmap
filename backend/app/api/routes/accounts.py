@@ -89,6 +89,7 @@ from app.schemas.accounts import (
     TaxPeriodRow,
 )
 from app.services.invoice_numbering import format_sales_invoice_no
+from app.services.invoice_totals import is_partial, order_totals
 
 router = APIRouter(prefix="/admin", tags=["accounts"])
 
@@ -174,6 +175,44 @@ async def _customer_id_by_sales_order(sales_order_ids: set[int]) -> dict[int, in
         return {}
     orders = await SalesOrders.find(In(SalesOrders.id, list(sales_order_ids))).to_list()
     return {order.id: order.cust_id for order in orders}
+
+
+async def _cost_share_by_invoice(invoices: list[InvoiceDetails]) -> dict[int, float]:
+    """How much of its orders' cost each invoice carries, for those that
+    don't carry all of it: a partial invoice, or the full invoice billing
+    what partials left (see InvoiceBilling). Its share of the orders' value
+    before tax, so an order billed as 40% + 60% has its cost counted once
+    across the two, not twice. Invoices missing here carry it all.
+
+    Partials are looked up on their own rather than taken from `invoices`,
+    since the ones beside a full invoice in range may sit outside it.
+    """
+    order_ids = list({sales_id for invoice in invoices for sales_id in invoice.sales_ids})
+    if not order_ids:
+        return {}
+    partial_sets = {
+        frozenset(invoice.sales_ids)
+        for invoice in await InvoiceDetails.find(
+            InvoiceDetails.is_deleted == False,
+            InvoiceDetails.type == InvoiceType.standard,
+            In(InvoiceDetails.sales_ids, order_ids),
+        ).to_list()
+        if is_partial(invoice)
+    }
+    shared = [invoice for invoice in invoices if is_partial(invoice) or frozenset(invoice.sales_ids) in partial_sets]
+    if not shared:
+        return {}
+    orders_by_id = {
+        order.id: order
+        for order in await SalesOrders.find(
+            In(SalesOrders.id, list({sales_id for invoice in shared for sales_id in invoice.sales_ids}))
+        ).to_list()
+    }
+    shares = {}
+    for invoice in shared:
+        before_tax = order_totals([orders_by_id[i] for i in invoice.sales_ids if i in orders_by_id])[0]
+        shares[invoice.id] = invoice.total_amount_before_tax / before_tax if before_tax else 0.0
+    return shares
 
 
 def _net_final_cost(
@@ -291,6 +330,7 @@ async def get_accounts_overview(
     # customer lookups are two queries rather than two per invoice.
     all_sales_order_ids = {sales_id for invoice in invoices for sales_id in invoice.sales_ids}
     cost_by_order, costed_order_ids = await _cost_by_sales_order(all_sales_order_ids)
+    cost_share = await _cost_share_by_invoice(invoices)
     cust_id_by_order = await _customer_id_by_sales_order(all_sales_order_ids)
 
     revenue = sum(invoice.total_amount_before_tax for invoice in invoices)
@@ -325,7 +365,10 @@ async def get_accounts_overview(
         # An order appearing on two invoices contributes its cost to both —
         # the same double count revenue already carries, since both invoices
         # snapshot that order's totals too. Consistent, so margin stays right.
+        # A partial invoice, and the full one billing what partials left,
+        # carry only their share of it (_cost_share_by_invoice).
         invoice_cost = sum(cost_by_order.get(sales_id, 0.0) for sales_id in invoice.sales_ids)
+        invoice_cost *= cost_share.get(invoice.id, 1.0)
         cost_of_goods += invoice_cost
 
         key = _month_key(invoice.date)

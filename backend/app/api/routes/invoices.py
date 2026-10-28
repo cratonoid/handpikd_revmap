@@ -57,6 +57,7 @@ from app.services.invoice_numbering import (
     invoice_no_filename_slug,
 )
 from app.services.invoice_pdf import InvoiceLineItem, generate_invoice_pdf
+from app.services.invoice_totals import billed_totals, is_partial, order_totals, partials_alongside
 from app.services.personal_details import get_personal_details
 from app.services.proforma_invoice_pdf import ProformaInvoiceLineItem, generate_proforma_invoice_pdf
 
@@ -73,13 +74,6 @@ async def _get_sales_orders_or_404(sales_ids: list[int]) -> list[SalesOrders]:
         )
     # Preserve the caller-supplied order for deterministic totals/line-item ordering.
     return [orders_by_id[sales_id] for sales_id in sales_ids]
-
-
-def _sum_sales_order_totals(sales_orders: list[SalesOrders]) -> tuple[float, float, float]:
-    total_before_tax = sum(order.total_amount_before_tax for order in sales_orders)
-    total_tax = sum(order.total_tax_amount for order in sales_orders)
-    total_after_tax = sum(order.total_amount_after_tax for order in sales_orders)
-    return total_before_tax, total_tax, total_after_tax
 
 
 def _check_same_customer(sales_orders: list[SalesOrders]) -> None:
@@ -116,38 +110,110 @@ async def _check_not_cancelled(sales_orders: list[SalesOrders]) -> None:
         )
 
 
-async def _check_not_already_invoiced(
+async def _live_standard_invoices_on(
     sales_orders: list[SalesOrders], exclude_invoice_id: int | None = None
-) -> None:
-    """Reject a sales order that a live standard invoice already covers.
-
-    One sales order, one invoice: raising a second invoice against the same
-    order would bill the client twice for the same goods. Only live invoices
-    count - a voided one has released its orders, which is exactly what
-    voiding is for. `exclude_invoice_id` lets an invoice's own orders pass
-    when it is the one being restored (see update_invoice_details).
-
-    The frontend picker hides already-invoiced orders too (see
-    invoice-form-modal.tsx), but two admins working from stale lists can
-    still both pick the same order, so the check has to live here.
-    """
-    claimed_by = await InvoiceDetails.find(
+) -> list[InvoiceDetails]:
+    invoices = await InvoiceDetails.find(
         InvoiceDetails.is_deleted == False,
         InvoiceDetails.type == InvoiceType.standard,
         In(InvoiceDetails.sales_ids, [order.id for order in sales_orders]),
     ).to_list()
+    return [invoice for invoice in invoices if invoice.id != exclude_invoice_id]
+
+
+async def _check_billing_room(
+    sales_orders: list[SalesOrders], invoice: InvoiceDetails, exclude_invoice_id: int | None = None
+) -> list[InvoiceDetails]:
+    """Reject an invoice its sales orders have no room left for, and return
+    the live partial invoices beside it (for billed_totals).
+
+    A full invoice closes its orders: once one is live, nothing else may be
+    raised against them, since that would bill the client twice for the same
+    goods. Before that, any number of partial invoices may sit on them, as
+    long as together they stay within the orders' value, and the full
+    invoice after them then bills what's left. Partials and that full
+    invoice must all list the very same orders, or "what's left" stops
+    meaning anything. Only live invoices count - a voided one has released
+    its share, which is exactly what voiding is for. `exclude_invoice_id`
+    lets an invoice pass its own check when it is the one being restored
+    (see update_invoice_details).
+
+    The frontend picker hides orders a full invoice already covers too (see
+    invoice-form-modal.tsx), but two admins working from stale lists can
+    still both pick the same order, so the check has to live here.
+    """
+    claimed_by = await _live_standard_invoices_on(sales_orders, exclude_invoice_id)
+    order_ids = {order.id for order in sales_orders}
 
     conflicts = []
     for order in sales_orders:
-        for invoice in claimed_by:
-            if invoice.id != exclude_invoice_id and order.id in invoice.sales_ids:
-                conflicts.append(f"SO-{order.order_no} (on {format_sales_invoice_no(invoice)})")
+        for other in claimed_by:
+            if not is_partial(other) and order.id in other.sales_ids:
+                conflicts.append(f"SO-{order.order_no} (on {format_sales_invoice_no(other)})")
                 break
     if conflicts:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="sales order(s) already invoiced: " + ", ".join(conflicts),
         )
+
+    mismatched = [other for other in claimed_by if is_partial(other) and set(other.sales_ids) != order_ids]
+    if mismatched:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="these sales orders already have partial invoices listing other orders ("
+            + ", ".join(format_sales_invoice_no(other) for other in mismatched)
+            + "); pick exactly the orders on those invoices",
+        )
+
+    partials = partials_alongside(invoice, claimed_by)
+    order_after_tax = order_totals(sales_orders)[2]
+    left = round(order_after_tax - sum(other.total_amount_after_tax for other in partials), 2)
+    if is_partial(invoice):
+        billed_after_tax = billed_totals(invoice, sales_orders, partials)[2]
+        if billed_after_tax <= 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="the partial amount must be more than ₹0")
+        if billed_after_tax > left + 0.005:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"only ₹{max(left, 0):,.2f} of ₹{order_after_tax:,.2f} is left to bill on these sales orders",
+            )
+    elif partials and left <= 0.005:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="these sales orders are already fully billed by partial invoices: "
+            + ", ".join(format_sales_invoice_no(other) for other in partials),
+        )
+    return partials
+
+
+async def _retotal_full_beside(partial: InvoiceDetails) -> None:
+    """A partial invoice was voided, restored or re-totalled, so the full
+    invoice on the same orders (if one is live) now has a different balance
+    to bill. Keeps the GST heads it was raised under, like
+    services/invoice_totals.py does."""
+    candidates = await InvoiceDetails.find(
+        InvoiceDetails.is_deleted == False,
+        InvoiceDetails.type == InvoiceType.standard,
+        In(InvoiceDetails.sales_ids, partial.sales_ids),
+    ).to_list()
+    full = next(
+        (c for c in candidates if not is_partial(c) and set(c.sales_ids) == set(partial.sales_ids)),
+        None,
+    )
+    if full is None:
+        return
+    sales_orders = await _get_sales_orders_or_404(full.sales_ids)
+    totals = billed_totals(full, sales_orders, partials_alongside(full, candidates))
+    if totals == (full.total_amount_before_tax, full.total_tax_amount, full.total_amount_after_tax):
+        return
+    full.total_amount_before_tax, full.total_tax_amount, full.total_amount_after_tax = totals
+    if full.tax_kind is not None:
+        split = split_tax(0.0, full.total_tax_amount, full.tax_kind)
+        full.total_igst_amount = split.igst_amount
+        full.total_cgst_amount = split.cgst_amount
+        full.total_sgst_amount = split.sgst_amount
+    await full.save()
 
 
 async def resolve_invoice_customer_id(invoice: InvoiceDetails) -> int | None:
@@ -368,8 +434,19 @@ async def create_new_invoice(
     sales_orders = await _get_sales_orders_or_404(payload.sales_ids)
     _check_same_customer(sales_orders)
     await _check_not_cancelled(sales_orders)
-    await _check_not_already_invoiced(sales_orders)
-    total_before_tax, total_tax, total_after_tax = _sum_sales_order_totals(sales_orders)
+    # Unsaved stand-in (id 0, which no real invoice has) so the billing
+    # rules can be run on what is about to be raised.
+    draft = InvoiceDetails.model_construct(
+        id=0,
+        sales_ids=payload.sales_ids,
+        type=InvoiceType.standard,
+        is_deleted=False,
+        billing=payload.billing,
+        partial_percent=payload.partial_percent,
+        partial_amount=payload.partial_amount,
+    )
+    partials = await _check_billing_room(sales_orders, draft)
+    total_before_tax, total_tax, total_after_tax = billed_totals(draft, sales_orders, partials)
     # All linked sales orders share one customer (just enforced above).
     tax_context = await _tax_context_for_customer(sales_orders[0].cust_id)
     total_igst, total_cgst, total_sgst = tax_context.totals(total_tax)
@@ -401,6 +478,9 @@ async def create_new_invoice(
         total_cgst_amount=total_cgst,
         total_sgst_amount=total_sgst,
         type=InvoiceType.standard,
+        billing=payload.billing,
+        partial_percent=payload.partial_percent,
+        partial_amount=payload.partial_amount,
         due_date=payload.due_date,
         online_or_offline=payload.online_or_offline,
         transport=payload.transport,
@@ -484,6 +564,9 @@ def _to_invoice_detail_item(
         quotation_id=invoice.quotation_id,
         cust_id=invoice.cust_id,
         type=invoice.type,
+        billing=invoice.billing,
+        partial_percent=invoice.partial_percent,
+        partial_amount=invoice.partial_amount,
         due_date=invoice.due_date,
         online_or_offline=invoice.online_or_offline,
         transport=invoice.transport,
@@ -543,19 +626,23 @@ async def update_invoice_details(
     # changed since the invoice was created/generated — same recompute-on-edit
     # pattern as update_sales_order_details.
     sales_orders = await _get_sales_orders_or_404(invoice.sales_ids)
-    total_before_tax, total_tax, total_after_tax = _sum_sales_order_totals(sales_orders)
 
-    # Restoring a voided invoice re-claims its sales orders, so it has to
-    # pass the same one-invoice-per-order check a new invoice does: another
-    # invoice may have been raised against them while this one was void.
+    # Restoring a voided invoice re-claims its share of its sales orders, so
+    # it has to pass the same billing checks a new invoice does: other
+    # invoices may have been raised against them while this one was void.
+    voiding_changed = invoice.is_deleted != payload.is_deleted
     if invoice.is_deleted and not payload.is_deleted:
         await _check_not_cancelled(sales_orders)
-        await _check_not_already_invoiced(sales_orders, exclude_invoice_id=invoice.id)
+        partials = await _check_billing_room(sales_orders, invoice, exclude_invoice_id=invoice.id)
+    else:
+        partials = partials_alongside(invoice, await _live_standard_invoices_on(sales_orders))
+    total_before_tax, total_tax, total_after_tax = billed_totals(invoice, sales_orders, partials)
 
     # invoice_fy_start_year is deliberately left alone: the number has
     # already been issued out of that year's series, so correcting the date
     # (even across 1 April) must not restate it as another year's invoice.
     earned_before = _earns_points(invoice)
+    totals_changed = (total_before_tax, total_tax) != (invoice.total_amount_before_tax, invoice.total_tax_amount)
     invoice.date = payload.date
     invoice.total_amount_before_tax = total_before_tax
     invoice.total_tax_amount = total_tax
@@ -573,6 +660,8 @@ async def update_invoice_details(
     invoice.is_deleted = payload.is_deleted
     await invoice.save()
     await _sync_points_if_payment_changed(invoice, earned_before)
+    if is_partial(invoice) and (voiding_changed or totals_changed):
+        await _retotal_full_beside(invoice)
 
     return UpdateInvoiceDetailsResponse(message="invoice updated successfully")
 
@@ -788,6 +877,7 @@ async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict
         )
         for line in delivery_charge_lines(sales_orders)
     ]
+    line_items += await _billing_adjustment_lines(invoice, sales_orders)
 
     pdf_bytes = await generate_invoice_pdf(
         invoice_no=invoice_no_display,
@@ -814,6 +904,48 @@ async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict
     )
     filename = f"invoice-{invoice_no_filename_slug(invoice_no_display)}.pdf"
     return pdf_bytes, filename
+
+
+def _adjustment_line(label: str, before_tax: float, tax: float) -> InvoiceLineItem:
+    return InvoiceLineItem(
+        product_name=label,
+        hsn_code="",
+        quantity=0,
+        rate=0.0,
+        discount=0.0,
+        taxable_value=-before_tax,
+        tax_perc=0.0,
+        tax_amount=-tax,
+        total=-round(before_tax + tax, 2),
+        is_adjustment=True,
+    )
+
+
+async def _billing_adjustment_lines(invoice: InvoiceDetails, sales_orders: list[SalesOrders]) -> list[InvoiceLineItem]:
+    """The "Less: ..." rows under the goods on a partial invoice, or on the
+    full invoice that bills what partials left. The goods rows above them
+    are always the orders' in full, so these take the grid down to what this
+    invoice actually bills, and the printed totals still add up."""
+    before_tax, tax, after_tax = order_totals(sales_orders)
+    if is_partial(invoice):
+        share = invoice.total_amount_after_tax / after_tax * 100 if after_tax else 0.0
+        return [
+            _adjustment_line(
+                f"Advance invoice for {share:.2f}% of the order value. Less: the balance, not billed here",
+                round(before_tax - invoice.total_amount_before_tax, 2),
+                round(tax - invoice.total_tax_amount, 2),
+            )
+        ]
+    others = await _live_standard_invoices_on(sales_orders, exclude_invoice_id=invoice.id)
+    partials = sorted(partials_alongside(invoice, others), key=lambda other: other.date)
+    return [
+        _adjustment_line(
+            f"Less: advance billed on {format_sales_invoice_no(other)} ({other.date.strftime('%d-%b-%Y')})",
+            other.total_amount_before_tax,
+            other.total_tax_amount,
+        )
+        for other in partials
+    ]
 
 
 async def build_invoice_pdf(invoice: InvoiceDetails) -> tuple[bytes, str]:

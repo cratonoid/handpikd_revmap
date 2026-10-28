@@ -7,7 +7,9 @@
 // Sent status for itself. The lead's details and Data present
 // are the Database row's, shared with every campaign. Mail goes out through
 // the Emails module's sendEmail() with the campaign's id attached, which
-// marks the lead Sent with Mail ticked here; the delivery results come back
+// ticks Mail in the lead's Sent status here. A lead turns Sent once every
+// Data present channel is ticked in its Sent status (the backend applies
+// the rule on each tick change; the Status can still be changed by hand); the delivery results come back
 // from fetchCampaign(), worked out on the server from those sends.
 import { apiFetch } from "@/lib/api";
 import type { OutreachChannel, SdStatus } from "@/lib/database-contacts";
@@ -218,13 +220,15 @@ export async function deleteCampaign(id: number): Promise<void> {
   );
 }
 
-// One of a lead's campaign columns. "" clears the SD status.
+// One of a lead's campaign columns. "" clears the SD status. Returns the
+// lead as saved (a Sent status change can flip its Status) and whether the
+// lead is now Warm.
 export async function updateCampaignLead(
   campaignId: number,
   contactId: number,
   fields: { status?: CampaignLeadStatus; sdStatus?: SdStatus | ""; sentChannels?: OutreachChannel[] },
-): Promise<void> {
-  await postJson(
+): Promise<{ lead: CampaignLead; warm: boolean }> {
+  const response = await postJson(
     "/admin/campaign/update_lead",
     {
       campaign_id: campaignId,
@@ -235,4 +239,6 @@ export async function updateCampaignLead(
     },
     "Couldn't save the change. Please try again.",
   );
+  const body: { lead: CampaignLeadResponse; warm: boolean } = await response.json();
+  return { lead: toCampaignLead(body.lead), warm: body.warm };
 }

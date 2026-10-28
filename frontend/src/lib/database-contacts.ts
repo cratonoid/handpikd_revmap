@@ -10,8 +10,8 @@
 // they drop straight into form inputs.
 //
 // A lead's Status, SD Status and Sent status belong to each campaign it's in
-// (lib/campaigns.ts). Here a lead is only Cold (never reached) or Warm
-// (reached at least once, in any campaign).
+// (lib/campaigns.ts). Here a lead is only Cold or Warm: Warm once every Data
+// present channel is ticked in its Sent status in some campaign.
 import { apiFetch } from "@/lib/api";
 
 export type ContactType = "client" | "lead" | "vendor";
@@ -204,7 +204,8 @@ export async function updateContact(id: number, fields: ContactFields): Promise<
 
 // The full set of ticked "Data present" channels. Throws an Error with a
 // user-facing message on failure.
-export async function updateDataPresent(id: number, channels: OutreachChannel[]): Promise<void> {
+// Returns the lead as saved: its Warm / Cold can change with its channels.
+export async function updateDataPresent(id: number, channels: OutreachChannel[]): Promise<Contact> {
   const response = await apiFetch("/admin/database/update_contact", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -213,6 +214,8 @@ export async function updateDataPresent(id: number, channels: OutreachChannel[])
   if (!response.ok) {
     throw new Error(await detailOr(response, "Couldn't update the channels. Please try again."));
   }
+  const body: { contact: ContactItemResponse } = await response.json();
+  return toContact(body.contact);
 }
 
 // Throws an Error with a user-facing message on failure.

@@ -199,8 +199,9 @@ def friendly_error(error: Exception) -> str:
 
 async def _mark_contact_emailed(contact_id: int) -> None:
     # A lead that's been emailed is "sent" and has Mail ticked on its
-    # Database row, which keeps it Warm however it was emailed (see
-    # services/campaign_leads.py); clients carry neither. Looked up fresh because the
+    # Database row, the record of it being emailed at all; Warm / Cold is
+    # worked out from the campaigns' ticks instead (see
+    # services/campaign_leads.py). Clients carry neither. Looked up fresh because the
     # contact may have been edited or deleted since the send started.
     contact = await DatabaseContact.get(contact_id)
     if contact is None or contact.contact_type != ContactType.lead:

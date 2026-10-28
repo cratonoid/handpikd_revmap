@@ -11,11 +11,16 @@
 // one customer name/address) — picking the first sales order locks the
 // picker to that customer's other orders, mirroring how
 // purchase-order-form-modal.tsx scopes its product picker to one vendor.
-// A sales order can only be billed once, so the picker also leaves out any
-// order a live standard invoice already lists (the `invoices` prop —
-// voided ones don't count, their orders are free again). The backend
-// enforces the same rule (_check_not_already_invoiced in routes/invoices.py)
-// in case two admins pick the same order from stale lists. Cancelled sales
+// An invoice is Full (the default) or Partial, an advance of a percentage
+// or a fixed amount of the orders' value. Partials can be raised again and
+// again on the same orders until they add up to the orders' value; a Full
+// invoice then bills what they left, and closes the orders. So the picker
+// leaves out any order a live Full invoice already lists (the `invoices`
+// prop — voided ones don't count, their orders are free again), and picking
+// an order that already has partials selects exactly the orders on them,
+// since partials and the Full after them must list the same orders. The
+// backend enforces the same rules (_check_billing_room in
+// routes/invoices.py) in case two admins pick from stale lists. Cancelled sales
 // orders are left out too — there's nothing to bill (_check_not_cancelled).
 // Proforma invoices have their own dedicated modal
 // (proforma-invoice-form-modal.tsx), since they carry their own line items
@@ -33,8 +38,8 @@ import {
   nowAsDatetimeLocalValue,
   toDatetimeLocalValue,
 } from "@/lib/datetime-input";
-import type { Invoice, InvoiceStatus, OnlineOrOffline } from "@/lib/invoices";
-import { createInvoice, printInvoicePdf, updateInvoice } from "@/lib/invoices";
+import type { Invoice, InvoiceBilling, InvoiceStatus, OnlineOrOffline } from "@/lib/invoices";
+import { billedTotals, createInvoice, printInvoicePdf, updateInvoice } from "@/lib/invoices";
 import type { SalesOrder } from "@/lib/sales-orders";
 import type { CustomerOption } from "@/lib/customers";
 import { MultiSelectDropdown, type MultiSelectOption } from "@/components/admin/multi-select-dropdown";
@@ -43,6 +48,25 @@ import { XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
 type Status = "idle" | "saving";
+type PartialMode = "percent" | "amount";
+
+const BILLING_OPTIONS: { value: InvoiceBilling; label: string }[] = [
+  { value: "full", label: "Full" },
+  { value: "partial", label: "Partial" },
+];
+
+const PARTIAL_MODE_OPTIONS: { value: PartialMode; label: string }[] = [
+  { value: "percent", label: "%" },
+  { value: "amount", label: "₹ Amount" },
+];
+
+function rupees(value: number): string {
+  return `₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function sameOrders(a: number[], b: number[]): boolean {
+  return a.length === b.length && a.every((id) => b.includes(id));
+}
 
 // New invoices default their due date to invoice date + this many days.
 const DUE_DATE_DAYS = 10;
@@ -92,6 +116,10 @@ export function InvoiceFormModal({
   );
   const [transport, setTransport] = useState(initialInvoice?.transport ?? "Hand Delivery");
   const [notes, setNotes] = useState(initialInvoice?.notes ?? "");
+  const [billing, setBilling] = useState<InvoiceBilling>("full");
+  const [partialMode, setPartialMode] = useState<PartialMode>("percent");
+  // The typed %, or rupees including tax, per partialMode.
+  const [partialValue, setPartialValue] = useState("");
   const [invoiceStatus, setInvoiceStatus] = useState<InvoiceStatus>(initialInvoice?.status ?? "unpaid");
   // "YYYY-MM-DD", only shown and sent while the status is paid. Filled with
   // today when the status is switched to paid, then editable. Blank on an
@@ -122,17 +150,45 @@ export function InvoiceFormModal({
   // _check_same_customer in routes/invoices.py, which enforces this
   // server-side too).
   const lockedCustId = selectedSalesOrders[0]?.custId ?? null;
-  // Sales orders a live standard invoice already covers. The tab's list
-  // comes from get_invoice_details, which never returns voided invoices,
-  // but the isDeleted check keeps this right if that ever changes.
+  // Sales orders a live Full invoice already covers. The tab's list comes
+  // from get_invoice_details, which never returns voided invoices, but the
+  // isDeleted check keeps this right if that ever changes.
+  const livePartials = useMemo(
+    () => invoices.filter((invoice) => invoice.type === "standard" && !invoice.isDeleted && invoice.billing === "partial"),
+    [invoices],
+  );
   const invoicedSalesIds = useMemo(
     () =>
       new Set(
         invoices
-          .filter((invoice) => invoice.type === "standard" && !invoice.isDeleted)
+          .filter((invoice) => invoice.type === "standard" && !invoice.isDeleted && invoice.billing !== "partial")
           .flatMap((invoice) => invoice.salesIds),
       ),
     [invoices],
+  );
+  // Picking an order that already has partials selects exactly the orders
+  // those partials list.
+  function handleSalesIdsChange(next: string[]) {
+    const added = next.find((id) => !salesIds.includes(id));
+    const partialOn = added ? livePartials.find((invoice) => invoice.salesIds.includes(Number(added))) : undefined;
+    setSalesIds(partialOn ? partialOn.salesIds.map(String) : next);
+  }
+  const selectedIds = salesIds.map(Number);
+  const partialsOnSelection = livePartials.filter(
+    (invoice) => invoice.id !== initialInvoice?.id && sameOrders(invoice.salesIds, selectedIds),
+  );
+  const orderAfterTax = selectedSalesOrders.reduce((sum, order) => sum + order.totalAmountAfterTax, 0);
+  const alreadyBilled = partialsOnSelection.reduce((sum, invoice) => sum + invoice.totalAmountAfterTax, 0);
+  const leftToBill = Math.round((orderAfterTax - alreadyBilled) * 100) / 100;
+  const partialNumber = Number(partialValue);
+  const preview = billedTotals(
+    selectedSalesOrders,
+    billing,
+    {
+      percent: partialMode === "percent" ? partialNumber || 0 : null,
+      amount: partialMode === "amount" ? partialNumber || 0 : null,
+    },
+    partialsOnSelection,
   );
   const salesOrderOptions: MultiSelectOption[] = useMemo(
     () =>
@@ -175,6 +231,9 @@ export function InvoiceFormModal({
             onlineOrOffline,
             transport,
             notes,
+            billing,
+            partialPercent: billing === "partial" && partialMode === "percent" ? partialNumber : null,
+            partialAmount: billing === "partial" && partialMode === "amount" ? partialNumber : null,
           });
 
       if (!response.ok) {
@@ -197,6 +256,21 @@ export function InvoiceFormModal({
 
     if (!isEdit && salesIds.length === 0) {
       setError("Please select at least one sales order.");
+      return;
+    }
+
+    if (!isEdit && billing === "partial") {
+      if (!(partialNumber > 0) || (partialMode === "percent" && partialNumber > 100)) {
+        setError(partialMode === "percent" ? "Enter a percentage above 0, up to 100." : "Enter an amount above ₹0.");
+        return;
+      }
+      if (preview.afterTax > leftToBill + 0.005) {
+        setError(`Only ${rupees(Math.max(leftToBill, 0))} of ${rupees(orderAfterTax)} is left to bill on these orders.`);
+        return;
+      }
+    }
+    if (!isEdit && billing === "full" && partialsOnSelection.length > 0 && leftToBill <= 0.005) {
+      setError("These orders are already fully billed by partial invoices.");
       return;
     }
 
@@ -276,11 +350,89 @@ export function InvoiceFormModal({
                 label="Sales orders"
                 placeholder="Select sales orders"
                 searchPlaceholder="Search sales orders…"
-                emptyMessage="No sales orders match. Orders already on an invoice aren't listed."
+                emptyMessage="No sales orders match. Orders already on a full invoice aren't listed."
                 options={salesOrderOptions}
                 selectedValues={salesIds}
-                onChange={setSalesIds}
+                onChange={handleSalesIdsChange}
               />
+            )}
+
+            {isEdit ? (
+              initialInvoice?.billing === "partial" && (
+                <div>
+                  <span className={styles.formLabel}>Billing</span>
+                  <p className={styles.pageSubtext}>
+                    Partial ·{" "}
+                    {initialInvoice.partialAmount !== null
+                      ? rupees(initialInvoice.partialAmount)
+                      : `${initialInvoice.partialPercent}% of the order value`}
+                  </p>
+                </div>
+              )
+            ) : (
+              <div>
+                <span className={styles.formLabel}>Billing</span>
+                <div className={styles.viewToggle} role="radiogroup" aria-label="Billing">
+                  {BILLING_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={billing === option.value}
+                      onClick={() => setBilling(option.value)}
+                      className={`${styles.viewToggleButton} ${billing === option.value ? styles.viewToggleButtonActive : ""}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!isEdit && billing === "partial" && (
+              <div>
+                <label htmlFor="partialValue" className={styles.formLabel}>
+                  {partialMode === "percent" ? "Advance (% of order value)" : "Advance amount (incl. tax)"}
+                  <span className={styles.requiredMark}>*</span>
+                </label>
+                <div className={styles.viewToggle} role="radiogroup" aria-label="Enter the advance as">
+                  {PARTIAL_MODE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={partialMode === option.value}
+                      onClick={() => {
+                        setPartialMode(option.value);
+                        setPartialValue("");
+                      }}
+                      className={`${styles.viewToggleButton} ${partialMode === option.value ? styles.viewToggleButtonActive : ""}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  id="partialValue"
+                  type="number"
+                  required
+                  min={0.01}
+                  max={partialMode === "percent" ? 100 : undefined}
+                  step={0.01}
+                  value={partialValue}
+                  onChange={(e) => setPartialValue(e.target.value)}
+                  className={styles.formInput}
+                />
+                {selectedSalesOrders.length > 0 && (
+                  <p className={styles.pageSubtext}>
+                    {partialMode === "percent"
+                      ? `= ${rupees(preview.afterTax)}`
+                      : `= ${orderAfterTax ? ((preview.afterTax / orderAfterTax) * 100).toFixed(2) : "0.00"}% of the order value`}
+                    {" · "}
+                    {rupees(Math.max(leftToBill, 0))} of {rupees(orderAfterTax)} left to bill
+                  </p>
+                )}
+              </div>
             )}
 
             <div>
@@ -394,25 +546,26 @@ export function InvoiceFormModal({
             />
           </div>
 
+          {!isEdit && selectedSalesOrders.length > 0 && billing === "full" && partialsOnSelection.length > 0 && (
+            <p className={styles.pageSubtext}>
+              Bills the balance: {rupees(orderAfterTax)} less {rupees(alreadyBilled)} already billed on{" "}
+              {partialsOnSelection.map((invoice) => invoice.invoiceNoDisplay).join(", ")}.
+            </p>
+          )}
+
           {!isEdit && selectedSalesOrders.length > 0 && (
             <div className={styles.totalsRow}>
               <div className={styles.totalsRowItem}>
                 <p className={styles.totalsRowLabel}>Total before tax</p>
-                <p className={styles.totalsRowValue}>
-                  ₹{selectedSalesOrders.reduce((sum, o) => sum + o.totalAmountBeforeTax, 0).toFixed(2)}
-                </p>
+                <p className={styles.totalsRowValue}>₹{preview.beforeTax.toFixed(2)}</p>
               </div>
               <div className={styles.totalsRowItem}>
                 <p className={styles.totalsRowLabel}>Total tax</p>
-                <p className={styles.totalsRowValue}>
-                  ₹{selectedSalesOrders.reduce((sum, o) => sum + o.totalTaxAmount, 0).toFixed(2)}
-                </p>
+                <p className={styles.totalsRowValue}>₹{preview.tax.toFixed(2)}</p>
               </div>
               <div className={styles.totalsRowItem}>
                 <p className={styles.totalsRowLabel}>Total after tax</p>
-                <p className={styles.totalsRowValue}>
-                  ₹{selectedSalesOrders.reduce((sum, o) => sum + o.totalAmountAfterTax, 0).toFixed(2)}
-                </p>
+                <p className={styles.totalsRowValue}>₹{preview.afterTax.toFixed(2)}</p>
               </div>
             </div>
           )}

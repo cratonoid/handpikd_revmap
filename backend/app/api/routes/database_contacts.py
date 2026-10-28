@@ -3,7 +3,7 @@
 # clients, leads and vendors, each a name, phone and optional email, with
 # vendors also carrying a type, description and location, and leads an
 # optional contact person and their role, a status (new / sent), an optional SD status
-# (SDI / SDID / SDL / SDLD), the channels (WhatsApp /
+# (SDI / SDL), the channels (WhatsApp /
 # mail) we have their details for, and the channels they've been sent on. Restricted to
 # admins (bypassed entirely when settings.auth_enabled is False, matching
 # require_staff in api/deps.py).
@@ -11,8 +11,10 @@
 # Leads now belong to campaigns (routes/campaigns.py), which keep their own
 # Status, SD Status and Sent status per lead; the lead_status, sd_status and
 # sent_channels stored here are what the leads had before that, kept as the
-# record of past outreach. Each lead reads back as Cold or Warm (see
-# services/campaign_leads.py). Every lead is in every campaign. A
+# record of past outreach. Each lead reads back as Cold or Warm: Warm once
+# every Data present channel is ticked in its Sent status in some campaign
+# (see services/campaign_leads.py). Changing Data present re-runs each
+# campaign's Sent / Unsent rule for the lead. Every lead is in every campaign. A
 # campaign's page adds and edits leads through these same endpoints, so a
 # team account with Campaigns but not Database may do that much: add a
 # lead, and edit a lead.
@@ -220,5 +222,7 @@ async def update_contact(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no changes specified")
 
     await contact.save()
-    warm = contact.contact_type == ContactType.lead and contact.id in await campaign_leads.warm_contact_ids()
+    if payload.outreach_channels is not None and contact.contact_type == ContactType.lead:
+        await campaign_leads.reapply_rule_for(contact)
+    warm = await campaign_leads.is_warm(contact)
     return UpdateContactResponse(message="contact updated successfully", contact=_to_item(contact, warm))

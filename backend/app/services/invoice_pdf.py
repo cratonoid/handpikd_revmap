@@ -84,6 +84,11 @@ class InvoiceLineItem:
     # as an ordinary row, under its own SAC; the flag only keeps it out of
     # the Total Qty figure, which counts pieces shipped, not rows.
     is_charge: bool = False
+    # True for a "Less: ..." row on a partial invoice, or on the full invoice
+    # that bills the balance after partials (see routes/invoices.py). Only
+    # the name and the money columns print, as negative amounts, so the grid
+    # still adds up to the totals underneath it. Kept out of Total Qty too.
+    is_adjustment: bool = False
 
 
 def _amount(value: float) -> str:
@@ -159,8 +164,28 @@ async def generate_invoice_pdf(
     intra_state = tax_kind == TaxKind.cgst_sgst
 
     rendered_items = []
-    for index, item in enumerate(line_items, start=1):
+    index = 0
+    for item in line_items:
         tax = split_tax(item.tax_perc, item.tax_amount, tax_kind)
+        if item.is_adjustment:
+            rendered_items.append(
+                {
+                    "sr_no": "",
+                    "product_name": item.product_name,
+                    "hsn_code": "",
+                    "quantity": "",
+                    "rate": "",
+                    "discount": "",
+                    "taxable_value": _amount(item.taxable_value),
+                    "tax_perc_1": "",
+                    "tax_amount_1": _amount(tax.cgst_amount if intra_state else tax.igst_amount),
+                    "tax_perc_2": "" if intra_state else None,
+                    "tax_amount_2": _amount(tax.sgst_amount) if intra_state else None,
+                    "total": _amount(item.total),
+                }
+            )
+            continue
+        index += 1
         rendered_items.append(
             {
                 "sr_no": index,
@@ -178,7 +203,7 @@ async def generate_invoice_pdf(
             }
         )
 
-    total_qty = sum(item.quantity for item in line_items if not item.is_charge)
+    total_qty = sum(item.quantity for item in line_items if not item.is_charge and not item.is_adjustment)
     total_discount = sum(item.discount for item in line_items)
 
     place_of_supply = _place_of_supply_text(place_of_supply_code)

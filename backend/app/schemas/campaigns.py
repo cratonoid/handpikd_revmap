@@ -88,6 +88,8 @@ class UpdateCampaignLeadRequest(BaseModel):
 class UpdateCampaignLeadResponse(BaseModel):
     message: str
     lead: CampaignLeadItem | None = None
+    # The lead's Warm / Cold standing after the change (any campaign).
+    warm: bool = False
 
 
 class CampaignResponse(BaseModel):

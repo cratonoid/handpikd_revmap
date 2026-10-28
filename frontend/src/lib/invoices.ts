@@ -10,6 +10,12 @@
 // (productIds/quantities/rates/taxPercs, parallel arrays, empty for standard
 // invoices) — see lib/quotations.ts for the identical shape. `type` is
 // immutable once an invoice exists, and so is salesIds.
+//
+// A standard invoice is "full" or "partial" (an advance). A partial bills
+// partialPercent of its orders' value or a fixed partialAmount (tax
+// included); any number may sit on the same orders up to their value, and
+// the full invoice after them bills what's left. See InvoiceBilling in
+// backend/app/models/invoice_details.py. Fixed once raised.
 import { apiFetch } from "@/lib/api";
 
 export type InvoiceType = "proforma" | "standard";
@@ -17,6 +23,7 @@ export type OnlineOrOffline = "online" | "offline";
 // Payment state only — an invoice is either fully outstanding or fully
 // settled, matching InvoiceStatus in backend/app/models/invoice_details.py.
 export type InvoiceStatus = "unpaid" | "paid";
+export type InvoiceBilling = "full" | "partial";
 
 export type Invoice = {
   id: number;
@@ -27,6 +34,10 @@ export type Invoice = {
   quotationId: number | null;
   custId: number | null;
   type: InvoiceType;
+  billing: InvoiceBilling;
+  // Partial invoices only, one or the other; null otherwise.
+  partialPercent: number | null;
+  partialAmount: number | null;
   dueDate: string;
   onlineOrOffline: OnlineOrOffline;
   transport: string;
@@ -59,6 +70,9 @@ type InvoiceDetailItem = {
   quotation_id: number | null;
   cust_id: number | null;
   type: InvoiceType;
+  billing?: InvoiceBilling;
+  partial_percent?: number | null;
+  partial_amount?: number | null;
   due_date: string;
   online_or_offline: OnlineOrOffline;
   transport: string;
@@ -86,6 +100,9 @@ function toInvoice(item: InvoiceDetailItem): Invoice {
     quotationId: item.quotation_id,
     custId: item.cust_id,
     type: item.type,
+    billing: item.billing ?? "full",
+    partialPercent: item.partial_percent ?? null,
+    partialAmount: item.partial_amount ?? null,
     dueDate: item.due_date,
     onlineOrOffline: item.online_or_offline,
     transport: item.transport,
@@ -123,6 +140,10 @@ export type CreateInvoicePayload = {
   onlineOrOffline: OnlineOrOffline;
   transport: string;
   notes: string;
+  billing: InvoiceBilling;
+  // Partial only: exactly one of the two.
+  partialPercent: number | null;
+  partialAmount: number | null;
 };
 
 export async function createInvoice(payload: CreateInvoicePayload): Promise<Response> {
@@ -136,8 +157,37 @@ export async function createInvoice(payload: CreateInvoicePayload): Promise<Resp
       online_or_offline: payload.onlineOrOffline,
       transport: payload.transport,
       notes: payload.notes,
+      billing: payload.billing,
+      partial_percent: payload.billing === "partial" ? payload.partialPercent : null,
+      partial_amount: payload.billing === "partial" ? payload.partialAmount : null,
     }),
   });
+}
+
+// What a standard invoice bills, mirroring billed_totals in
+// backend/app/services/invoice_totals.py, for the form's live preview.
+// `partials` are the live partial invoices on the same orders.
+export function billedTotals(
+  orders: { totalAmountBeforeTax: number; totalTaxAmount: number; totalAmountAfterTax: number }[],
+  billing: InvoiceBilling,
+  partial: { percent: number | null; amount: number | null },
+  partials: Invoice[],
+): { beforeTax: number; tax: number; afterTax: number } {
+  const round = (value: number) => Math.round(value * 100) / 100;
+  const beforeTax = orders.reduce((sum, order) => sum + order.totalAmountBeforeTax, 0);
+  const tax = orders.reduce((sum, order) => sum + order.totalTaxAmount, 0);
+  const afterTax = orders.reduce((sum, order) => sum + order.totalAmountAfterTax, 0);
+  if (billing === "partial") {
+    const billedAfter =
+      partial.amount !== null ? partial.amount : round(afterTax * ((partial.percent ?? 0) / 100));
+    const share = partial.amount !== null ? (afterTax ? partial.amount / afterTax : 0) : (partial.percent ?? 0) / 100;
+    const billedBefore = round(beforeTax * share);
+    return { beforeTax: billedBefore, tax: round(billedAfter - billedBefore), afterTax: round(billedAfter) };
+  }
+  if (partials.length === 0) return { beforeTax, tax, afterTax };
+  const billedBefore = round(beforeTax - partials.reduce((sum, p) => sum + p.totalAmountBeforeTax, 0));
+  const billedTax = round(tax - partials.reduce((sum, p) => sum + p.totalTaxAmount, 0));
+  return { beforeTax: billedBefore, tax: billedTax, afterTax: round(billedBefore + billedTax) };
 }
 
 export type UpdateInvoicePayload = {

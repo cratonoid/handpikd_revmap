@@ -243,7 +243,7 @@ def test_the_printed_invoice_lines_add_up_to_the_order_total_they_were_billed_fr
     """The property that actually matters end to end.
 
     An invoice snapshots its totals from the sales order
-    (_sum_sales_order_totals in routes/invoices.py) but prints its rows from
+    (order_totals in services/invoice_totals.py) but prints its rows from
     #sales_summary plus the delivery line. Those two paths are computed by
     different code, so if they ever drift the customer gets a document whose
     rows don't sum to its own grand total. This pins them together.

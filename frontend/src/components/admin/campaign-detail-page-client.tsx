@@ -6,18 +6,20 @@
 // Every Database lead, laid out like the Database's Leads table. Per lead,
 // three columns belong to this campaign alone (lib/campaigns.ts): Status
 // (Unsent / Sent), SD Status and Sent status (WhatsApp / Mail), so a lead
-// Sent in one campaign is still Unsent in the next. The rest — name, contact
+// Sent in one campaign is still Unsent in the next. Ticking every Data
+// present channel in Sent status turns the lead Sent (and unticking one turns
+// it back); the Status dropdown can still override that by hand. The rest — name, contact
 // person, phone, email and Data present — is the lead's Database row
 // (lib/database-contacts.ts), so editing it here changes it everywhere, and
 // a lead added here with "+ Add new lead" joins the Database and so every
 // campaign. Each column header has a funnel filter, as on /admin/database.
 // The leads sit under two tabs, Warm and Cold, by the lead's Database
-// standing (reached at least once, in any campaign, or not); the filters and
-// search apply to both.
+// standing: Warm once every Data present channel is ticked in Sent status in
+// some campaign. The filters and search apply to both.
 //
 // Tick rows and "Send mail" opens <EmailComposeModal>; the send carries the
-// campaign's id, and each delivered email marks that lead Sent with Mail
-// ticked here. Bulk ticking skips leads already Sent in this campaign,
+// campaign's id, and each delivered email ticks Mail in that lead's Sent
+// status here (so it turns Sent if Mail was the last channel left). Bulk ticking skips leads already Sent in this campaign,
 // those with no email, and addresses that bounced; a row's own button still
 // sends to one of them on purpose (a follow-up or retry). The last email's
 // result shows in the Last email column; the totals and the list of sends
@@ -239,14 +241,11 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
     setSavingId(lead.contactId);
     patchLead(lead.contactId, patch);
     try {
-      await updateCampaignLead(campaign.id, lead.contactId, patch);
-      // Reaching the lead here makes it Warm. Undoing that can leave it Warm
-      // from another campaign, so that direction waits for the next load.
-      if (patch.status === "sent" || (patch.sentChannels && patch.sentChannels.length > 0)) {
-        setContacts((current) =>
-          current.map((row) => (row.id === lead.contactId ? { ...row, temperature: "warm" } : row)),
-        );
-      }
+      const saved = await updateCampaignLead(campaign.id, lead.contactId, patch);
+      patchLead(lead.contactId, saved.lead);
+      setContacts((current) =>
+        current.map((row) => (row.id === lead.contactId ? { ...row, temperature: saved.warm ? "warm" : "cold" } : row)),
+      );
     } catch (caught) {
       patchLead(lead.contactId, previous);
       setRowError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
@@ -271,13 +270,19 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
     setSavingId(contact.id);
     apply(next);
     try {
-      await updateDataPresent(contact.id, next);
+      const saved = await updateDataPresent(contact.id, next);
+      setContacts((current) => current.map((row) => (row.id === saved.id ? saved : row)));
     } catch (caught) {
       apply(previous);
       setRowError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
+      return;
     } finally {
       setSavingId(null);
     }
+    // New channels re-run the Sent / Unsent rule on the backend.
+    fetchCampaign(campaignId)
+      .then(setDetail)
+      .catch(() => setRowError("Saved, but the Status couldn't refresh. Reload the page to see it."));
   }
 
   // A new lead goes on top, matching the Database's newest-first order.

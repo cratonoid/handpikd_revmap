@@ -423,7 +423,21 @@ export function InvoicesTab() {
                   className={styles.tableRow}
                 >
                   <td className={styles.tableCell}>{visibleInvoices.length - index}</td>
-                  <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>{invoice.invoiceNoDisplay}</td>
+                  <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>
+                    {invoice.invoiceNoDisplay}
+                    {invoice.billing === "partial" && (
+                      <span
+                        className={styles.partialBadge}
+                        title={
+                          invoice.partialAmount !== null
+                            ? "Advance of a fixed amount"
+                            : `Advance of ${invoice.partialPercent}% of the order value`
+                        }
+                      >
+                        Partial
+                      </span>
+                    )}
+                  </td>
                   <td className={styles.tableCell}>{formatDate(invoice.date)}</td>
                   {invoiceType === "standard" && (
                     <td className={styles.tableCell}>

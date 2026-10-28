@@ -2045,6 +2045,21 @@ select.formInput:disabled {
   color: var(--color-red);
 }
 
+/* "Partial" next to an advance invoice's number on the Sales Invoices
+   table. Same pill as .inactiveBadge, in the processing colour rather than
+   red: an advance isn't a problem, just not the whole bill. */
+.partialBadge {
+  margin-left: 0.5rem;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, var(--color-status-processing) 12%, transparent);
+  padding: 0.1rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-status-processing);
+}
+
 .treeAddButton {
   display: flex;
   height: 1.5rem;

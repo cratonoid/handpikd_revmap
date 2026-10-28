@@ -12,6 +12,21 @@ class InvoiceType(str, Enum):
     standard = "standard"
 
 
+# Standard invoices only. A "full" invoice bills its sales orders outright —
+# or, when partial invoices were raised against them first, whatever those
+# left: the orders' totals less every live partial's. A "partial" invoice
+# bills an advance against the orders, set either as a percentage of their
+# value (partial_percent) or as a fixed amount including tax
+# (partial_amount); exactly one of the two is set. Any number of partials may
+# sit on the same orders as long as together they don't exceed the orders'
+# value, and all of them, plus the full invoice that closes them out, must
+# list the very same orders (see services/invoice_totals.py). Rows raised
+# before this existed read as "full".
+class InvoiceBilling(str, Enum):
+    full = "full"
+    partial = "partial"
+
+
 class OnlineOrOffline(str, Enum):
     online = "online"
     offline = "offline"
@@ -73,6 +88,12 @@ class InvoiceDetails(Document):
     total_cgst_amount: float = 0.0
     total_sgst_amount: float = 0.0
     type: InvoiceType
+    billing: InvoiceBilling = InvoiceBilling.full
+    # Partial invoices only, one or the other — see InvoiceBilling. A
+    # percentage keeps scaling with the orders if they're edited later; a
+    # fixed amount stays that amount.
+    partial_percent: float | None = None
+    partial_amount: float | None = None
     # The Indian financial year (stored as the year it starts in: 2026 for
     # FY 2026-27) whose series this invoice's invoice_no was drawn from �
     # standard invoices only, since they alone are numbered per financial

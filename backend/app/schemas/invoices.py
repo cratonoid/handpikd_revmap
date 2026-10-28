@@ -3,7 +3,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, model_validator
 
-from app.models.invoice_details import InvoiceStatus, InvoiceType, OnlineOrOffline
+from app.models.invoice_details import InvoiceBilling, InvoiceStatus, InvoiceType, OnlineOrOffline
 
 
 class CreateNewInvoiceRequest(BaseModel):
@@ -19,6 +19,12 @@ class CreateNewInvoiceRequest(BaseModel):
     online_or_offline: OnlineOrOffline
     transport: str = ""
     notes: str = ""
+    # Full by default. A partial invoice takes exactly one of partial_percent
+    # (of the orders' value) or partial_amount (rupees, tax included) — see
+    # InvoiceBilling. Fixed once raised, like sales_ids.
+    billing: InvoiceBilling = InvoiceBilling.full
+    partial_percent: float | None = None
+    partial_amount: float | None = None
 
     @model_validator(mode="after")
     def _check_sales_ids(self) -> "CreateNewInvoiceRequest":
@@ -26,6 +32,20 @@ class CreateNewInvoiceRequest(BaseModel):
             raise ValueError("at least one sales order is required")
         if len(set(self.sales_ids)) != len(self.sales_ids):
             raise ValueError("sales_ids must not contain duplicates")
+        return self
+
+    @model_validator(mode="after")
+    def _check_partial(self) -> "CreateNewInvoiceRequest":
+        if self.billing == InvoiceBilling.full:
+            if self.partial_percent is not None or self.partial_amount is not None:
+                raise ValueError("a full invoice takes no partial percentage or amount")
+            return self
+        if (self.partial_percent is None) == (self.partial_amount is None):
+            raise ValueError("a partial invoice needs either a percentage or an amount")
+        if self.partial_percent is not None and not 0 < self.partial_percent <= 100:
+            raise ValueError("the percentage must be more than 0 and at most 100")
+        if self.partial_amount is not None and self.partial_amount <= 0:
+            raise ValueError("the amount must be more than 0")
         return self
 
 
@@ -42,6 +62,9 @@ class InvoiceDetailItem(BaseModel):
     quotation_id: int | None
     cust_id: int | None
     type: InvoiceType
+    billing: InvoiceBilling = InvoiceBilling.full
+    partial_percent: float | None = None
+    partial_amount: float | None = None
     due_date: datetime
     online_or_offline: OnlineOrOffline
     transport: str

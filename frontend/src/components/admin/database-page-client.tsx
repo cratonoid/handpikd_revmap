@@ -20,9 +20,9 @@
 // Double-clicking a row opens its edit popup.
 //
 // A lead's outreach — Status, SD Status, Sent status — is kept per campaign
-// (campaign-detail-page-client.tsx). Here a lead only shows Cold (never
-// reached) or Warm (reached at least once, in any campaign), worked out by
-// the backend, plus its "Data present" WhatsApp / Mail tick boxes, which
+// (campaign-detail-page-client.tsx). Here a lead only shows Cold or Warm
+// (every Data present channel ticked in Sent status in some campaign),
+// worked out by the backend, plus its "Data present" WhatsApp / Mail tick boxes, which
 // every campaign shares. The Leads table filters from its headers: a funnel
 // on Status and Data present (<ColumnFilterDropdown>, as on the sales
 // orders' Customer column). Ticking several values in one funnel matches
@@ -203,7 +203,8 @@ export function DatabasePageClient() {
     setChannelsSavingId(contact.id);
     apply(next);
     try {
-      await updateDataPresent(contact.id, next);
+      const saved = await updateDataPresent(contact.id, next);
+      setContacts((current) => current.map((row) => (row.id === saved.id ? saved : row)));
     } catch (caught) {
       apply(previous);
       setRowError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
