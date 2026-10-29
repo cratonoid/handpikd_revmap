@@ -25,6 +25,7 @@ export type SectionKey =
   | "inquiry_form"
   | "product_inquiries"
   | "quotation"
+  | "letters"
   | "profile"
   | "emails"
   | "campaigns"
@@ -59,6 +60,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "inquiry_form", label: "Hamper Inquiry Form", href: "/admin/inquiry-form" },
   { key: "product_inquiries", label: "Product Inquiries", href: "/admin/product-inquiries" },
   { key: "quotation", label: "Quotation", href: "/admin/quotation" },
+  { key: "letters", label: "Letters", href: "/admin/letters" },
   { key: "profile", label: "Profile", href: "/admin/profile" },
   { key: "users", label: "Users & Roles", href: "/admin/users" },
   { key: "backups", label: "Backup & Restore", href: "/admin/backups", administratorOnly: true },

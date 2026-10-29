@@ -27,6 +27,7 @@ class Section(str, Enum):
     inquiry_form = "inquiry_form"
     product_inquiries = "product_inquiries"
     quotation = "quotation"
+    letters = "letters"
     profile = "profile"
     emails = "emails"
     campaigns = "campaigns"

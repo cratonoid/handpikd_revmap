@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Letter {{ letter_no }}</title>
+<style>
+  :root {
+    --hp-yellow: #f4c430;
+    --hp-navy: #16294f;
+    --hp-ink: #1a1a1a;
+  }
+
+  /* Page size and the "Page X of Y" footer are supplied by Chromium's
+     print-to-PDF options instead of CSS @page here — see
+     app/services/pdf_renderer.py's render_html_to_pdf and quotation_pdf.py's
+     _FOOTER_TEMPLATE (page numbers). Everything down to .contact-block is
+     shared with quotation.html so the two documents carry the same
+     letterhead — change one, change both.
+
+     The page *margins*, unlike the other templates, are NOT Chromium's:
+     letter_pdf.py renders this one with zero print margins so the
+     .corner-accent triangles can bleed to the physical sheet corners (a
+     Chromium print margin shrinks the document's whole coordinate space, so
+     a fixed element pinned to top:0/right:0 lands at the margin's inner
+     corner, and pulling it back out with negative offsets just gets clipped
+     at the content box). The margins are recreated inside the document by
+     .page-frame instead. */
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Helvetica", "Arial", sans-serif;
+    font-size: 9pt;
+    color: var(--hp-ink);
+    margin: 0;
+  }
+  table { border-collapse: collapse; width: 100%; }
+  p { margin: 0; }
+
+  /* The document's page margins. Chromium prints this template with zero
+     margins (see the note above), so the sheet's whitespace is reserved here
+     instead: a table whose thead/tfoot Chromium repeats at the top/bottom of
+     every page, acting as fixed-height spacers so that interior pages get
+     the same breathing room as the first and last. Print-margin whitespace
+     has to be recreated with repeating table sections like this — CSS
+     padding on a wrapper would only inset the start and end of the flow, not
+     each page. The bottom spacer is taller to clear _FOOTER_TEMPLATE's page
+     number, which Chromium draws just above the sheet's bottom edge. */
+  .page-frame > thead > tr > td { height: 16mm; }
+  .page-frame > tfoot > tr > td { height: 18mm; }
+  .page-frame > tbody > tr > td { padding: 0 16mm; vertical-align: top; }
+
+  /* Corner accent, mirroring the brand's diagonal-cut motif — kept as a
+     small corner flourish rather than the large dominant triangles in the
+     hand-made sample, so it reads as an accent, not the whole page. With
+     zero print margins the fixed-position containing block is the physical
+     sheet, so top/right/bottom/left:0 puts these flush in the paper's
+     corners, bleeding past .page-frame's margins the way the brand's
+     reference quotations do. They therefore overlap the content column by
+     (accent size - page margin); content near a corner reserves clearance
+     for that overlap (.contact-block's padding-right) rather than relying on
+     z-index to paint over it, since fixed-position stacking order for
+     repeated print-page decoration isn't consistently honored across
+     renderers. */
+  .corner-accent {
+    position: fixed;
+    width: 18mm;
+    height: 18mm;
+    z-index: -1;
+  }
+  .corner-accent.top-right {
+    top: 0;
+    right: 0;
+  }
+  .corner-accent.top-right .tri-black {
+    position: absolute; inset: 0;
+    background: var(--hp-ink);
+    clip-path: polygon(100% 0, 0 0, 100% 100%);
+  }
+  .corner-accent.top-right .tri-yellow {
+    position: absolute; top: 0; right: 0; width: 68%; height: 68%;
+    background: var(--hp-yellow);
+    clip-path: polygon(100% 0, 0 0, 100% 100%);
+  }
+  .corner-accent.bottom-left {
+    bottom: 0;
+    left: 0;
+  }
+  .corner-accent.bottom-left .tri-black {
+    position: absolute; inset: 0;
+    background: var(--hp-ink);
+    clip-path: polygon(0 100%, 0 0, 100% 100%);
+  }
+  .corner-accent.bottom-left .tri-yellow {
+    position: absolute; bottom: 0; left: 0; width: 68%; height: 68%;
+    background: var(--hp-yellow);
+    clip-path: polygon(0 100%, 0 0, 100% 100%);
+  }
+
+  .letterhead {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .logo-block { display: flex; align-items: center; gap: 3mm; }
+  .logo-block img { height: 16mm; width: auto; }
+  .logo-tagline {
+    font-size: 6.5pt;
+    letter-spacing: 1.5px;
+    color: var(--hp-navy);
+    font-weight: bold;
+    text-transform: uppercase;
+    margin-top: 1mm;
+  }
+  /* padding-right clears the part of the top-right corner-accent that
+     overhangs the content column (18mm accent - 16mm page margin, plus
+     slack) so its text never sits under/behind the triangle (see
+     corner-accent above). */
+  .contact-block { text-align: right; font-size: 8pt; color: var(--hp-navy); padding-right: 5mm; }
+  .contact-block p { margin: 1px 0; }
+
+
+  .letterhead-rule {
+    margin-top: 4mm;
+    border-top: 1.2pt solid var(--hp-navy);
+    padding-top: 1.5mm;
+    font-size: 7.5pt;
+    color: #555;
+    text-align: center;
+  }
+
+  .letter { font-size: 10.5pt; line-height: 1.55; }
+
+  .ref-row {
+    margin-top: 8mm;
+    display: flex;
+    justify-content: space-between;
+    font-size: 9.5pt;
+    color: var(--hp-navy);
+  }
+  .ref-row b { color: var(--hp-ink); }
+
+  .recipient { margin-top: 7mm; }
+  .recipient p { margin: 0; }
+  .recipient .to { color: #666; font-size: 9pt; margin-bottom: 1mm; }
+  .recipient .name { font-weight: bold; }
+
+  .subject { margin-top: 6mm; font-weight: bold; }
+  .subject .label { color: var(--hp-navy); }
+
+  .salutation { margin-top: 6mm; }
+  .body p { margin: 3.5mm 0 0; text-align: justify; }
+
+  .signoff {
+    margin-top: 8mm;
+    /* Keep the closing, signature and signatory together — without this a
+       page break can land between "Yours sincerely," and the name. */
+    break-inside: avoid;
+  }
+  .signoff .for-company { font-weight: bold; color: var(--hp-navy); margin-top: 1mm; }
+  .signoff .signature-space { height: 16mm; display: flex; align-items: flex-end; }
+  .signoff .signature-space img { max-height: 16mm; max-width: 50mm; }
+  .signoff .signatory { font-weight: bold; }
+  .signoff .designation { color: #666; font-size: 9pt; }
+</style>
+</head>
+<body>
+
+  <div class="corner-accent top-right">
+    <div class="tri-black"></div>
+    <div class="tri-yellow"></div>
+  </div>
+  <div class="corner-accent bottom-left">
+    <div class="tri-black"></div>
+    <div class="tri-yellow"></div>
+  </div>
+
+  <table class="page-frame">
+  <thead><tr><td></td></tr></thead>
+  <tfoot><tr><td></td></tr></tfoot>
+  <tbody><tr><td>
+
+  <div class="letterhead">
+    <div class="logo-block">
+      {% if logo_data_uri %}
+      <img src="{{ logo_data_uri }}" alt="{{ company_name }}" />
+      {% else %}
+      <span style="font-size: 16pt; font-weight: bold; color: var(--hp-navy);">{{ company_name }}</span>
+      {% endif %}
+    </div>
+    <div class="contact-block">
+      <p><b>{{ personal.name }}</b></p>
+      <p>{{ personal.phone }}</p>
+      <p>{{ personal.email }}</p>
+      <p>{{ personal.website }}</p>
+    </div>
+  </div>
+  <div class="letterhead-rule">
+    {{ personal.address }}{% if personal.gstin %} &nbsp;|&nbsp; GSTIN: {{ personal.gstin }}{% endif %}
+  </div>
+
+  <div class="letter">
+    <div class="ref-row">
+      <span>Ref. No. <b>{{ letter_no }}</b></span>
+      <span>Date: <b>{{ letter_date }}</b></span>
+    </div>
+
+    <div class="recipient">
+      <p class="to">To,</p>
+      <p class="name">{{ recipient_name }}</p>
+      {% for line in recipient_address_lines %}
+      <p>{{ line }}</p>
+      {% endfor %}
+    </div>
+
+    {% if subject %}
+    <p class="subject"><span class="label">Subject:</span> {{ subject }}</p>
+    {% endif %}
+
+    {% if salutation %}
+    <p class="salutation">{{ salutation }}</p>
+    {% endif %}
+
+    <div class="body">
+      {% for paragraph in body_paragraphs %}
+      <p>{% for line in paragraph %}{{ line }}{% if not loop.last %}<br />{% endif %}{% endfor %}</p>
+      {% endfor %}
+    </div>
+
+    <div class="signoff">
+      {% if closing %}<p>{{ closing }}</p>{% endif %}
+      <p class="for-company">For {{ company_name }}</p>
+      <div class="signature-space">
+        {% if signature_data_uri %}<img src="{{ signature_data_uri }}" alt="" />{% endif %}
+      </div>
+      {% if signatory_name %}<p class="signatory">{{ signatory_name }}</p>{% endif %}
+      <p class="designation">{{ signatory_designation or "Authorised Signatory" }}</p>
+    </div>
+  </div>
+
+  </td></tr></tbody>
+  </table>
+
+</body>
+</html>

@@ -40,6 +40,8 @@ from app.models.invoice_no_counter_master import InvoiceNoCounterMaster
 from app.models.order_no_counter_master import OrderNoCounterMaster
 from app.models.order_status_master import OrderStatusMaster
 from app.models.personal_details import PersonalDetails
+from app.models.letter_details import LetterDetails
+from app.models.letter_id_counter import LetterIdCounter
 from app.models.price_list_details import PriceListDetails
 from app.models.price_list_id_counter import PriceListIdCounter
 from app.models.printing_purchase_invoice_details import PrintingPurchaseInvoiceDetails
@@ -172,6 +174,8 @@ __all__ = [
     "PurchaseOrders",
     "PurchaseSummary",
     "PurchaseSummaryIdCounter",
+    "LetterDetails",
+    "LetterIdCounter",
     "QuotationDetails",
     "QuotationStatus",
     "QuotationIdCounter",

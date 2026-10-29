@@ -18,6 +18,7 @@ from app.api.routes import (
     inquiry_form,
     inventory,
     invoices,
+    letters,
     orders,
     personal_details,
     price_lists,
@@ -69,3 +70,4 @@ api_router.include_router(printing_orders.router)
 api_router.include_router(printing_purchase_invoices.router)
 api_router.include_router(unbilled_orders.router)
 api_router.include_router(quotations.router)
+api_router.include_router(letters.router)
