@@ -6,6 +6,7 @@
 # the same desk. Pure rendering only; routes/letters.py does the lookups.
 from __future__ import annotations
 
+import re
 from datetime import datetime
 
 from app.services.invoice_pdf import _resolve_media_path
@@ -37,6 +38,31 @@ def _paragraphs(text: str) -> list[list[str]]:
     return paragraphs
 
 
+# "1. Designation and Responsibilities" on a line of its own.
+_HEADING_RE = re.compile(r"^\d{1,2}\.\s+\S")
+# "• item" or "- item"; the marker is dropped and the template draws its own.
+_BULLET_RE = re.compile(r"^\s*[•\-–]\s+")
+_HEADING_MAX_LEN = 80
+
+
+def _blocks(text: str) -> list[dict]:
+    # Paragraphs tagged with how to print them, so long structured letters
+    # (an appointment letter's numbered clauses) don't have to be one flat run
+    # of prose. Deliberately narrow, so ordinary letters are unaffected:
+    #   - heading: a paragraph that is one short line starting "N. "
+    #   - bullets: a paragraph whose every line starts "• " or "- "
+    #   - text:    anything else, as before
+    blocks: list[dict] = []
+    for lines in _paragraphs(text):
+        if len(lines) == 1 and len(lines[0]) <= _HEADING_MAX_LEN and _HEADING_RE.match(lines[0]):
+            blocks.append({"kind": "heading", "lines": lines})
+        elif all(_BULLET_RE.match(line) for line in lines):
+            blocks.append({"kind": "bullets", "lines": [_BULLET_RE.sub("", line, count=1) for line in lines]})
+        else:
+            blocks.append({"kind": "text", "lines": lines})
+    return blocks
+
+
 async def generate_letter_pdf(
     *,
     letter_no: int,
@@ -50,6 +76,7 @@ async def generate_letter_pdf(
     signatory_name: str,
     signatory_designation: str,
     include_signature: bool,
+    acknowledgement: str,
     personal: dict[str, str],
 ) -> bytes:
     signature_data_uri = None
@@ -69,7 +96,8 @@ async def generate_letter_pdf(
         recipient_address_lines=[line.strip() for line in recipient_address.splitlines() if line.strip()],
         subject=subject.strip(),
         salutation=salutation.strip(),
-        body_paragraphs=_paragraphs(body),
+        body_blocks=_blocks(body),
+        acknowledgement_blocks=_blocks(acknowledgement),
         closing=closing.strip(),
         signatory_name=signatory_name.strip(),
         signatory_designation=signatory_designation.strip(),

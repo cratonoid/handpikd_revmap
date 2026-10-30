@@ -27,6 +27,10 @@ class LetterDetails(Document):
     # Embeds personal_details' scanned signature_image above the signatory
     # line, same asset offline invoices use.
     include_signature: bool = False
+    # Printed below the signatory, under a rule — for the part the *recipient*
+    # signs (an appointment letter's employee acceptance, an acknowledgement
+    # of receipt). Same paragraph rules as body.
+    acknowledgement: str = ""
     is_deleted: bool = False
 
     class Settings:

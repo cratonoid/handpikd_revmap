@@ -37,6 +37,7 @@ def _apply_payload(letter: LetterDetails, payload: CreateNewLetterRequest | Upda
     letter.signatory_name = payload.signatory_name.strip()
     letter.signatory_designation = payload.signatory_designation.strip()
     letter.include_signature = payload.include_signature
+    letter.acknowledgement = payload.acknowledgement.strip()
 
 
 @router.post("/create_new_letter", response_model=CreateNewLetterResponse)
@@ -79,6 +80,7 @@ async def get_letter_details(
             signatory_name=letter.signatory_name,
             signatory_designation=letter.signatory_designation,
             include_signature=letter.include_signature,
+            acknowledgement=letter.acknowledgement,
             is_deleted=letter.is_deleted,
         )
         for letter in letters
@@ -124,6 +126,7 @@ async def get_letter_pdf(
         signatory_name=letter.signatory_name,
         signatory_designation=letter.signatory_designation,
         include_signature=letter.include_signature,
+        acknowledgement=letter.acknowledgement,
         personal=personal,
     )
 

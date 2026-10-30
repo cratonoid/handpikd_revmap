@@ -149,6 +149,19 @@
 
   .salutation { margin-top: 6mm; }
   .body p { margin: 3.5mm 0 0; text-align: justify; }
+  /* break-after keeps a clause heading from being stranded at the foot of a
+     page, away from its first paragraph. */
+  .body .heading { margin-top: 5.5mm; font-weight: bold; color: var(--hp-navy); break-after: avoid; }
+  .body ul { margin: 2mm 0 0; padding-left: 6mm; }
+  .body li { margin-top: 1mm; text-align: justify; }
+
+  /* The part the recipient signs, set off from the company's sign-off. */
+  .acknowledgement {
+    margin-top: 10mm;
+    padding-top: 2mm;
+    border-top: 0.8pt solid #999;
+    break-inside: avoid;
+  }
 
   .signoff {
     margin-top: 8mm;
@@ -164,6 +177,20 @@
 </style>
 </head>
 <body>
+
+  {# Paragraph blocks from letter_pdf.py's _blocks — shared by the body and
+     the acknowledgement. #}
+  {% macro render_blocks(blocks) %}
+    {% for block in blocks %}
+      {% if block.kind == "heading" %}
+      <p class="heading">{{ block.lines[0] }}</p>
+      {% elif block.kind == "bullets" %}
+      <ul>{% for line in block.lines %}<li>{{ line }}</li>{% endfor %}</ul>
+      {% else %}
+      <p>{% for line in block.lines %}{{ line }}{% if not loop.last %}<br />{% endif %}{% endfor %}</p>
+      {% endif %}
+    {% endfor %}
+  {% endmacro %}
 
   <div class="corner-accent top-right">
     <div class="tri-black"></div>
@@ -221,9 +248,7 @@
     {% endif %}
 
     <div class="body">
-      {% for paragraph in body_paragraphs %}
-      <p>{% for line in paragraph %}{{ line }}{% if not loop.last %}<br />{% endif %}{% endfor %}</p>
-      {% endfor %}
+      {{ render_blocks(body_blocks) }}
     </div>
 
     <div class="signoff">
@@ -235,6 +260,12 @@
       {% if signatory_name %}<p class="signatory">{{ signatory_name }}</p>{% endif %}
       <p class="designation">{{ signatory_designation or "Authorised Signatory" }}</p>
     </div>
+
+    {% if acknowledgement_blocks %}
+    <div class="acknowledgement body">
+      {{ render_blocks(acknowledgement_blocks) }}
+    </div>
+    {% endif %}
   </div>
 
   </td></tr></tbody>

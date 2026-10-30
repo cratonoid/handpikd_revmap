@@ -6,13 +6,14 @@
 // Same shape as quotations-tab.tsx: "+ New letter" opens the popup in "add"
 // mode (its "Generate letter" button saves AND downloads the PDF), double-
 // clicking a row opens it in "edit" mode, and the per-row "Download" button
-// re-generates the PDF for a saved letter. "Company details" edits the
+// re-generates the PDF for a saved letter; "Print" sends it straight to the
+// browser's print dialog. "Company details" edits the
 // letterhead itself (name, contact lines, address, signature).
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { LetterFormModal } from "@/components/admin/letter-form-modal";
 import { PersonalDetailsModal } from "@/components/admin/personal-details-modal";
-import { downloadLetterPdf, fetchLetters, type Letter } from "@/lib/letters";
+import { downloadLetterPdf, fetchLetters, printLetterPdf, type Letter } from "@/lib/letters";
 import { fetchPersonalDetails } from "@/lib/personal-details";
 import { fetchCustomers, type Customer } from "@/lib/customers";
 import { byNewestFirst } from "@/lib/row-order";
@@ -30,6 +31,7 @@ export function LettersTab() {
   const [modalState, setModalState] = useState<ModalState>(null);
   const [showCompanyDetails, setShowCompanyDetails] = useState(false);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [printingId, setPrintingId] = useState<number | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const sortedLetters = [...letters].sort(byNewestFirst);
@@ -80,6 +82,18 @@ export function LettersTab() {
       setDownloadError(`Couldn't generate the PDF for letter ${letter.letterNo}.`);
     } finally {
       setDownloadingId(null);
+    }
+  }
+
+  async function handlePrint(letter: Letter) {
+    setDownloadError(null);
+    setPrintingId(letter.id);
+    try {
+      await printLetterPdf(letter.id);
+    } catch {
+      setDownloadError(`Couldn't generate the PDF for letter ${letter.letterNo}.`);
+    } finally {
+      setPrintingId(null);
     }
   }
 
@@ -140,6 +154,17 @@ export function LettersTab() {
                     className={styles.triggerButtonBase}
                   >
                     {downloadingId === letter.id ? "Generating…" : "Download"}
+                  </button>{" "}
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handlePrint(letter);
+                    }}
+                    disabled={printingId === letter.id}
+                    className={styles.triggerButtonBase}
+                  >
+                    {printingId === letter.id ? "Preparing…" : "Print"}
                   </button>
                 </td>
               </tr>

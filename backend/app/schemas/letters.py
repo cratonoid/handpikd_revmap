@@ -15,6 +15,7 @@ class _LetterPayloadBase(BaseModel):
     signatory_name: str = ""
     signatory_designation: str = ""
     include_signature: bool = False
+    acknowledgement: str = ""
 
     @field_validator("recipient_name", "body")
     @classmethod
@@ -47,6 +48,7 @@ class LetterDetailItem(BaseModel):
     signatory_name: str
     signatory_designation: str
     include_signature: bool
+    acknowledgement: str
     is_deleted: bool
 
 

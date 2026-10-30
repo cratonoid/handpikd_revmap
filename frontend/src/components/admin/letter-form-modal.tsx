@@ -61,6 +61,7 @@ export function LetterFormModal({
     initialLetter?.signatoryDesignation ?? DEFAULT_DESIGNATION,
   );
   const [includeSignature, setIncludeSignature] = useState(initialLetter?.includeSignature ?? false);
+  const [acknowledgement, setAcknowledgement] = useState(initialLetter?.acknowledgement ?? "");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -102,6 +103,7 @@ export function LetterFormModal({
       signatoryName,
       signatoryDesignation,
       includeSignature,
+      acknowledgement,
     };
   }
 
@@ -283,7 +285,11 @@ export function LetterFormModal({
                 id="letterBody"
                 rows={12}
                 required
-                placeholder="Leave a blank line between paragraphs."
+                placeholder={
+                  "Leave a blank line between paragraphs.\n" +
+                  'A line on its own like "1. Leave Policy" prints as a heading.\n' +
+                  'Lines starting with "• " or "- " print as a bullet list.'
+                }
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 className={styles.formTextarea}
@@ -347,6 +353,20 @@ export function LetterFormModal({
                   </span>
                 </span>
               </label>
+            </div>
+
+            <div className={styles.formGridFullSpan}>
+              <label htmlFor="letterAcknowledgement" className={styles.formLabel}>
+                After signature (optional)
+              </label>
+              <textarea
+                id="letterAcknowledgement"
+                rows={4}
+                placeholder="Printed below the signatory — e.g. an acceptance the recipient signs and returns."
+                value={acknowledgement}
+                onChange={(e) => setAcknowledgement(e.target.value)}
+                className={styles.formTextarea}
+              />
             </div>
           </div>
 

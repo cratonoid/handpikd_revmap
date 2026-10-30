@@ -10,6 +10,7 @@
 // the form's "Generate letter" button can chain straight into
 // downloadLetterPdf without re-fetching the list.
 import { apiFetch } from "@/lib/api";
+import { printPdfBlob } from "@/lib/print-pdf";
 
 export type Letter = {
   id: number;
@@ -24,6 +25,7 @@ export type Letter = {
   signatoryName: string;
   signatoryDesignation: string;
   includeSignature: boolean;
+  acknowledgement: string;
   isDeleted: boolean;
 };
 
@@ -41,6 +43,7 @@ type LetterDetailItem = {
   signatory_name: string;
   signatory_designation: string;
   include_signature: boolean;
+  acknowledgement: string;
   is_deleted: boolean;
 };
 
@@ -58,6 +61,7 @@ function toLetter(item: LetterDetailItem): Letter {
     signatoryName: item.signatory_name,
     signatoryDesignation: item.signatory_designation,
     includeSignature: item.include_signature,
+    acknowledgement: item.acknowledgement,
     isDeleted: item.is_deleted,
   };
 }
@@ -91,6 +95,7 @@ function toRequestBody(payload: CreateLetterPayload) {
     signatory_name: payload.signatoryName,
     signatory_designation: payload.signatoryDesignation,
     include_signature: payload.includeSignature,
+    acknowledgement: payload.acknowledgement,
   };
 }
 
@@ -139,4 +144,14 @@ export async function downloadLetterPdf(letterId: number, letterNo: number): Pro
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+// Opens the browser's print dialog on the letter PDF (see lib/print-pdf.ts).
+export async function printLetterPdf(letterId: number): Promise<void> {
+  const response = await apiFetch(`/admin/get_letter_pdf?letter_id=${letterId}`);
+  if (!response.ok) {
+    throw new Error("Failed to generate letter PDF");
+  }
+
+  await printPdfBlob(await response.blob());
 }
