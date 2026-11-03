@@ -67,8 +67,9 @@ from app.services.inventory import (
     get_applied_unbilled_purchase_quantities,
     totals_by_product,
 )
+from app.services.vendor_rates import sync_vendor_rates_from_purchases
 
-router = APIRouter(prefix="/admin", tags=["unbilled-orders"])
+router =APIRouter(prefix="/admin", tags=["unbilled-orders"])
 
 
 async def _get_vendor_or_404(vendor_id: int) -> VendorDetails:
@@ -319,6 +320,7 @@ async def create_new_unbilled_purchase_order(
         totals_by_product(product_ids, payload.quantities),
         payload.date,
     )
+    await sync_vendor_rates_from_purchases(product_ids)
 
     # No create_purchase_invoice_for_order call, and no endpoint that would
     # raise one later either: an unbilled purchase has no invoice, which is
@@ -466,6 +468,13 @@ async def update_unbilled_purchase_order_details(
     # purchase_order_no is never reassigned — it is derived from the id.
     await unbilled_purchase_order.save()
 
+    # Products dropped from the order need their rate re-derived too.
+    previous_product_ids = [
+        line.product_id
+        for line in await UnbilledPurchaseSummary.find(
+            UnbilledPurchaseSummary.unbilled_purchase_order_id == unbilled_purchase_order.id
+        ).to_list()
+    ]
     await UnbilledPurchaseSummary.find(
         UnbilledPurchaseSummary.unbilled_purchase_order_id == unbilled_purchase_order.id
     ).delete()
@@ -473,6 +482,7 @@ async def update_unbilled_purchase_order_details(
     await apply_unbilled_purchase_order_stock(
         unbilled_purchase_order.id, product_ids, payload.quantities, stock_deltas, payload.date
     )
+    await sync_vendor_rates_from_purchases(previous_product_ids + product_ids)
     await _flag_related_sales_orders(unbilled_purchase_order.id)
 
     return UpdateUnbilledPurchaseOrderDetailsResponse(message="unbilled purchase order updated successfully")

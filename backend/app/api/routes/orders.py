@@ -64,6 +64,7 @@ from app.services.purchase_invoice_intake import (
     read_uploaded_invoice,
 )
 from app.services.purchase_invoices import create_purchase_invoice_for_order
+from app.services.vendor_rates import sync_vendor_rates_from_purchases
 
 router = APIRouter(prefix="/admin", tags=["orders"])
 
@@ -322,6 +323,7 @@ async def create_new_purchase_order(
         totals_by_product(payload.product_ids, payload.quantities),
         payload.date,
     )
+    await sync_vendor_rates_from_purchases(payload.product_ids)
 
     # Every purchase order raises its purchase invoice here, rather than the
     # admin raising one separately afterwards — see
@@ -520,6 +522,11 @@ async def update_purchase_order_details(
     purchase_order.description = payload.description
     await purchase_order.save()
 
+    # Products dropped from the order need their rate re-derived too.
+    previous_product_ids = [
+        line.product_id
+        for line in await PurchaseSummary.find(PurchaseSummary.purchase_order_id == purchase_order.id).to_list()
+    ]
     await PurchaseSummary.find(PurchaseSummary.purchase_order_id == purchase_order.id).delete()
     await _insert_purchase_summary_rows(
         purchase_order.id, payload.product_ids, payload.quantities, payload.rates, gst_percs
@@ -527,6 +534,7 @@ async def update_purchase_order_details(
     await apply_purchase_order_stock(
         purchase_order.id, payload.product_ids, payload.quantities, stock_deltas, payload.date
     )
+    await sync_vendor_rates_from_purchases(previous_product_ids + payload.product_ids)
     await _flag_related_sales_orders(purchase_order.id)
 
     return UpdatePurchaseOrderDetailsResponse(message="purchase order updated successfully")
