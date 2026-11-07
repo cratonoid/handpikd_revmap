@@ -23,7 +23,12 @@
 // orders table (components/admin/column-filter-dropdown.tsx), labelled name
 // plus department. Its options come from the current Standard/Proforma view
 // only, and switching views clears it. The Standard view's "Status" header
-// has the same dropdown for Paid/Unpaid, cleared the same way.
+// has the same dropdown for Paid/Unpaid/Cancelled, cleared the same way.
+//
+// Cancelled invoices (isDeleted) stay listed so no number in the series goes
+// unexplained. Payment no longer applies to them, so they show a plain
+// "Cancelled" in place of the Status dropdown and the Paid on date. Their row
+// opens the form read-only, with a Restore button.
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { ColumnFilterDropdown } from "@/components/admin/column-filter-dropdown";
@@ -75,9 +80,21 @@ const STATUS_OPTIONS: readonly { value: InvoiceStatus; label: string }[] = [
   { value: "paid", label: STATUS_LABEL.paid },
 ];
 
+// What the row shows: cancelled isn't a payment state, so it sits on top of
+// InvoiceStatus rather than in it.
+type DisplayStatus = InvoiceStatus | "cancelled";
+
+function displayStatus(invoice: Invoice): DisplayStatus {
+  return invoice.isDeleted ? "cancelled" : invoice.status;
+}
+
 // The "Status" header's filter. ColumnFilterDropdown works in numeric
-// values, so each status is keyed by its position in STATUS_OPTIONS.
-const STATUS_FILTER_OPTIONS = STATUS_OPTIONS.map((option, index) => ({ value: index, label: option.label }));
+// values, so each status is keyed by its position in this list.
+const FILTER_STATUSES: readonly { value: DisplayStatus; label: string }[] = [
+  ...STATUS_OPTIONS,
+  { value: "cancelled", label: "Cancelled" },
+];
+const STATUS_FILTER_OPTIONS = FILTER_STATUSES.map((option, index) => ({ value: index, label: option.label }));
 
 export function InvoicesTab() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -104,7 +121,7 @@ export function InvoicesTab() {
   // Customer ids ticked in the dropdown beside the "Customer" header. Empty
   // means no filter.
   const [customerFilterIds, setCustomerFilterIds] = useState<number[]>([]);
-  // Indexes into STATUS_OPTIONS ticked beside the "Status" header (standard
+  // Indexes into FILTER_STATUSES ticked beside the "Status" header (standard
   // view only). Empty means no filter.
   const [statusFilterIndexes, setStatusFilterIndexes] = useState<number[]>([]);
 
@@ -131,14 +148,14 @@ export function InvoicesTab() {
     })
     .sort((a, b) => a.label.localeCompare(b.label));
   const customerFilterSet = new Set(customerFilterIds);
-  const statusFilterSet = new Set(statusFilterIndexes.map((index) => STATUS_OPTIONS[index].value));
+  const statusFilterSet = new Set(statusFilterIndexes.map((index) => FILTER_STATUSES[index].value));
   const visibleInvoices = invoicesOfType
     .filter((invoice) => {
       if (customerFilterSet.size === 0) return true;
       const custId = invoiceCustId(invoice);
       return custId !== undefined && customerFilterSet.has(custId);
     })
-    .filter((invoice) => statusFilterSet.size === 0 || statusFilterSet.has(invoice.status))
+    .filter((invoice) => statusFilterSet.size === 0 || statusFilterSet.has(displayStatus(invoice)))
     .sort(byNewestFirst);
 
   function handleInvoiceTypeChange(nextType: InvoiceType) {
@@ -437,6 +454,7 @@ export function InvoicesTab() {
                         Partial
                       </span>
                     )}
+                    {invoice.isDeleted && <span className={styles.cancelledBadge}>Cancelled</span>}
                   </td>
                   <td className={styles.tableCell}>{formatDate(invoice.date)}</td>
                   {invoiceType === "standard" && (
@@ -453,20 +471,25 @@ export function InvoicesTab() {
                   {/* Standard invoices only: a proforma invoice carries a
                       due date rather than a payment state, and the backend
                       refuses to set one on it. */}
-                  {invoiceType === "standard" && (
-                    <td className={`${styles.tableCell} ${styles.statusText} ${STATUS_COLOR[invoice.status]}`}>
-                      <StatusSelect
-                        value={invoice.status}
-                        options={STATUS_OPTIONS}
-                        label={`Payment status for invoice ${invoice.invoiceNoDisplay}`}
-                        disabled={statusSavingId === invoice.id}
-                        onChange={(nextStatus) => handleStatusChange(invoice, nextStatus)}
-                      />
-                    </td>
-                  )}
+                  {invoiceType === "standard" &&
+                    (invoice.isDeleted ? (
+                      <td className={`${styles.tableCell} ${styles.statusText} ${styles.statusCancelled}`}>
+                        Cancelled
+                      </td>
+                    ) : (
+                      <td className={`${styles.tableCell} ${styles.statusText} ${STATUS_COLOR[invoice.status]}`}>
+                        <StatusSelect
+                          value={invoice.status}
+                          options={STATUS_OPTIONS}
+                          label={`Payment status for invoice ${invoice.invoiceNoDisplay}`}
+                          disabled={statusSavingId === invoice.id}
+                          onChange={(nextStatus) => handleStatusChange(invoice, nextStatus)}
+                        />
+                      </td>
+                    ))}
                   {invoiceType === "standard" && (
                     <td className={styles.tableCell}>
-                      {invoice.status === "paid" ? (
+                      {displayStatus(invoice) === "paid" ? (
                         <input
                           type="date"
                           value={invoice.paidOn ?? ""}

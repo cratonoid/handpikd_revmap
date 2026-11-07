@@ -46,11 +46,23 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/button";
 import { ChevronDownIcon, ChevronUpIcon } from "@/components/icons";
+import {
+  CancelSalesOrderConfirmModal,
+  cancellationAffectsInvoices,
+} from "@/components/admin/cancel-sales-order-confirm-modal";
 import { ColumnFilterDropdown } from "@/components/admin/column-filter-dropdown";
 import { SalesOrderCostingTable } from "@/components/admin/sales-order-costing-table";
 import { SalesOrderFormModal } from "@/components/admin/sales-order-form-modal";
 import { StatusSelect } from "@/components/admin/status-select";
-import { fetchSalesOrders, updateSalesOrderStatus, type SalesOrder } from "@/lib/sales-orders";
+import {
+  fetchSalesOrderCancellationImpact,
+  fetchSalesOrders,
+  NO_INVOICE_CHANGES,
+  updateSalesOrderStatus,
+  type InvoiceChanges,
+  type SalesOrder,
+  type SalesOrderCancellationImpact,
+} from "@/lib/sales-orders";
 import { customerLabel, fetchCustomerList, type CustomerOption } from "@/lib/customers";
 import { fetchProducts, type Product } from "@/lib/products";
 import { fetchPurchaseOrderList, type PurchaseOrderOption } from "@/lib/purchase-orders";
@@ -58,7 +70,7 @@ import {
   fetchUnbilledPurchaseOrderList,
   type UnbilledPurchaseOrderOption,
 } from "@/lib/unbilled-purchase-orders";
-import { fetchOrderStatusList, type OrderStatus } from "@/lib/order-status";
+import { CANCELLED_STATUS_NAME, fetchOrderStatusList, type OrderStatus } from "@/lib/order-status";
 import { byNewestFirst } from "@/lib/row-order";
 import styles from "@/styles/dashboard.module.css";
 import { formatDate } from "@/lib/format-date";
@@ -119,6 +131,15 @@ export function SalesOrdersTab() {
   // disables itself while its own request is in flight.
   const [statusSavingId, setStatusSavingId] = useState<number | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
+  // A dropdown cancellation waiting on the admin's confirmation, and what the
+  // last move into or out of "Cancelled" did to invoices, from either the
+  // dropdown or the form.
+  const [pendingCancel, setPendingCancel] = useState<{
+    order: SalesOrder;
+    statusId: number;
+    impact: SalesOrderCancellationImpact;
+  } | null>(null);
+  const [invoiceChanges, setInvoiceChanges] = useState<InvoiceChanges>(NO_INVOICE_CHANGES);
 
   const customersById = new Map(customers.map((c) => [c.id, c]));
   const statusesById = new Map(orderStatuses.map((s) => [s.id, s]));
@@ -204,8 +225,9 @@ export function SalesOrdersTab() {
   // order, since create_new_sales_order/update_sales_order_details only
   // return {message} — no real id to key off of (same reasoning as
   // purchase-orders-tab.tsx's handleSaved).
-  function handleSaved() {
+  function handleSaved(changes: InvoiceChanges) {
     setModalState(null);
+    setInvoiceChanges(changes);
     fetchSalesOrders()
       .then(setOrders)
       .catch(() => {
@@ -226,6 +248,30 @@ export function SalesOrdersTab() {
   async function handleStatusChange(order: SalesOrder, nextStatusId: number) {
     if (nextStatusId === order.orderStatusId) return;
 
+    // Cancelling voids the order's unpaid invoices, so the admin sees them
+    // first if there are any. If the check itself fails the order stays as it
+    // is, rather than voiding invoices the admin was never shown.
+    if (statusesById.get(nextStatusId)?.statusName === CANCELLED_STATUS_NAME) {
+      setStatusError(null);
+      setStatusSavingId(order.id);
+      try {
+        const impact = await fetchSalesOrderCancellationImpact(order.id);
+        if (cancellationAffectsInvoices(impact)) {
+          setPendingCancel({ order, statusId: nextStatusId, impact });
+          setStatusSavingId(null);
+          return;
+        }
+      } catch {
+        setStatusError("Couldn't check this order's invoices, so it wasn't cancelled. Please try again.");
+        setStatusSavingId(null);
+        return;
+      }
+    }
+
+    await saveStatusChange(order, nextStatusId);
+  }
+
+  async function saveStatusChange(order: SalesOrder, nextStatusId: number) {
     const previousStatusId = order.orderStatusId;
     const applyStatus = (statusId: number) =>
       setOrders((current) =>
@@ -233,12 +279,14 @@ export function SalesOrdersTab() {
       );
 
     setStatusError(null);
+    setInvoiceChanges(NO_INVOICE_CHANGES);
     setStatusSavingId(order.id);
     applyStatus(nextStatusId);
 
-    const error = await updateSalesOrderStatus(order.id, nextStatusId);
+    const { error, invoiceChanges: changes } = await updateSalesOrderStatus(order.id, nextStatusId);
 
     setStatusSavingId(null);
+    setInvoiceChanges(changes);
     if (error) {
       applyStatus(previousStatusId);
       setStatusError(error);
@@ -303,6 +351,26 @@ export function SalesOrdersTab() {
           {statusError}
         </p>
       )}
+
+      {invoiceChanges.voidedInvoiceNos.length > 0 && (
+        <p role="status" className={styles.poUpdatedNotice}>
+          Order cancelled, along with {invoiceChanges.voidedInvoiceNos.length === 1 ? "invoice" : "invoices"}{" "}
+          {invoiceChanges.voidedInvoiceNos.join(", ")}.
+        </p>
+      )}
+
+      {invoiceChanges.restoredInvoiceNos.length > 0 && (
+        <p role="status" className={styles.poUpdatedNotice}>
+          Restored {invoiceChanges.restoredInvoiceNos.length === 1 ? "invoice" : "invoices"}{" "}
+          {invoiceChanges.restoredInvoiceNos.join(", ")}.
+        </p>
+      )}
+
+      {invoiceChanges.unrestoredInvoices.map((reason) => (
+        <p key={reason} role="alert" className={styles.formError}>
+          Couldn&apos;t restore {reason}
+        </p>
+      ))}
 
       {view === "detail" ? (
         <SalesOrderCostingTable
@@ -427,6 +495,18 @@ export function SalesOrdersTab() {
           orderStatuses={orderStatuses}
           onClose={() => setModalState(null)}
           onSaved={handleSaved}
+        />
+      )}
+
+      {pendingCancel && (
+        <CancelSalesOrderConfirmModal
+          orderNo={pendingCancel.order.orderNo}
+          impact={pendingCancel.impact}
+          onKeep={() => setPendingCancel(null)}
+          onConfirm={() => {
+            setPendingCancel(null);
+            void saveStatusChange(pendingCancel.order, pendingCancel.statusId);
+          }}
         />
       )}
     </>

@@ -1,0 +1,8 @@
+{# Diagonal stamp across a cancelled invoice, so a copy that gets printed or
+   forwarded can't pass for a live one. position: fixed is what repeats it on
+   every printed page, and also keeps it out of the flow, so the document lays
+   out exactly as it did before it was cancelled. Translucent, because what the
+   invoice said has to stay readable underneath. #}
+<div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); border: 3mm solid rgba(190, 30, 45, 0.3); border-radius: 4mm; padding: 2mm 8mm; font-family: Helvetica, Arial, sans-serif; font-size: 60pt; font-weight: bold; letter-spacing: 2mm; white-space: nowrap; color: rgba(190, 30, 45, 0.3);">
+  CANCELLED
+</div>

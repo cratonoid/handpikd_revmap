@@ -16,28 +16,27 @@
 // tax and nothing to attach.
 //
 // What it has that neither of the others does is a product field that ACCEPTS
-// A NEW NAME. A local-market buy is by definition a thing that is not in the
-// catalogue, so each line either picks an unbilled product already on file or
+// A NEW NAME. A local-market buy is often a thing that is not in the
+// catalogue, so each line either picks any live product from the dropdown or
 // types a name, and the backend creates a minimal product row from it (no HSN
 // code, 0% GST, never storefront-visible) the first time that name is used.
 // Typing a name that already exists finds that product rather than making a
-// second one — unbilled products are told apart by name.
+// second one. Catalogue products can share a name under different HSN codes;
+// those have to be picked from the list, since a name can't tell them apart.
 //
 // The vendor picker offers every active vendor, including those with no GSTIN.
 // That is the point: a supplier who raises no bill routinely has no GST number
 // on file, and the billed forms' _require_vendor_has_gst rule would rule out
 // exactly the vendors this form exists for.
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue } from "@/lib/datetime-input";
-import type {
-  UnbilledProductOption,
-  UnbilledPurchaseOrder,
-} from "@/lib/unbilled-purchase-orders";
+import type { Product } from "@/lib/products";
+import type { UnbilledPurchaseOrder } from "@/lib/unbilled-purchase-orders";
 import type { VendorOption } from "@/lib/vendors";
-import { XMarkIcon } from "@/components/icons";
+import { ChevronRightIcon, XMarkIcon } from "@/components/icons";
 import styles from "@/styles/dashboard.module.css";
 
 type Status = "idle" | "saving";
@@ -83,11 +82,164 @@ function normalisedName(productName: string): string {
   return productName.trim().split(/\s+/).join(" ").toLowerCase();
 }
 
+type ProductOption = { product: Product; label: string };
+
+// A text input with a dropdown under it, rather than SingleSelectDropdown:
+// that one can only choose from its list, and a line here may name a product
+// that isn't on it yet. Typing narrows the list; opening it shows everything,
+// so a line that already has a product can still be switched to another.
+function ProductCombobox({
+  value,
+  selectedId,
+  options,
+  lineNumber,
+  onType,
+  onPick,
+}: {
+  value: string;
+  selectedId: number | null;
+  options: ProductOption[];
+  lineNumber: number;
+  onType: (productName: string) => void;
+  onPick: (product: Product) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [filtering, setFiltering] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listboxId = useId();
+
+  const visibleOptions = useMemo(() => {
+    const term = filtering ? normalisedName(value) : "";
+    return term ? options.filter((option) => option.label.toLowerCase().includes(term)) : options;
+  }, [options, value, filtering]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handlePointerDown(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [open]);
+
+  function openList() {
+    setOpen(true);
+    setFiltering(false);
+    setActiveIndex(-1);
+  }
+
+  function pick(product: Product) {
+    onPick(product);
+    setOpen(false);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      if (!open) {
+        openList();
+        return;
+      }
+      if (visibleOptions.length === 0) return;
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      setActiveIndex((current) => (current + step + visibleOptions.length) % visibleOptions.length);
+    } else if (event.key === "Enter" && open && visibleOptions[activeIndex]) {
+      // Otherwise Enter would submit the whole form mid-pick.
+      event.preventDefault();
+      pick(visibleOptions[activeIndex].product);
+    } else if (event.key === "Escape" || event.key === "Tab") {
+      setOpen(false);
+    }
+  }
+
+  return (
+    <div ref={wrapperRef} className={styles.selectWrapper}>
+      <input
+        ref={inputRef}
+        type="text"
+        required
+        role="combobox"
+        autoComplete="off"
+        aria-autocomplete="list"
+        aria-expanded={open}
+        aria-controls={listboxId}
+        value={value}
+        onChange={(e) => {
+          onType(e.target.value);
+          setOpen(true);
+          setFiltering(true);
+          setActiveIndex(-1);
+        }}
+        onFocus={openList}
+        onClick={() => {
+          if (!open) openList();
+        }}
+        onKeyDown={handleKeyDown}
+        placeholder="Select or type a product"
+        aria-label={`Line ${lineNumber} product`}
+        className={`${styles.formInput} ${styles.comboboxInput}`}
+      />
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label={`Show products for line ${lineNumber}`}
+        // Keeps focus where it is, so the input's onFocus can't reopen the
+        // list this click is trying to close.
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => {
+          if (open) {
+            setOpen(false);
+          } else {
+            openList();
+            inputRef.current?.focus();
+          }
+        }}
+        className={styles.comboboxToggle}
+      >
+        <ChevronRightIcon
+          className={`h-3.5 w-3.5 ${styles.selectTriggerChevron} ${open ? styles.selectTriggerChevronOpen : ""}`}
+        />
+      </button>
+
+      {open && (
+        <div id={listboxId} role="listbox" className={styles.selectPanel}>
+          <div className={styles.selectList}>
+            {visibleOptions.length === 0 && (
+              <p className={styles.selectEmpty}>No products match.</p>
+            )}
+            {visibleOptions.map((option, index) => (
+              <div
+                key={option.product.id}
+                ref={index === activeIndex ? (element) => element?.scrollIntoView({ block: "nearest" }) : undefined}
+                role="option"
+                aria-selected={option.product.id === selectedId}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(option.product)}
+                className={`${styles.selectOption} ${
+                  index === activeIndex || option.product.id === selectedId ? styles.selectOptionSelected : ""
+                }`}
+              >
+                {option.label}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function UnbilledPurchaseOrderFormModal({
   mode,
   initialOrder,
   vendors,
-  unbilledProducts,
+  products,
   onClose,
   onSaved,
 }: {
@@ -95,9 +247,9 @@ export function UnbilledPurchaseOrderFormModal({
   // Only present in "edit" mode — pre-fills every field.
   initialOrder?: UnbilledPurchaseOrder;
   vendors: VendorOption[];
-  // Unbilled products already on file, from GET /admin/get_unbilled_products.
-  // Backs the datalist below: the admin can pick one or type past it.
-  unbilledProducts: UnbilledProductOption[];
+  // Every product on file; the deleted ones are dropped below. Backs each
+  // line's dropdown: the admin can pick one or type past it.
+  products: Product[];
   onClose: () => void;
   // No order payload — the parent re-fetches the authoritative list, same as
   // the other two purchase forms.
@@ -119,13 +271,34 @@ export function UnbilledPurchaseOrderFormModal({
   const isEdit = mode === "edit";
   const title = isEdit ? "Edit unbilled purchase" : "New unbilled purchase";
 
-  // A plain <select> would be wrong here — the whole point is that the
-  // product may not be on the list yet — so this is a text input backed by a
-  // <datalist>, which offers what exists without refusing anything else.
-  const productsByName = useMemo(
-    () => new Map(unbilledProducts.map((product) => [normalisedName(product.productName), product])),
-    [unbilledProducts],
+  // Labelled like the sales order form's picker, so two catalogue products
+  // sharing a name can be told apart by their HSN codes.
+  const productOptions: ProductOption[] = useMemo(
+    () =>
+      products
+        .filter((product) => !product.isDeleted)
+        .map((product) => ({
+          product,
+          label: [
+            product.productName,
+            product.hsnCode ? `HSN ${product.hsnCode}` : null,
+            product.isUnbilled ? "unbilled" : null,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [products],
   );
+
+  const productsByName = useMemo(() => {
+    const byName = new Map<string, Product[]>();
+    for (const { product } of productOptions) {
+      const name = normalisedName(product.productName);
+      byName.set(name, [...(byName.get(name) ?? []), product]);
+    }
+    return byName;
+  }, [productOptions]);
 
   const totalAmount = lineItems.reduce(
     (sum, item) => sum + item.quantity * (Number(item.rate) || 0),
@@ -136,16 +309,26 @@ export function UnbilledPurchaseOrderFormModal({
     setLineItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...changes } : item)));
   }
 
-  // Re-resolves the typed name on every keystroke, so productId and the
-  // "will be created" hint always agree with what's in the box. Picking an
-  // existing product also fills the rate from what it last cost, which is
-  // usually right for a repeat buy and is editable when it isn't.
+  // Re-resolves the typed name on every keystroke, so productId and the hints
+  // always agree with what's in the box. A name several products share stays
+  // unresolved until one is picked from the list.
   function handleProductNameChange(index: number, productName: string) {
-    const match = productsByName.get(normalisedName(productName));
+    const matches = productsByName.get(normalisedName(productName)) ?? [];
+    if (matches.length === 1) {
+      handleProductPick(index, matches[0], productName);
+    } else {
+      updateLineItem(index, { productName, productId: null });
+    }
+  }
+
+  // Settling on an existing product also fills the rate from what it last
+  // cost, which is usually right for a repeat buy and is editable when it
+  // isn't.
+  function handleProductPick(index: number, product: Product, productName = product.productName) {
     updateLineItem(index, {
       productName,
-      productId: match?.id ?? null,
-      ...(match && !lineItems[index].rate ? { rate: String(match.vendorRate) } : {}),
+      productId: product.id,
+      ...(!lineItems[index].rate ? { rate: String(product.vendorRate) } : {}),
     });
   }
 
@@ -189,8 +372,8 @@ export function UnbilledPurchaseOrderFormModal({
 
       if (!response.ok) {
         // Surface the backend's own reason — a 409 here usually means the
-        // typed name is already taken by a billed product with no HSN code,
-        // and a 400 that an edit would take stock negative.
+        // typed name is shared by several products, and a 400 that an edit
+        // would take stock negative.
         const detail = await response.json().catch(() => null);
         setError(typeof detail?.detail === "string" ? detail.detail : "Something went wrong. Please try again.");
         setStatus("idle");
@@ -312,33 +495,26 @@ export function UnbilledPurchaseOrderFormModal({
               <span />
             </div>
 
-            {/* One shared datalist for every row — the options are the same
-                on each, and duplicating it per line would put N copies of
-                the whole product list in the DOM. */}
-            <datalist id="unbilled-product-names">
-              {unbilledProducts.map((product) => (
-                <option key={product.id} value={product.productName} />
-              ))}
-            </datalist>
-
             {lineItems.map((item, index) => (
               <div key={index} className={styles.unbilledLineItemRow}>
                 <div>
-                  <input
-                    type="text"
-                    required
-                    list="unbilled-product-names"
+                  <ProductCombobox
                     value={item.productName}
-                    onChange={(e) => handleProductNameChange(index, e.target.value)}
-                    placeholder="e.g. Jute Pouch"
-                    aria-label={`Line ${index + 1} product`}
-                    className={styles.formInput}
+                    selectedId={item.productId}
+                    options={productOptions}
+                    lineNumber={index + 1}
+                    onType={(productName) => handleProductNameChange(index, productName)}
+                    onPick={(product) => handleProductPick(index, product)}
                   />
                   {/* Says plainly when saving will create a product, so an
                       admin who meant to pick an existing one notices the
                       typo before it becomes a second product. */}
                   {item.productName.trim() !== "" && item.productId === null && (
-                    <p className={styles.formHint}>New product — will be created on save.</p>
+                    <p className={styles.formHint}>
+                      {productsByName.has(normalisedName(item.productName))
+                        ? "Several products have this name — pick one from the list."
+                        : "New product — will be created on save."}
+                    </p>
                   )}
                 </div>
 
@@ -407,8 +583,8 @@ export function UnbilledPurchaseOrderFormModal({
           {/* Says plainly what this order does and doesn't do, because the
               two forms next door look alike and behave differently. */}
           <p className={styles.formHint}>
-            No GST and no purchase invoice — this records what was paid. Stock is added to inventory as an
-            unbilled item and can be sold on a sales order.
+            No GST and no purchase invoice — this records what was paid. Stock is added to inventory and can
+            be sold on a sales order. A new product is listed as an unbilled item.
           </p>
 
           {error && (

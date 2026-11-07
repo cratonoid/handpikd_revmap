@@ -18,13 +18,15 @@
 #     create_purchase_invoice_for_order.
 #
 # The one thing with no counterpart next door is inline product creation. A
-# local-market buy is precisely a thing that is not in the catalogue, so a
-# line item names its product instead of picking one, and
+# line item can pick any live product, catalogue or unbilled, or name one that
+# doesn't exist yet: a local-market buy often isn't in the catalogue, so
 # _create_missing_products makes a minimal ProductDetails row (no HSN code,
-# 0% GST, never storefront-visible) the first time a name is used. Unbilled
-# products are told apart by that name — see ProductDetails.is_unbilled — so
-# the second use of a name finds the first one's product rather than making
-# a second.
+# 0% GST, never storefront-visible) the first time a name is used. The second
+# use of that name finds the first one's product rather than making a second.
+#
+# A catalogue product bought this way stays a billed product: its stock joins
+# its billed stock and its vendor_rate follows what was paid, but no input
+# credit exists for these units because no bill does.
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -51,7 +53,6 @@ from app.models import (
 from app.schemas.unbilled_purchase_orders import (
     CreateNewUnbilledPurchaseOrderRequest,
     CreateNewUnbilledPurchaseOrderResponse,
-    UnbilledProductListItem,
     UnbilledPurchaseOrderDetailItem,
     UnbilledPurchaseOrderListItem,
     UpdateUnbilledPurchaseOrderDetailsRequest,
@@ -90,38 +91,27 @@ def _compute_total(quantities: list[int], rates: list[float]) -> float:
     return sum(quantity * rate for quantity, rate in zip(quantities, rates))
 
 
-async def _find_unbilled_product_by_name(product_name: str) -> ProductDetails | None:
-    # Unbilled products are identified by name (they all share the empty HSN
-    # code), so this decides whether a typed name is a new product or one
-    # already on file. Scoped to un-deleted rows for the same reason
+async def _find_product_by_name(product_name: str) -> ProductDetails | None:
+    # Decides whether a typed name is a new product or one already on file.
+    # Scoped to un-deleted rows for the same reason
     # _validate_hsn_code_product_name is: a name is only taken while a live
     # product holds it.
     candidates = await ProductDetails.find(
-        ProductDetails.hsn_code == "",
         ProductDetails.is_deleted == False,  # noqa: E712 — Beanie needs the comparison, not `is False`
     ).to_list()
     incoming_name = _normalised_product_name(product_name)
+    matches = [
+        candidate for candidate in candidates if _normalised_product_name(candidate.product_name) == incoming_name
+    ]
 
-    for candidate in candidates:
-        if _normalised_product_name(candidate.product_name) != incoming_name:
-            continue
-        if not candidate.is_unbilled:
-            # A billed product filed under no HSN code already holds this
-            # name. Adding an unbilled one alongside it would make the
-            # (hsn_code, product_name) pair ambiguous, which is exactly what
-            # _validate_hsn_code_product_name exists to prevent — so it is
-            # refused here rather than left to fail when either product is
-            # next edited through the product form.
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=(
-                    f"a product named '{candidate.product_name}' already exists with no HSN code — "
-                    "give this one a different name, or add an HSN code to that product"
-                ),
-            )
-        return candidate
-
-    return None
+    # Catalogue products may share a name under different HSN codes, and a
+    # name alone can't say which was bought. Stock must not land on a guess.
+    if len(matches) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"several products are named '{matches[0].product_name}' — pick the right one from the list",
+        )
+    return matches[0] if matches else None
 
 
 async def _resolve_existing_products(
@@ -140,7 +130,7 @@ async def _resolve_existing_products(
     resolved: list[int | None] = []
     for product_id, product_name in zip(product_ids, product_names):
         if product_id is None:
-            existing = await _find_unbilled_product_by_name(product_name)
+            existing = await _find_product_by_name(product_name)
             resolved.append(existing.id if existing is not None else None)
             continue
 
@@ -150,16 +140,6 @@ async def _resolve_existing_products(
         if reject_deleted and product.is_deleted:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail=f"product {product_id} has been deleted"
-            )
-        if not product.is_unbilled:
-            # The mirror of the guard the material side grew in
-            # _validate_products_belong_to_vendor: a billed product belongs
-            # on a billed purchase order, where its HSN code and GST rate
-            # mean something. Letting one in here would record a taxed
-            # purchase as untaxed and quietly forfeit the input credit on it.
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"product {product_id} is a billed product — record it on a billed purchase order",
             )
         resolved.append(product_id)
 
@@ -353,27 +333,6 @@ async def get_unbilled_purchase_order_list(
             vendor_name=vendor_names_by_id.get(order.vendor_id, "—"),
         )
         for order in orders
-    ]
-
-
-@router.get("/get_unbilled_products", response_model=list[UnbilledProductListItem])
-async def get_unbilled_products(
-    _: User | None = Depends(require_staff),
-) -> list[UnbilledProductListItem]:
-    # What the purchase form's product field offers before it falls back to
-    # creating one. Narrowed to live unbilled products here rather than
-    # filtered out of get_product_details on the client, so a line can never
-    # be pointed at a billed product by accident.
-    products = await ProductDetails.find(
-        ProductDetails.is_unbilled == True,  # noqa: E712 — Beanie needs the comparison, not `is True`
-        ProductDetails.is_deleted == False,  # noqa: E712
-    ).to_list()
-
-    return [
-        UnbilledProductListItem(
-            id=product.id, product_name=product.product_name, vendor_rate=product.vendor_rate
-        )
-        for product in products
     ]
 
 

@@ -2060,6 +2060,18 @@ select.formInput:disabled {
   color: var(--color-status-processing);
 }
 
+.cancelledBadge {
+  margin-left: 0.5rem;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, var(--color-status-cancelled) 12%, transparent);
+  padding: 0.1rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-status-cancelled);
+}
+
 .treeAddButton {
   display: flex;
   height: 1.5rem;
@@ -2895,6 +2907,23 @@ select.formInput:disabled {
 .unbilledLineItemRow input {
   padding-left: 0.6rem;
   padding-right: 0.6rem;
+}
+
+/* Leaves room for .comboboxToggle sitting over the input's right edge. */
+.unbilledLineItemRow .comboboxInput {
+  padding-right: 2.25rem;
+}
+
+.comboboxToggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  width: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
 }
 
 /* Same reclaimed spinner width as .lineItemRow — see the comment there. */

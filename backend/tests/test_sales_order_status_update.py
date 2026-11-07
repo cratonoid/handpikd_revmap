@@ -20,10 +20,12 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.routes import sales_orders
-from app.schemas.sales_orders import UpdateSalesOrderStatusRequest
+from app.models.invoice_details import InvoiceStatus
+from app.schemas.sales_orders import InvoiceChanges, UpdateSalesOrderStatusRequest
 
 _NEW = 1
 _DELIVERED = 3
+_CANCELLED = 5
 
 
 class _Field:
@@ -111,6 +113,11 @@ def route(monkeypatch):
     async def _clear(sales_order_id) -> None:
         calls["cleared"] = sales_order_id
 
+    async def _sync_invoices(sales_order_id, previous_status_id, new_status_id) -> InvoiceChanges:
+        calls["invoice_sync"] = (sales_order_id, previous_status_id, new_status_id)
+        return InvoiceChanges(voided_invoice_nos=calls.get("voided", []))  # type: ignore[arg-type]
+
+    monkeypatch.setattr(sales_orders, "_sync_invoices_with_cancellation", _sync_invoices)
     monkeypatch.setattr(sales_orders, "_validate_order_status_exists", _status_exists)
     monkeypatch.setattr(sales_orders, "_get_stock_deducted_status_ids", _deducted_ids)
     monkeypatch.setattr(sales_orders, "get_applied_sales_quantities", _applied)
@@ -178,6 +185,110 @@ def test_reselecting_the_status_it_already_has_touches_nothing(route):
     assert _StubSalesOrders.order.saves == 0
     assert route == {}
     assert "unchanged" in response.message
+
+
+def test_a_status_change_reports_the_invoices_cancelling_voided(route):
+    route["voided"] = ["H/26-27/12", "H/26-27/13"]
+
+    response = _run(_CANCELLED)
+
+    assert route["invoice_sync"] == (5, _NEW, _CANCELLED)
+    assert response.invoice_changes.voided_invoice_nos == ["H/26-27/12", "H/26-27/13"]
+
+
+class _StubInvoice:
+    def __init__(
+        self, number: int, status: InvoiceStatus = InvoiceStatus.unpaid, sales_ids: list[int] | None = None
+    ) -> None:
+        self.number = number
+        self.status = status
+        self.sales_ids = sales_ids or [5]
+
+
+class _StubStatus:
+    def __init__(self, status_id: int) -> None:
+        self.id = status_id
+
+
+class _StubOrderStatusMaster:
+    status_name = _Field("status_name")
+
+    @classmethod
+    async def find_one(cls, *_args):
+        return _StubStatus(_CANCELLED)
+
+
+@pytest.mark.parametrize(
+    ("previous_status_id", "new_status_id", "voided", "restored", "unrestored"),
+    [
+        (_NEW, _CANCELLED, ["No 12"], [], []),
+        (_CANCELLED, _NEW, [], ["No 13"], ["No 14: re-billed"]),
+        (_CANCELLED, _DELIVERED, [], ["No 13"], ["No 14: re-billed"]),
+        # Re-saving an order on either side of "Cancelled" touches nothing.
+        (_CANCELLED, _CANCELLED, [], [], []),
+        (_NEW, _NEW, [], [], []),
+        (_NEW, _DELIVERED, [], [], []),
+    ],
+)
+def test_only_crossing_cancelled_changes_invoices(
+    monkeypatch, previous_status_id, new_status_id, voided, restored, unrestored
+):
+    async def _void(_sales_order_id: int) -> list[_StubInvoice]:
+        return [_StubInvoice(12)]
+
+    async def _restore(_sales_order_id: int, _cancelled_status_id: int):
+        return [_StubInvoice(13)], [(_StubInvoice(14), "re-billed")]
+
+    monkeypatch.setattr(sales_orders, "OrderStatusMaster", _StubOrderStatusMaster)
+    monkeypatch.setattr(sales_orders, "void_unpaid_invoices_for_sales_order", _void)
+    monkeypatch.setattr(sales_orders, "restore_invoices_voided_by_cancellation", _restore)
+    monkeypatch.setattr(sales_orders, "format_sales_invoice_no", lambda invoice: f"No {invoice.number}")
+
+    changes = asyncio.run(
+        sales_orders._sync_invoices_with_cancellation(5, previous_status_id, new_status_id)
+    )
+
+    assert changes.voided_invoice_nos == voided
+    assert changes.restored_invoice_nos == restored
+    assert changes.unrestored_invoices == unrestored
+
+
+def test_the_cancellation_impact_splits_invoices_by_what_will_happen_to_them(monkeypatch):
+    class _Other:
+        id = 6
+        order_no = 40
+
+    class _Orders(_StubSalesOrders):
+        id = _Field("id")
+
+        @classmethod
+        def find(cls, *_args):
+            return cls
+
+        @classmethod
+        async def to_list(cls):
+            return [_Other()]
+
+    async def _live(_sales_order_ids: list[int]) -> list[_StubInvoice]:
+        return [
+            _StubInvoice(12, InvoiceStatus.unpaid, [5, 6]),
+            _StubInvoice(13, InvoiceStatus.unpaid, [5]),
+            _StubInvoice(14, InvoiceStatus.paid, [5]),
+        ]
+
+    _Orders.order = _StubOrder(_NEW)
+    monkeypatch.setattr(sales_orders, "SalesOrders", _Orders)
+    monkeypatch.setattr(sales_orders, "In", lambda *_args: None)
+    monkeypatch.setattr(sales_orders, "live_standard_invoices_on_sales_orders", _live)
+    monkeypatch.setattr(sales_orders, "format_sales_invoice_no", lambda invoice: f"No {invoice.number}")
+
+    impact = asyncio.run(sales_orders.get_sales_order_cancellation_impact(5, None))
+
+    assert [(i.invoice_no_display, i.other_order_nos) for i in impact.unpaid_invoices] == [
+        ("No 12", [40]),
+        ("No 13", []),
+    ]
+    assert impact.paid_invoice_nos == ["No 14"]
 
 
 def test_a_soft_deleted_order_is_not_found(route):

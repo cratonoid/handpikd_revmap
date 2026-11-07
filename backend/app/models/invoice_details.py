@@ -122,7 +122,15 @@ class InvoiceDetails(Document):
     # "delivered in two lots"). Blank on rows raised before it existed, and
     # blank prints nothing at all rather than an empty heading.
     notes: str = ""
+    # What the admin invoices page shows as "Cancelled". The invoice stays on
+    # that page with its number, but every money figure, the bulk download and
+    # the client portal leave it out, and it no longer claims its sales orders.
     is_deleted: bool = False
+    # True while this invoice is void only because a sales order on it was
+    # cancelled, which is what lets un-cancelling that order bring it back
+    # without also reviving one an admin voided on purpose. See
+    # restore_invoices_voided_by_cancellation in services/invoice_totals.py.
+    voided_by_cancellation: bool = False
 
     class Settings:
         name = "invoice_details"

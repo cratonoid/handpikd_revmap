@@ -150,6 +150,8 @@ async def generate_invoice_pdf(
     is_online: bool = False,
     tax_kind: TaxKind | None = None,
     place_of_supply_code: str = "",
+    # Stamps every page CANCELLED (InvoiceDetails.is_deleted).
+    cancelled: bool = False,
 ) -> bytes:
     # tax_kind/place_of_supply_code are the values the document was raised
     # with (InvoiceDetails/PurchaseInvoiceDetails snapshot both), so a
@@ -264,6 +266,7 @@ async def generate_invoice_pdf(
         tnc_lines=[line.strip() for line in personal.get("invoice_tnc", "").splitlines() if line.strip()],
         signature_data_uri=signature_data_uri,
         show_system_note=is_online,
+        cancelled=cancelled,
     )
 
     return await render_html_to_pdf(

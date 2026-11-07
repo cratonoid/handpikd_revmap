@@ -8,6 +8,7 @@ from app.api.deps import require_section, require_staff
 from app.models import (
     Section,
     CustomerDetails,
+    InvoiceStatus,
     OrderNoCounterMaster,
     OrderStatusMaster,
     PrintingCost,
@@ -32,9 +33,12 @@ from app.schemas.sales_order_costing import (
     UpdateSalesOrderCostingResponse,
 )
 from app.schemas.sales_orders import (
+    CancellationImpactInvoice,
     CreateNewSalesOrderRequest,
     CreateNewSalesOrderResponse,
+    InvoiceChanges,
     OrderStatusListItem,
+    SalesOrderCancellationImpact,
     SalesOrderDetailItem,
     UpdateSalesOrderDetailsRequest,
     UpdateSalesOrderDetailsResponse,
@@ -49,7 +53,13 @@ from app.services.customer_points import (
     redeem_points,
     today,
 )
-from app.services.invoice_totals import refresh_invoice_totals_for_sales_orders
+from app.services.invoice_numbering import format_sales_invoice_no
+from app.services.invoice_totals import (
+    live_standard_invoices_on_sales_orders,
+    refresh_invoice_totals_for_sales_orders,
+    restore_invoices_voided_by_cancellation,
+    void_unpaid_invoices_for_sales_order,
+)
 from app.services.inventory import (
     STOCK_OUT,
     apply_sales_order_stock,
@@ -64,6 +74,7 @@ from app.services.inventory import (
 router = APIRouter(prefix="/admin", tags=["sales_orders"])
 
 _NEW_STATUS_NAME = "New"
+_CANCELLED_STATUS_NAME = "Cancelled"
 
 # Stock only leaves #inventory once a sales order reaches "Delivered", and
 # stays out through "Completed" downstream of it. "New" and "Processing"
@@ -167,6 +178,31 @@ async def _get_stock_deducted_status_ids() -> set[int]:
     if len(statuses) != len(_STOCK_DEDUCTED_STATUS_NAMES):
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="order statuses not seeded")
     return {status_row.id for status_row in statuses}
+
+
+async def _sync_invoices_with_cancellation(
+    sales_order_id: int, previous_status_id: int, new_status_id: int
+) -> InvoiceChanges:
+    # Only when the order actually crosses in or out of "Cancelled": re-saving
+    # one that stays on either side must leave its invoices alone.
+    if previous_status_id == new_status_id:
+        return InvoiceChanges()
+    cancelled_status = await OrderStatusMaster.find_one(OrderStatusMaster.status_name == _CANCELLED_STATUS_NAME)
+    if cancelled_status is None:
+        return InvoiceChanges()
+
+    if new_status_id == cancelled_status.id:
+        voided = await void_unpaid_invoices_for_sales_order(sales_order_id)
+        return InvoiceChanges(voided_invoice_nos=[format_sales_invoice_no(invoice) for invoice in voided])
+
+    if previous_status_id == cancelled_status.id:
+        restored, refused = await restore_invoices_voided_by_cancellation(sales_order_id, cancelled_status.id)
+        return InvoiceChanges(
+            restored_invoice_nos=[format_sales_invoice_no(invoice) for invoice in restored],
+            unrestored_invoices=[f"{format_sales_invoice_no(invoice)}: {reason}" for invoice, reason in refused],
+        )
+
+    return InvoiceChanges()
 
 
 def _allocate_line_discounts(
@@ -744,6 +780,7 @@ async def update_sales_order_details(
         today(),
     )
 
+    previous_status_id = sales_order.order_status_id
     sales_order.order_status_id = payload.order_status_id
     sales_order.cust_id = payload.cust_id
     sales_order.date = payload.date
@@ -789,7 +826,15 @@ async def update_sales_order_details(
     # the invoice stops adding up — see services/invoice_totals.py.
     await refresh_invoice_totals_for_sales_orders([sales_order.id])
 
-    return UpdateSalesOrderDetailsResponse(message="sales order updated successfully")
+    # After the refresh, which would otherwise see a voided partial's share
+    # released and restate a paid full invoice beside it.
+    invoice_changes = await _sync_invoices_with_cancellation(
+        sales_order.id, previous_status_id, payload.order_status_id
+    )
+
+    return UpdateSalesOrderDetailsResponse(
+        message="sales order updated successfully", invoice_changes=invoice_changes
+    )
 
 
 @router.post("/update_sales_order_status", response_model=UpdateSalesOrderStatusResponse)
@@ -840,6 +885,7 @@ async def update_sales_order_status(
         # status instead of half-applied.
         await _reject_stock_going_negative(stock_deltas)
 
+    previous_status_id = sales_order.order_status_id
     sales_order.order_status_id = payload.order_status_id
     await sales_order.save()
 
@@ -850,7 +896,51 @@ async def update_sales_order_status(
     else:
         await clear_sales_order_stock(sales_order.id)
 
-    return UpdateSalesOrderStatusResponse(message="sales order status updated successfully")
+    invoice_changes = await _sync_invoices_with_cancellation(
+        sales_order.id, previous_status_id, payload.order_status_id
+    )
+
+    return UpdateSalesOrderStatusResponse(
+        message="sales order status updated successfully", invoice_changes=invoice_changes
+    )
+
+
+@router.get("/get_sales_order_cancellation_impact", response_model=SalesOrderCancellationImpact)
+async def get_sales_order_cancellation_impact(
+    sales_order_id: int,
+    _: User | None = Depends(require_section(Section.orders)),
+) -> SalesOrderCancellationImpact:
+    # What cancelling this order would do to its invoices, for the confirmation
+    # the admin sees first. Lives here rather than on get_invoice_details
+    # because that one needs the Invoices section, and someone with only the
+    # Orders section can still cancel an order.
+    sales_order = await SalesOrders.get(sales_order_id)
+    if sales_order is None or sales_order.is_deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="sales order not found")
+
+    invoices = await live_standard_invoices_on_sales_orders([sales_order_id])
+    other_ids = {sales_id for invoice in invoices for sales_id in invoice.sales_ids} - {sales_order_id}
+    order_nos_by_id = (
+        {order.id: order.order_no for order in await SalesOrders.find(In(SalesOrders.id, list(other_ids))).to_list()}
+        if other_ids
+        else {}
+    )
+
+    return SalesOrderCancellationImpact(
+        unpaid_invoices=[
+            CancellationImpactInvoice(
+                invoice_no_display=format_sales_invoice_no(invoice),
+                other_order_nos=[
+                    order_nos_by_id[sales_id] for sales_id in invoice.sales_ids if sales_id in order_nos_by_id
+                ],
+            )
+            for invoice in invoices
+            if invoice.status == InvoiceStatus.unpaid
+        ],
+        paid_invoice_nos=[
+            format_sales_invoice_no(invoice) for invoice in invoices if invoice.status != InvoiceStatus.unpaid
+        ],
+    )
 
 
 @router.get("/get_order_status_list", response_model=list[OrderStatusListItem])

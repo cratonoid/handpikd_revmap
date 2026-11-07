@@ -30,8 +30,9 @@
 # bills what its orders' live partials have left.
 from beanie.operators import In
 
-from app.models import InvoiceBilling, InvoiceDetails, InvoiceType, SalesOrders
+from app.models import InvoiceBilling, InvoiceDetails, InvoiceStatus, InvoiceType, SalesOrders
 from app.services.gst import split_tax
+from app.services.invoice_numbering import format_sales_invoice_no
 
 Totals = tuple[float, float, float]  # (before tax, tax, after tax)
 
@@ -84,6 +85,47 @@ def billed_totals(invoice, orders: list, partials: list) -> Totals:
     billed_before = round(before_tax - sum(p.total_amount_before_tax for p in partials), 2)
     billed_tax = round(tax - sum(p.total_tax_amount for p in partials), 2)
     return billed_before, billed_tax, round(billed_before + billed_tax, 2)
+
+
+def billing_room_problem(sales_orders: list, invoice, claimed_by: list) -> str | None:
+    """Why `invoice` doesn't fit on its orders, or None if it does.
+
+    `claimed_by` is the other live standard invoices on those orders. A full
+    invoice closes its orders. Before that, any number of partials may sit on
+    them, as long as together they stay within the orders' value, and the full
+    invoice after them bills what's left. Partials and that full invoice must
+    all list the very same orders, or "what's left" stops meaning anything.
+    """
+    order_ids = {order.id for order in sales_orders}
+
+    conflicts = []
+    for order in sales_orders:
+        for other in claimed_by:
+            if not is_partial(other) and order.id in other.sales_ids:
+                conflicts.append(f"SO-{order.order_no} (on {format_sales_invoice_no(other)})")
+                break
+    if conflicts:
+        return "sales order(s) already invoiced: " + ", ".join(conflicts)
+
+    mismatched = [other for other in claimed_by if is_partial(other) and set(other.sales_ids) != order_ids]
+    if mismatched:
+        return (
+            "these sales orders already have partial invoices listing other orders ("
+            + ", ".join(format_sales_invoice_no(other) for other in mismatched)
+            + "); pick exactly the orders on those invoices"
+        )
+
+    partials = partials_alongside(invoice, claimed_by)
+    order_after_tax = order_totals(sales_orders)[2]
+    left = round(order_after_tax - sum(other.total_amount_after_tax for other in partials), 2)
+    if is_partial(invoice):
+        if billed_totals(invoice, sales_orders, partials)[2] > left + 0.005:
+            return f"only ₹{max(left, 0):,.2f} of ₹{order_after_tax:,.2f} is left to bill on these sales orders"
+    elif partials and left <= 0.005:
+        return "these sales orders are already fully billed by partial invoices: " + ", ".join(
+            format_sales_invoice_no(other) for other in partials
+        )
+    return None
 
 
 async def refresh_invoice_totals_for_sales_orders(sales_order_ids: list[int]) -> int:
@@ -154,3 +196,89 @@ async def refresh_invoice_totals_for_sales_orders(sales_order_ids: list[int]) ->
         updated += 1
 
     return updated
+
+
+async def live_standard_invoices_on_sales_orders(sales_order_ids: list[int]) -> list[InvoiceDetails]:
+    return await InvoiceDetails.find(
+        InvoiceDetails.type == InvoiceType.standard,
+        InvoiceDetails.is_deleted == False,
+        In(InvoiceDetails.sales_ids, sales_order_ids),
+    ).to_list()
+
+
+async def void_unpaid_invoices_for_sales_order(sales_order_id: int) -> list[InvoiceDetails]:
+    """Voids the live unpaid standard invoices of an order just cancelled.
+
+    Returns the ones voided, so the caller can say so. The whole invoice goes
+    even if it also lists other orders: it can't go on billing a cancelled
+    one, and voiding puts those others back in the invoice picker.
+
+    Paid invoices stay: that money was really received, and refunding it is
+    the admin's call. Nothing here re-totals a paid full invoice beside a
+    voided partial either, as _retotal_full_beside would on a manual void: the
+    order is off, so there is no balance left for it to bill.
+    """
+    voided = []
+    for invoice in await live_standard_invoices_on_sales_orders([sales_order_id]):
+        if invoice.status != InvoiceStatus.unpaid:
+            continue
+        invoice.is_deleted = True
+        invoice.voided_by_cancellation = True
+        await invoice.save()
+        voided.append(invoice)
+
+    return voided
+
+
+async def restore_invoices_voided_by_cancellation(
+    sales_order_id: int, cancelled_status_id: int
+) -> tuple[list[InvoiceDetails], list[tuple[InvoiceDetails, str]]]:
+    """Brings back what cancelling this order voided, now it's un-cancelled.
+
+    Returns the invoices restored, and the ones left void with the reason. Each
+    has to pass the same checks as any invoice being restored, because the
+    order may have been re-billed in the meantime and restoring would bill the
+    client twice. One left void keeps its flag: one blocked by another order
+    on it still being cancelled comes back when that order is un-cancelled.
+    """
+    voided = await InvoiceDetails.find(
+        InvoiceDetails.type == InvoiceType.standard,
+        InvoiceDetails.is_deleted == True,
+        InvoiceDetails.voided_by_cancellation == True,
+        In(InvoiceDetails.sales_ids, [sales_order_id]),
+    ).to_list()
+
+    restored = []
+    refused = []
+    # Partials first: a full invoice beside them bills what they leave, and
+    # would otherwise see no partials and block them from coming back.
+    for invoice in sorted(voided, key=lambda item: not is_partial(item)):
+        orders = await SalesOrders.find(In(SalesOrders.id, invoice.sales_ids)).to_list()
+        off_orders = [
+            order for order in orders if order.is_deleted or order.order_status_id == cancelled_status_id
+        ]
+        if off_orders:
+            names = ", ".join(f"SO-{order.order_no}" for order in off_orders)
+            refused.append((invoice, f"{names} is still cancelled or deleted"))
+            continue
+
+        problem = billing_room_problem(
+            orders, invoice, await live_standard_invoices_on_sales_orders(invoice.sales_ids)
+        )
+        if problem:
+            refused.append((invoice, problem))
+            continue
+
+        invoice.is_deleted = False
+        invoice.voided_by_cancellation = False
+        await invoice.save()
+        restored.append(invoice)
+
+    # The orders may have been edited while the invoice was void, and a voided
+    # invoice is skipped by the refresh that would have kept it in step.
+    if restored:
+        await refresh_invoice_totals_for_sales_orders(
+            sorted({sales_id for invoice in restored for sales_id in invoice.sales_ids})
+        )
+
+    return restored, refused

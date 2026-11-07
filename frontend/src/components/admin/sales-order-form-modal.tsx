@@ -56,13 +56,23 @@ import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue } from "@/lib/datetime-input";
-import type { SalesOrder } from "@/lib/sales-orders";
+import {
+  fetchSalesOrderCancellationImpact,
+  toInvoiceChanges,
+  type InvoiceChanges,
+  type SalesOrder,
+  type SalesOrderCancellationImpact,
+} from "@/lib/sales-orders";
 import { customerLabel, type CustomerOption } from "@/lib/customers";
 import { fetchCustomerPoints, MAX_REDEMPTION_RATE, maxRedeemablePoints } from "@/lib/customer-points";
 import type { Product } from "@/lib/products";
 import type { PurchaseOrderOption } from "@/lib/purchase-orders";
 import type { UnbilledPurchaseOrderOption } from "@/lib/unbilled-purchase-orders";
-import type { OrderStatus } from "@/lib/order-status";
+import { CANCELLED_STATUS_NAME, type OrderStatus } from "@/lib/order-status";
+import {
+  CancelSalesOrderConfirmModal,
+  cancellationAffectsInvoices,
+} from "@/components/admin/cancel-sales-order-confirm-modal";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
 import { MultiSelectDropdown, type MultiSelectOption } from "@/components/admin/multi-select-dropdown";
 import { XMarkIcon } from "@/components/icons";
@@ -135,8 +145,13 @@ export function SalesOrderFormModal({
   // No order payload — the backend only returns {message} (see
   // create_new_sales_order/update_sales_order_details), so the parent
   // re-fetches the authoritative list from GET /admin/get_sales_order_details.
-  onSaved: () => void;
+  // What it does pass on is what this save did to the order's invoices by
+  // moving it into or out of "Cancelled", for the parent to report once this
+  // popup has closed.
+  onSaved: (invoiceChanges: InvoiceChanges) => void;
 }) {
+  // Set while the admin is being asked to confirm a cancellation.
+  const [cancelImpact, setCancelImpact] = useState<SalesOrderCancellationImpact | null>(null);
   const [custId, setCustId] = useState<string | null>(initialOrder ? String(initialOrder.custId) : null);
   const [date, setDate] = useState(
     initialOrder ? toDatetimeLocalValue(initialOrder.date) : nowAsDatetimeLocalValue(),
@@ -414,11 +429,35 @@ export function SalesOrderFormModal({
         return;
       }
 
-      onSaved();
+      const body = await response.json().catch(() => null);
+      onSaved(toInvoiceChanges(body));
     } catch {
       setError("Couldn't reach the server. Please try again.");
       setStatus("idle");
     }
+  }
+
+  // Asks first when this save would cancel an order that has invoices. If the
+  // check itself fails nothing is saved, rather than voiding invoices the
+  // admin was never shown.
+  async function confirmCancellationThenSubmit(orderId: number) {
+    setStatus("saving");
+    setError(null);
+
+    try {
+      const impact = await fetchSalesOrderCancellationImpact(orderId);
+      if (cancellationAffectsInvoices(impact)) {
+        setCancelImpact(impact);
+        setStatus("idle");
+        return;
+      }
+    } catch {
+      setError("Couldn't check this order's invoices, so it wasn't saved. Please try again.");
+      setStatus("idle");
+      return;
+    }
+
+    void submitPayload();
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -456,6 +495,17 @@ export function SalesOrderFormModal({
 
     if (!form.checkValidity()) {
       form.reportValidity();
+      return;
+    }
+
+    const cancelledStatus = orderStatuses.find((orderStatus) => orderStatus.statusName === CANCELLED_STATUS_NAME);
+    if (
+      initialOrder &&
+      cancelledStatus &&
+      Number(orderStatusId) === cancelledStatus.id &&
+      initialOrder.orderStatusId !== cancelledStatus.id
+    ) {
+      void confirmCancellationThenSubmit(initialOrder.id);
       return;
     }
 
@@ -862,6 +912,18 @@ export function SalesOrderFormModal({
           </div>
         </form>
       </div>
+
+      {cancelImpact && initialOrder && (
+        <CancelSalesOrderConfirmModal
+          orderNo={initialOrder.orderNo}
+          impact={cancelImpact}
+          onKeep={() => setCancelImpact(null)}
+          onConfirm={() => {
+            setCancelImpact(null);
+            void submitPayload();
+          }}
+        />
+      )}
     </div>
   );
 }

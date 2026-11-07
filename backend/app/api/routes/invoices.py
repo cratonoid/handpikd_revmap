@@ -57,7 +57,7 @@ from app.services.invoice_numbering import (
     invoice_no_filename_slug,
 )
 from app.services.invoice_pdf import InvoiceLineItem, generate_invoice_pdf
-from app.services.invoice_totals import billed_totals, is_partial, order_totals, partials_alongside
+from app.services.invoice_totals import billed_totals, billing_room_problem, is_partial, order_totals, partials_alongside
 from app.services.personal_details import get_personal_details
 from app.services.proforma_invoice_pdf import ProformaInvoiceLineItem, generate_proforma_invoice_pdf
 
@@ -127,63 +127,23 @@ async def _check_billing_room(
     """Reject an invoice its sales orders have no room left for, and return
     the live partial invoices beside it (for billed_totals).
 
-    A full invoice closes its orders: once one is live, nothing else may be
-    raised against them, since that would bill the client twice for the same
-    goods. Before that, any number of partial invoices may sit on them, as
-    long as together they stay within the orders' value, and the full
-    invoice after them then bills what's left. Partials and that full
-    invoice must all list the very same orders, or "what's left" stops
-    meaning anything. Only live invoices count - a voided one has released
-    its share, which is exactly what voiding is for. `exclude_invoice_id`
-    lets an invoice pass its own check when it is the one being restored
-    (see update_invoice_details).
+    The rules themselves are billing_room_problem's. Only live invoices count -
+    a voided one has released its share, which is exactly what voiding is for.
+    `exclude_invoice_id` lets an invoice pass its own check when it is the one
+    being restored (see update_invoice_details).
 
     The frontend picker hides orders a full invoice already covers too (see
     invoice-form-modal.tsx), but two admins working from stale lists can
     still both pick the same order, so the check has to live here.
     """
     claimed_by = await _live_standard_invoices_on(sales_orders, exclude_invoice_id)
-    order_ids = {order.id for order in sales_orders}
-
-    conflicts = []
-    for order in sales_orders:
-        for other in claimed_by:
-            if not is_partial(other) and order.id in other.sales_ids:
-                conflicts.append(f"SO-{order.order_no} (on {format_sales_invoice_no(other)})")
-                break
-    if conflicts:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="sales order(s) already invoiced: " + ", ".join(conflicts),
-        )
-
-    mismatched = [other for other in claimed_by if is_partial(other) and set(other.sales_ids) != order_ids]
-    if mismatched:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="these sales orders already have partial invoices listing other orders ("
-            + ", ".join(format_sales_invoice_no(other) for other in mismatched)
-            + "); pick exactly the orders on those invoices",
-        )
-
     partials = partials_alongside(invoice, claimed_by)
-    order_after_tax = order_totals(sales_orders)[2]
-    left = round(order_after_tax - sum(other.total_amount_after_tax for other in partials), 2)
-    if is_partial(invoice):
-        billed_after_tax = billed_totals(invoice, sales_orders, partials)[2]
-        if billed_after_tax <= 0:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="the partial amount must be more than ₹0")
-        if billed_after_tax > left + 0.005:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"only ₹{max(left, 0):,.2f} of ₹{order_after_tax:,.2f} is left to bill on these sales orders",
-            )
-    elif partials and left <= 0.005:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="these sales orders are already fully billed by partial invoices: "
-            + ", ".join(format_sales_invoice_no(other) for other in partials),
-        )
+    if is_partial(invoice) and billed_totals(invoice, sales_orders, partials)[2] <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="the partial amount must be more than ₹0")
+
+    problem = billing_room_problem(sales_orders, invoice, claimed_by)
+    if problem:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=problem)
     return partials
 
 
@@ -254,6 +214,16 @@ def _apply_payment_state(invoice: InvoiceDetails, status_value: InvoiceStatus, p
     else:
         invoice.paid_on = None
     invoice.status = status_value
+
+
+def _reject_edit_while_cancelled(invoice: InvoiceDetails, stays_cancelled: bool) -> None:
+    # A cancelled invoice is a record of what was issued, so it only ever
+    # changes by being restored first. Saving one also re-snapshots its totals
+    # and would lose its voided_by_cancellation mark.
+    if invoice.is_deleted and stays_cancelled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="this invoice is cancelled — restore it to make changes"
+        )
 
 
 def _earns_points(invoice: InvoiceDetails) -> bool:
@@ -589,7 +559,9 @@ def _to_invoice_detail_item(
 async def get_invoice_details(
     _: User | None = Depends(require_section(Section.invoices)),
 ) -> list[InvoiceDetailItem]:
-    invoices = await InvoiceDetails.find(InvoiceDetails.is_deleted == False).to_list()
+    # Cancelled ones included: the invoices page shows them as such, so a
+    # number in the series never goes unexplained.
+    invoices = await InvoiceDetails.find_all().to_list()
     if not invoices:
         return []
 
@@ -621,6 +593,7 @@ async def update_invoice_details(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="use update_proforma_invoice_details for proforma invoices",
         )
+    _reject_edit_while_cancelled(invoice, payload.is_deleted)
 
     # Re-snapshot totals from the linked sales orders, in case any have
     # changed since the invoice was created/generated — same recompute-on-edit
@@ -658,6 +631,9 @@ async def update_invoice_details(
     invoice.notes = payload.notes
     _apply_payment_state(invoice, payload.status, payload.paid_on)
     invoice.is_deleted = payload.is_deleted
+    # An admin deciding this invoice's fate outranks the cancellation that
+    # voided it, so un-cancelling its order later mustn't act on it again.
+    invoice.voided_by_cancellation = False
     await invoice.save()
     await _sync_points_if_payment_changed(invoice, earned_before)
     if is_partial(invoice) and (voiding_changed or totals_changed):
@@ -725,6 +701,7 @@ async def update_proforma_invoice_details(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="use update_invoice_details for standard invoices",
         )
+    _reject_edit_while_cancelled(invoice, payload.is_deleted)
 
     await _validate_customer_exists(payload.cust_id)
     await _validate_products_exist(payload.product_ids)
@@ -901,6 +878,7 @@ async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict
         # renderer still derives from the GSTINs).
         tax_kind=invoice.tax_kind,
         place_of_supply_code=invoice.place_of_supply_code,
+        cancelled=invoice.is_deleted,
     )
     filename = f"invoice-{invoice_no_filename_slug(invoice_no_display)}.pdf"
     return pdf_bytes, filename
@@ -980,6 +958,7 @@ async def build_invoice_pdf(invoice: InvoiceDetails) -> tuple[bytes, str]:
             customer_phone=customer_phone,
             customer_gstin=customer_gstin,
             personal=personal,
+            cancelled=invoice.is_deleted,
         )
         filename = f"proforma-invoice-{invoice_no_filename_slug(invoice_no_display)}.pdf"
 

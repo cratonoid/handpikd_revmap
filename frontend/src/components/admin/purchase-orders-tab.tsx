@@ -72,12 +72,7 @@ import {
   type ParsedPrintingPurchaseInvoice,
   type PrintingPurchaseOrder,
 } from "@/lib/printing-purchase-orders";
-import {
-  fetchUnbilledProducts,
-  fetchUnbilledPurchaseOrders,
-  type UnbilledProductOption,
-  type UnbilledPurchaseOrder,
-} from "@/lib/unbilled-purchase-orders";
+import { fetchUnbilledPurchaseOrders, type UnbilledPurchaseOrder } from "@/lib/unbilled-purchase-orders";
 import { fetchVendors, fetchVendorsList, type Vendor, type VendorOption } from "@/lib/vendors";
 import { fetchProducts, type Product } from "@/lib/products";
 import { fetchProfileDetails } from "@/lib/profile-details";
@@ -132,10 +127,6 @@ export function PurchaseOrdersTab() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [printingOrders, setPrintingOrders] = useState<PrintingPurchaseOrder[]>([]);
   const [unbilledOrders, setUnbilledOrders] = useState<UnbilledPurchaseOrder[]>([]);
-  // The unbilled products a purchase line can point at instead of creating
-  // one. Fetched with the rest of the tab's data rather than inside the form,
-  // same reasoning as ownStateCode below.
-  const [unbilledProducts, setUnbilledProducts] = useState<UnbilledProductOption[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [vendorOptions, setVendorOptions] = useState<VendorOption[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -186,7 +177,6 @@ export function PurchaseOrdersTab() {
       fetchPurchaseOrders(),
       fetchPrintingPurchaseOrders(),
       fetchUnbilledPurchaseOrders(),
-      fetchUnbilledProducts(),
       fetchVendors(),
       fetchVendorsList(),
       fetchProducts(),
@@ -197,7 +187,6 @@ export function PurchaseOrdersTab() {
           orderData,
           printingOrderData,
           unbilledOrderData,
-          unbilledProductData,
           vendorData,
           vendorOptionData,
           productData,
@@ -207,7 +196,6 @@ export function PurchaseOrdersTab() {
           setOrders(orderData);
           setPrintingOrders(printingOrderData);
           setUnbilledOrders(unbilledOrderData);
-          setUnbilledProducts(unbilledProductData);
           setVendors(vendorData);
           setVendorOptions(vendorOptionData);
           setProducts(productData);
@@ -254,10 +242,10 @@ export function PurchaseOrdersTab() {
   // the page was reloaded.
   function handleUnbilledSaved() {
     setModalState(null);
-    Promise.all([fetchUnbilledPurchaseOrders(), fetchUnbilledProducts()])
+    Promise.all([fetchUnbilledPurchaseOrders(), fetchProducts()])
       .then(([orderData, productData]) => {
         setUnbilledOrders(orderData);
-        setUnbilledProducts(productData);
+        setProducts(productData);
       })
       .catch(() => {});
   }
@@ -603,7 +591,7 @@ export function PurchaseOrdersTab() {
           // Every active vendor, unfiltered: no GSTIN rule and no vendor_type
           // rule applies to a purchase with no bill behind it.
           vendors={vendorOptions}
-          unbilledProducts={unbilledProducts}
+          products={products}
           onClose={() => setModalState(null)}
           onSaved={handleUnbilledSaved}
         />

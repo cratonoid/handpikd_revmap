@@ -470,6 +470,8 @@ export function ProformaInvoiceFormModal({
             </p>
           )}
 
+          {wasDeleted && <p className={styles.formHint}>This invoice is cancelled. Restore it to make changes.</p>}
+
           <div className={styles.modalActions}>
             <div className={styles.modalActionsLeft}>
               {isEdit && !confirmingDelete && (
@@ -479,7 +481,7 @@ export function ProformaInvoiceFormModal({
                   disabled={status === "saving"}
                   className={`${styles.triggerButtonBase} ${wasDeleted ? styles.restoreTriggerButton : styles.deleteTriggerButton}`}
                 >
-                  {wasDeleted ? "Restore invoice" : "Void invoice"}
+                  {wasDeleted ? "Restore invoice" : "Cancel invoice"}
                 </button>
               )}
 
@@ -488,7 +490,7 @@ export function ProformaInvoiceFormModal({
                   <span className={styles.deleteConfirmText}>
                     {wasDeleted
                       ? "Are you sure you want to restore this invoice?"
-                      : "Are you sure you want to void this invoice?"}
+                      : "Are you sure you want to cancel this invoice?"}
                   </span>
                   <Button
                     type="button"
@@ -496,10 +498,10 @@ export function ProformaInvoiceFormModal({
                     onClick={() => setConfirmingDelete(false)}
                     disabled={status === "saving"}
                   >
-                    Cancel
+                    Go back
                   </Button>
                   <Button type="button" variant="primary" onClick={handleDeleteOrRestore} disabled={status === "saving"}>
-                    {status === "saving" ? "Saving…" : wasDeleted ? "Yes, restore" : "Yes, void"}
+                    {status === "saving" ? "Saving…" : wasDeleted ? "Yes, restore" : "Yes, cancel invoice"}
                   </Button>
                 </div>
               )}
@@ -508,17 +510,19 @@ export function ProformaInvoiceFormModal({
             {!confirmingDelete && (
               <div className={styles.modalActionsRight}>
                 <Button type="button" variant="tertiary" onClick={onClose}>
-                  Cancel
+                  {wasDeleted ? "Close" : "Cancel"}
                 </Button>
-                <Button type="submit" variant="primary" disabled={status === "saving"}>
-                  {status === "saving"
-                    ? isEdit
-                      ? "Saving…"
-                      : "Generating…"
-                    : isEdit
-                      ? "Save"
-                      : "Generate proforma invoice"}
-                </Button>
+                {!wasDeleted && (
+                  <Button type="submit" variant="primary" disabled={status === "saving"}>
+                    {status === "saving"
+                      ? isEdit
+                        ? "Saving…"
+                        : "Generating…"
+                      : isEdit
+                        ? "Save"
+                        : "Generate proforma invoice"}
+                  </Button>
+                )}
               </div>
             )}
           </div>

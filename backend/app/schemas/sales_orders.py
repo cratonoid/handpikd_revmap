@@ -152,8 +152,18 @@ class UpdateSalesOrderDetailsRequest(BaseModel):
         return self
 
 
+class InvoiceChanges(BaseModel):
+    # What moving an order into or out of "Cancelled" did to its invoices —
+    # see _sync_invoices_with_cancellation in routes/sales_orders.py.
+    voided_invoice_nos: list[str] = []
+    restored_invoice_nos: list[str] = []
+    # One "<invoice no>: <reason>" per invoice that couldn't be brought back.
+    unrestored_invoices: list[str] = []
+
+
 class UpdateSalesOrderDetailsResponse(BaseModel):
     message: str
+    invoice_changes: InvoiceChanges
 
 
 # The sales orders table's inline status dropdown. Deliberately NOT the full
@@ -167,6 +177,18 @@ class UpdateSalesOrderStatusRequest(BaseModel):
 
 class UpdateSalesOrderStatusResponse(BaseModel):
     message: str
+    invoice_changes: InvoiceChanges = InvoiceChanges()
+
+
+class CancellationImpactInvoice(BaseModel):
+    invoice_no_display: str
+    # The other orders this invoice bills, which go unbilled along with it.
+    other_order_nos: list[int]
+
+
+class SalesOrderCancellationImpact(BaseModel):
+    unpaid_invoices: list[CancellationImpactInvoice]
+    paid_invoice_nos: list[str]
 
 
 class OrderStatusListItem(BaseModel):

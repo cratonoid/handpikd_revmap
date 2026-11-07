@@ -150,9 +150,9 @@ export function InvoiceFormModal({
   // _check_same_customer in routes/invoices.py, which enforces this
   // server-side too).
   const lockedCustId = selectedSalesOrders[0]?.custId ?? null;
-  // Sales orders a live Full invoice already covers. The tab's list comes
-  // from get_invoice_details, which never returns voided invoices, but the
-  // isDeleted check keeps this right if that ever changes.
+  // Sales orders a live Full invoice already covers. The tab's list includes
+  // cancelled invoices, which have released their orders, so the isDeleted
+  // checks matter.
   const livePartials = useMemo(
     () => invoices.filter((invoice) => invoice.type === "standard" && !invoice.isDeleted && invoice.billing === "partial"),
     [invoices],
@@ -593,6 +593,8 @@ export function InvoiceFormModal({
             </p>
           )}
 
+          {wasDeleted && <p className={styles.formHint}>This invoice is cancelled. Restore it to make changes.</p>}
+
           <div className={styles.modalActions}>
             <div className={styles.modalActionsLeft}>
               {isEdit && !confirmingDelete && (
@@ -603,7 +605,7 @@ export function InvoiceFormModal({
                     disabled={status === "saving"}
                     className={`${styles.triggerButtonBase} ${wasDeleted ? styles.restoreTriggerButton : styles.deleteTriggerButton}`}
                   >
-                    {wasDeleted ? "Restore invoice" : "Void invoice"}
+                    {wasDeleted ? "Restore invoice" : "Cancel invoice"}
                   </button>
                   <Button
                     type="button"
@@ -621,7 +623,7 @@ export function InvoiceFormModal({
                   <span className={styles.deleteConfirmText}>
                     {wasDeleted
                       ? "Are you sure you want to restore this invoice?"
-                      : "Are you sure you want to void this invoice?"}
+                      : "Are you sure you want to cancel this invoice?"}
                   </span>
                   <Button
                     type="button"
@@ -629,10 +631,10 @@ export function InvoiceFormModal({
                     onClick={() => setConfirmingDelete(false)}
                     disabled={status === "saving"}
                   >
-                    Cancel
+                    Go back
                   </Button>
                   <Button type="button" variant="primary" onClick={handleDeleteOrRestore} disabled={status === "saving"}>
-                    {status === "saving" ? "Saving…" : wasDeleted ? "Yes, restore" : "Yes, void"}
+                    {status === "saving" ? "Saving…" : wasDeleted ? "Yes, restore" : "Yes, cancel invoice"}
                   </Button>
                 </div>
               )}
@@ -641,11 +643,13 @@ export function InvoiceFormModal({
             {!confirmingDelete && (
               <div className={styles.modalActionsRight}>
                 <Button type="button" variant="tertiary" onClick={onClose}>
-                  Cancel
+                  {wasDeleted ? "Close" : "Cancel"}
                 </Button>
-                <Button type="submit" variant="primary" disabled={status === "saving"}>
-                  {status === "saving" ? "Saving…" : "Save"}
-                </Button>
+                {!wasDeleted && (
+                  <Button type="submit" variant="primary" disabled={status === "saving"}>
+                    {status === "saving" ? "Saving…" : "Save"}
+                  </Button>
+                )}
               </div>
             )}
           </div>

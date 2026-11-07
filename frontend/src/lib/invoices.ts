@@ -2,8 +2,8 @@
 // Invoice data for the /admin/invoices Sales Invoices tab
 // ---------------------------------------------------------------------------
 // Mirrors lib/sales-orders.ts. Fetches from GET /admin/get_invoice_details
-// (backend/app/api/routes/invoices.py), which only ever returns active
-// (non-deleted) invoices. Standard invoices are raised against one or more
+// (backend/app/api/routes/invoices.py), which returns cancelled invoices too
+// (isDeleted — shown as "Cancelled"). Standard invoices are raised against one or more
 // existing sales orders (salesIds, all belonging to the same customer) and
 // have no line items of their own here. Proforma invoices are raised by
 // hand, like a quotation — own customer (custId) and own line items

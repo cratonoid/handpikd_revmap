@@ -109,6 +109,8 @@ async def generate_proforma_invoice_pdf(
     customer_phone: str,
     customer_gstin: str,
     personal: dict[str, str],
+    # Stamps every page CANCELLED (InvoiceDetails.is_deleted).
+    cancelled: bool = False,
 ) -> bytes:
     rendered_items = []
     for index, item in enumerate(line_items, start=1):
@@ -155,6 +157,7 @@ async def generate_proforma_invoice_pdf(
         money=_money,
         quotation_tnc=" ".join(line.strip() for line in personal.get("quotation_tnc", "").splitlines() if line.strip()),
         quotation_notes=[line.strip() for line in personal.get("quotation_notes", "").splitlines() if line.strip()],
+        cancelled=cancelled,
     )
 
     return await render_html_to_pdf(

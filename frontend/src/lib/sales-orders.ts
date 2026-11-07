@@ -151,8 +151,12 @@ export async function fetchSalesOrders(): Promise<SalesOrder[]> {
 // It can legitimately fail — moving an order into "Delivered"/"Completed"
 // takes its quantities out of stock, and the backend rejects the move when
 // there isn't enough — so the caller gets the reason back rather than a
-// boolean. Resolves to null on success, or the message to show on failure.
-export async function updateSalesOrderStatus(id: number, orderStatusId: number): Promise<string | null> {
+// boolean. On success, invoiceChanges says what crossing in or out of
+// "Cancelled" did to the order's invoices.
+export async function updateSalesOrderStatus(
+  id: number,
+  orderStatusId: number,
+): Promise<{ error: string | null; invoiceChanges: InvoiceChanges }> {
   try {
     const response = await apiFetch("/admin/update_sales_order_status", {
       method: "POST",
@@ -160,15 +164,80 @@ export async function updateSalesOrderStatus(id: number, orderStatusId: number):
       body: JSON.stringify({ id, order_status_id: orderStatusId }),
     });
 
+    const body = await response.json().catch(() => null);
     if (response.ok) {
-      return null;
+      return { error: null, invoiceChanges: toInvoiceChanges(body) };
     }
 
     // Surface the backend's actual reason (e.g. "insufficient stock for:
     // product 12 (on hand 3, needs 2 more)") instead of guessing.
-    const body = await response.json().catch(() => null);
-    return typeof body?.detail === "string" ? body.detail : "Couldn't update the status. Please try again.";
+    return {
+      error: typeof body?.detail === "string" ? body.detail : "Couldn't update the status. Please try again.",
+      invoiceChanges: NO_INVOICE_CHANGES,
+    };
   } catch {
-    return "Couldn't reach the server. Please try again.";
+    return { error: "Couldn't reach the server. Please try again.", invoiceChanges: NO_INVOICE_CHANGES };
   }
+}
+
+// What moving an order into or out of "Cancelled" did to its invoices: voided
+// its unpaid ones, or brought them back. unrestoredInvoices holds one
+// "<invoice no>: <reason>" for each that couldn't come back.
+export type InvoiceChanges = {
+  voidedInvoiceNos: string[];
+  restoredInvoiceNos: string[];
+  unrestoredInvoices: string[];
+};
+
+export const NO_INVOICE_CHANGES: InvoiceChanges = {
+  voidedInvoiceNos: [],
+  restoredInvoiceNos: [],
+  unrestoredInvoices: [],
+};
+
+// Takes the whole response body of either update endpoint.
+export function toInvoiceChanges(
+  body: {
+    invoice_changes?: {
+      voided_invoice_nos: string[];
+      restored_invoice_nos: string[];
+      unrestored_invoices: string[];
+    };
+  } | null,
+): InvoiceChanges {
+  const changes = body?.invoice_changes;
+  if (!changes) return NO_INVOICE_CHANGES;
+  return {
+    voidedInvoiceNos: changes.voided_invoice_nos,
+    restoredInvoiceNos: changes.restored_invoice_nos,
+    unrestoredInvoices: changes.unrestored_invoices,
+  };
+}
+
+// What cancelling an order would do to its invoices, shown for confirmation
+// first: unpaid ones get voided, paid ones stay.
+export type SalesOrderCancellationImpact = {
+  unpaidInvoices: { invoiceNoDisplay: string; otherOrderNos: number[] }[];
+  paidInvoiceNos: string[];
+};
+
+type SalesOrderCancellationImpactResponse = {
+  unpaid_invoices: { invoice_no_display: string; other_order_nos: number[] }[];
+  paid_invoice_nos: string[];
+};
+
+export async function fetchSalesOrderCancellationImpact(id: number): Promise<SalesOrderCancellationImpact> {
+  const response = await apiFetch(`/admin/get_sales_order_cancellation_impact?sales_order_id=${id}`);
+  if (!response.ok) {
+    throw new Error("Failed to load the sales order's invoices");
+  }
+
+  const body: SalesOrderCancellationImpactResponse = await response.json();
+  return {
+    unpaidInvoices: body.unpaid_invoices.map((invoice) => ({
+      invoiceNoDisplay: invoice.invoice_no_display,
+      otherOrderNos: invoice.other_order_nos,
+    })),
+    paidInvoiceNos: body.paid_invoice_nos,
+  };
 }

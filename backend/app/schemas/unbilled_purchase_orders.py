@@ -101,13 +101,3 @@ class UnbilledPurchaseOrderListItem(BaseModel):
     id: int
     purchase_order_no: str
     vendor_name: str
-
-
-class UnbilledProductListItem(BaseModel):
-    # The unbilled products a purchase line can be pointed at without
-    # creating a new one. Served from this module rather than read off
-    # get_product_details so the form has a list already narrowed to
-    # is_unbilled, un-deleted products.
-    id: int
-    product_name: str
-    vendor_rate: float

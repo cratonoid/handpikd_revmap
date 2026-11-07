@@ -64,22 +64,6 @@ type UnbilledPurchaseOrderListItem = {
   vendor_name: string;
 };
 
-// An unbilled product a purchase line can point at instead of creating one.
-// Served narrowed to live unbilled products (GET /admin/get_unbilled_products)
-// rather than filtered out of fetchProducts() on the client, so a line can
-// never be pointed at a billed product by accident.
-export type UnbilledProductOption = {
-  id: number;
-  productName: string;
-  vendorRate: number;
-};
-
-type UnbilledProductListItem = {
-  id: number;
-  product_name: string;
-  vendor_rate: number;
-};
-
 export async function fetchUnbilledPurchaseOrders(): Promise<UnbilledPurchaseOrder[]> {
   const response = await apiFetch("/admin/get_unbilled_purchase_order_details");
   if (!response.ok) {
@@ -114,19 +98,5 @@ export async function fetchUnbilledPurchaseOrderList(): Promise<UnbilledPurchase
     id: item.id,
     purchaseOrderNo: item.purchase_order_no,
     vendorName: item.vendor_name,
-  }));
-}
-
-export async function fetchUnbilledProducts(): Promise<UnbilledProductOption[]> {
-  const response = await apiFetch("/admin/get_unbilled_products");
-  if (!response.ok) {
-    throw new Error("Failed to load unbilled products");
-  }
-
-  const items: UnbilledProductListItem[] = await response.json();
-  return items.map((item) => ({
-    id: item.id,
-    productName: item.product_name,
-    vendorRate: item.vendor_rate,
   }));
 }
