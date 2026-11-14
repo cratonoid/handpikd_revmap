@@ -129,8 +129,10 @@ trap on_error ERR
 
 # ---------- 1. preconditions ----------
 step "lock"
-exec 9>"$ROOT/.git/deploy.lock"
-flock -n 9 || { say "❌ another deploy is already running"; exit 1; }
+if [ -z "${DEPLOY_REEXEC:-}" ]; then   # a re-exec inherits fd 9, still locked
+  exec 9>"$ROOT/.git/deploy.lock"
+  flock -n 9 || { say "❌ another deploy is already running"; exit 1; }
+fi
 
 step "clean tree"
 [ "$(git rev-parse --abbrev-ref HEAD)" = "main" ] || { say "❌ not on main"; exit 1; }
@@ -142,10 +144,18 @@ fi
 step "pull main (ff-only)"
 quiet git fetch origin main
 PREV="$(git rev-parse origin/main)"   # what production runs now
+BEFORE="$(git rev-parse HEAD)"
 if ! quiet git merge --ff-only origin/main; then
   say "   local main and origin/main diverged: rebase onto origin/main first"; false
 fi
 NEW="$(git rev-parse HEAD)"
+# bash keeps running the copy of this file it opened, so if the pull just
+# changed deploy.sh, restart as the new version (once) before going on.
+if [ -z "${DEPLOY_REEXEC:-}" ] && ! git diff --quiet "$BEFORE" "$NEW" -- deploy.sh; then
+  say "   deploy.sh was updated by the pull; restarting with the new version"
+  trap - ERR
+  DEPLOY_REEXEC=1 exec bash "$ROOT/deploy.sh" "$@"
+fi
 
 # ---------- 3. install ----------
 step "install backend deps"
