@@ -9,6 +9,7 @@
 // https://nextjs.org/docs/app/api-reference/file-conventions/metadata/sitemap
 import type { MetadataRoute } from "next";
 import { blogPosts } from "@/lib/blogs-data";
+import { policies } from "@/lib/policies-data";
 
 const baseUrl = "https://handpikd.co";
 
@@ -33,5 +34,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.5,
   }));
 
-  return [...staticRoutes, ...blogRoutes];
+  const policyRoutes: MetadataRoute.Sitemap = policies.map((policy) => ({
+    url: `${baseUrl}/policies/${policy.slug}`,
+    changeFrequency: "yearly",
+    priority: 0.3,
+  }));
+
+  return [...staticRoutes, ...blogRoutes, ...policyRoutes];
 }

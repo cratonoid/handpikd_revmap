@@ -1,0 +1,170 @@
+/* =============================================================================
+   /policies/[slug] page styles (src/app/policies/[slug]/page.tsx)
+   =============================================================================
+   Same reading column and type scale as the blog article page
+   (blogs.module.css) so long-form text looks the same across the site.
+   ============================================================================= */
+
+.hero {
+  margin-inline: auto;
+  max-width: 44rem;
+  padding: 3.5rem 1.25rem 2rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.title {
+  margin-top: 1rem;
+  font-family: var(--font-display);
+  font-size: 1.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--color-charcoal);
+}
+
+.effectiveDate {
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  color: color-mix(in srgb, var(--color-ink) 65%, transparent);
+}
+
+.body {
+  margin-inline: auto;
+  max-width: 44rem;
+  padding: 2rem 1.25rem 4rem;
+}
+
+@media (min-width: 640px) {
+  .hero {
+    padding-top: 4.5rem;
+    padding-inline: 2rem;
+  }
+
+  .title {
+    font-size: 2.5rem;
+  }
+
+  .body {
+    padding-inline: 2rem;
+  }
+}
+
+.intro {
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  color: var(--color-ink);
+}
+
+.section {
+  margin-top: 2.25rem;
+}
+
+.sectionHeading {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+@media (min-width: 640px) {
+  .sectionHeading {
+    font-size: 1.5rem;
+  }
+}
+
+.paragraph {
+  margin-top: 1rem;
+  line-height: 1.75;
+  color: var(--color-ink);
+}
+
+.bulletList {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.bulletItem {
+  position: relative;
+  padding-left: 1.25rem;
+  line-height: 1.65;
+  color: var(--color-ink);
+}
+
+/* Small red square bullet, matching blogs.module.css's .articleListItem. */
+.bulletItem::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  height: 0.375rem;
+  width: 0.375rem;
+  background-color: var(--color-red);
+}
+
+.stepList {
+  margin-top: 0.75rem;
+  margin-left: 1.25rem;
+  padding-left: 1.25rem;
+  list-style: decimal;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.stepItem {
+  padding-left: 0.25rem;
+  line-height: 1.65;
+  color: var(--color-ink);
+}
+
+.stepItem::marker {
+  font-weight: 600;
+  color: var(--color-red);
+}
+
+.callout {
+  margin-top: 1.25rem;
+  border-left: 3px solid var(--color-red);
+  border-radius: 0 0.5rem 0.5rem 0;
+  background-color: var(--color-cream-deep);
+  padding: 0.875rem 1rem;
+  line-height: 1.65;
+  color: var(--color-ink);
+}
+
+.calloutLabel {
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.otherPolicies {
+  margin-top: 3.5rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 2rem;
+}
+
+.otherPoliciesHeading {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-ink) 65%, transparent);
+}
+
+.otherPoliciesList {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+}
+
+.otherPoliciesLink {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.otherPoliciesLink:hover {
+  text-decoration: underline;
+}

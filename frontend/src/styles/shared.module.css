@@ -311,7 +311,7 @@
 
 @media (min-width: 768px) {
   .footerGrid {
-    grid-template-columns: 1.4fr 1fr 1fr;
+    grid-template-columns: 1.4fr 1fr 1fr 1fr;
   }
 }
 
@@ -422,15 +422,6 @@
     align-items: center;
     justify-content: space-between;
   }
-}
-
-.footerLegalLinks {
-  display: flex;
-  gap: 1.5rem;
-}
-
-.footerLegalLink:hover {
-  color: var(--color-cream);
 }
 
 /* -----------------------------------------------------------------------

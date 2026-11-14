@@ -12,6 +12,7 @@ import Link from "next/link";
 import { Logo } from "@/components/logo";
 import { MailIcon, PhoneIcon, MapPinIcon, WhatsAppIcon } from "@/components/icons";
 import { siteConfig } from "@/lib/brand";
+import { policies } from "@/lib/policies-data";
 import styles from "@/styles/shared.module.css";
 
 // Reuse the same nav links defined once in brand.ts, but drop "Contact" —
@@ -75,6 +76,20 @@ export function Footer() {
           </div>
 
           <div>
+            <h3 className={styles.footerColHeading}>Policies</h3>
+            <ul className={styles.footerLinkList}>
+              {/* One link per page in src/lib/policies-data.ts. */}
+              {policies.map((policy) => (
+                <li key={policy.slug}>
+                  <Link href={`/policies/${policy.slug}`} className={styles.footerLink}>
+                    {policy.shortTitle}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
             <h3 className={styles.footerColHeading}>Get in touch</h3>
             <ul className={styles.footerContactList}>
               <li className={styles.footerContactItem}>
@@ -108,18 +123,10 @@ export function Footer() {
           </div>
         </div>
 
-        {/* Bottom bar: copyright + legal links. Stacks vertically on
-            mobile, sits side-by-side on larger screens. */}
+        {/* Bottom bar: copyright line. The policy links live in the
+            "Policies" column above. */}
         <div className={styles.footerBottom}>
           <p>&copy; {new Date().getFullYear()} Handpikd. All rights reserved.</p>
-          <div className={styles.footerLegalLinks}>
-            <Link href="#" className={styles.footerLegalLink}>
-              Privacy Policy
-            </Link>
-            <Link href="#" className={styles.footerLegalLink}>
-              Terms of Service
-            </Link>
-          </div>
         </div>
       </div>
     </footer>
