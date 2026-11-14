@@ -57,7 +57,7 @@ try:
 except Exception:
     runs = []
 r = runs[0] if runs else None
-print(f"{r['status']} {r['conclusion']}" if r else "none")'
+print(r.get("status"), r.get("conclusion")) if r else print("none")'
 }
 
 live_commit() {

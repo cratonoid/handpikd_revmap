@@ -32,13 +32,9 @@
       "Bash(git push origin HEAD:main)",
       "Bash(git push *)",
       "Edit(**/deploy.sh)",
-      "Write(**/deploy.sh)",
       "Edit(**/deploy/**)",
-      "Write(**/deploy/**)",
       "Edit(**/.github/**)",
-      "Write(**/.github/**)",
       "Edit(**/backend/scripts/migrate_*)",
-      "Write(**/backend/scripts/migrate_*)",
       "Bash(git rm *)",
       "Bash(rm *)"
     ],
