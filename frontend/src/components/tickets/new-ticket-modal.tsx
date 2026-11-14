@@ -7,30 +7,80 @@
 // Passing `clients` adds the "Client" picker, which is the team's version.
 // A client raises tickets only for themselves, so the portal leaves it out
 // and the backend takes the client from the login.
-import { useState } from "react";
+//
+// "Related order" is optional and lists only that client's own orders: on
+// the team's form it fills in once a client is picked. The backend checks
+// the order belongs to the client either way.
+import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { XMarkIcon } from "@/components/icons";
 import { SingleSelectDropdown } from "@/components/admin/single-select-dropdown";
+import { formatCurrency } from "@/lib/accounts";
 import { customerLabel, type CustomerOption } from "@/lib/customers";
-import type { TicketDetail } from "@/lib/tickets";
+import { formatDate } from "@/lib/format-date";
+import type { TicketDetail, TicketOrderOption } from "@/lib/tickets";
 import styles from "@/styles/dashboard.module.css";
+
+// The picker can't be cleared, so "no order" is an option of its own.
+const NO_ORDER = "";
+
+function orderLabel(order: TicketOrderOption): string {
+  return `Order #${order.orderNo} · ${formatDate(order.date)} · ${formatCurrency(order.totalAmountAfterTax)}`;
+}
 
 export function NewTicketModal({
   clients,
   onCreate,
+  loadOrders,
   onCreated,
   onClose,
 }: {
   clients?: CustomerOption[];
-  onCreate: (custId: number | null, subject: string, message: string) => Promise<TicketDetail>;
+  onCreate: (
+    custId: number | null,
+    subject: string,
+    message: string,
+    salesOrderId: number | null,
+  ) => Promise<TicketDetail>;
+  loadOrders: (custId: number | null) => Promise<TicketOrderOption[]>;
   onCreated: (detail: TicketDetail) => void;
   onClose: () => void;
 }) {
   const [custId, setCustId] = useState<string | null>(null);
+  const [orders, setOrders] = useState<TicketOrderOption[] | null>(null);
+  const [ordersFailed, setOrdersFailed] = useState(false);
+  const [orderId, setOrderId] = useState<string>(NO_ORDER);
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The team's form has no orders to show until a client is picked. Picking
+  // another client drops the previous client's order.
+  const needsClient = Boolean(clients) && !custId;
+  useEffect(() => {
+    if (needsClient) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setOrders(null);
+      setOrdersFailed(false);
+      setOrderId(NO_ORDER);
+    });
+    loadOrders(custId ? Number(custId) : null)
+      .then((data) => {
+        if (!cancelled) setOrders(data);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOrders([]);
+          setOrdersFailed(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [custId, needsClient, loadOrders]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -46,7 +96,14 @@ export function NewTicketModal({
     setSubmitting(true);
     setError(null);
     try {
-      onCreated(await onCreate(custId ? Number(custId) : null, subject.trim(), message.trim()));
+      onCreated(
+        await onCreate(
+          custId ? Number(custId) : null,
+          subject.trim(),
+          message.trim(),
+          orderId === NO_ORDER ? null : Number(orderId),
+        ),
+      );
     } catch (failure) {
       setError((failure as Error).message || "Couldn't raise the ticket. Please try again.");
       setSubmitting(false);
@@ -89,6 +146,38 @@ export function NewTicketModal({
                 />
               </div>
             )}
+
+            <div className={styles.formGridFullSpan}>
+              {needsClient ? (
+                <>
+                  <span className={styles.formLabel}>Related order</span>
+                  <p className={styles.formStaticValue}>Choose the client first.</p>
+                </>
+              ) : orders === null ? (
+                <>
+                  <span className={styles.formLabel}>Related order</span>
+                  <p className={styles.formStaticValue}>Loading orders…</p>
+                </>
+              ) : (
+                <SingleSelectDropdown
+                  // Remount per client, so the search box starts empty.
+                  key={custId ?? "self"}
+                  label="Related order"
+                  placeholder="No specific order"
+                  entityLabel="orders"
+                  showStatusFilter={false}
+                  options={[
+                    { value: NO_ORDER, label: "No specific order", isDeleted: false },
+                    ...orders.map((order) => ({ value: String(order.id), label: orderLabel(order), isDeleted: false })),
+                  ]}
+                  selectedValue={orderId}
+                  onChange={setOrderId}
+                />
+              )}
+              {ordersFailed && (
+                <p className={styles.formError}>Couldn&apos;t load orders. You can still raise the ticket without one.</p>
+              )}
+            </div>
 
             <div className={styles.formGridFullSpan}>
               <label htmlFor="ticket-subject" className={styles.formLabel}>

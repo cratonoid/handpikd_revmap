@@ -11,6 +11,7 @@
 // While open it re-reads the ticket every so often, so a reply from the other
 // side shows up without closing and reopening.
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/button";
 import { XMarkIcon } from "@/components/icons";
 import { StatusSelect } from "@/components/admin/status-select";
@@ -179,6 +180,24 @@ export function TicketThreadModal({
                   <div>
                     <span className={styles.formLabel}>Client</span>
                     <p className={styles.formStaticValue}>{detail.customerName}</p>
+                  </div>
+                )}
+                {detail.salesOrderId !== null && (
+                  <div>
+                    <span className={styles.formLabel}>Order</span>
+                    <p className={styles.formStaticValue}>
+                      {/* Only the team gets a link: the portal has no order page. */}
+                      {viewer === "team" ? (
+                        <Link
+                          href={`/admin/orders/sales/${detail.salesOrderId}/details`}
+                          className={styles.linkButton}
+                        >
+                          #{detail.orderNo ?? detail.salesOrderId}
+                        </Link>
+                      ) : (
+                        `#${detail.orderNo ?? detail.salesOrderId}`
+                      )}
+                    </p>
                   </div>
                 )}
                 <div>

@@ -28,6 +28,7 @@ from app.api.deps import require_section
 from app.api.routes.customer_invoices import require_customer_account
 from app.models import (
     CustomerDetails,
+    SalesOrders,
     Section,
     Ticket,
     TicketIdCounter,
@@ -45,6 +46,7 @@ from app.schemas.tickets import (
     TicketDetail,
     TicketListItem,
     TicketMessageItem,
+    TicketOrderOption,
     UpdateTicketStatusRequest,
 )
 from app.services.counters import get_next_id
@@ -120,6 +122,35 @@ def _check_open_for_messages(ticket: Ticket) -> None:
         )
 
 
+async def _order_options(customer: CustomerDetails) -> list[TicketOrderOption]:
+    # The client's live orders, newest first, for the "Related order" picker.
+    orders = (
+        await SalesOrders.find(SalesOrders.cust_id == customer.id, SalesOrders.is_deleted == False)  # noqa: E712
+        .sort(-SalesOrders.date, -SalesOrders.id)
+        .to_list()
+    )
+    return [
+        TicketOrderOption(
+            id=order.id,
+            order_no=order.order_no,
+            date=order.date,
+            total_amount_after_tax=order.total_amount_after_tax,
+        )
+        for order in orders
+    ]
+
+
+async def _check_order(customer: CustomerDetails, sales_order_id: int | None) -> int | None:
+    # The same "order not found" whether the id doesn't exist, is deleted or
+    # belongs to another client, so a client can't probe for other orders.
+    if sales_order_id is None:
+        return None
+    order = await SalesOrders.get(sales_order_id)
+    if order is None or order.is_deleted or order.cust_id != customer.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="order not found for this client")
+    return order.id
+
+
 async def _add_message(
     ticket: Ticket,
     side: TicketSide,
@@ -153,17 +184,20 @@ async def _create_ticket(
     side: TicketSide,
     user_id: int | None,
     author_name: str,
+    sales_order_id: int | None = None,
 ) -> Ticket:
-    # Both validated before anything is written, so a bad message can't
-    # leave behind a ticket with an empty thread.
+    # All validated before anything is written, so a bad message or order
+    # can't leave behind a half-made ticket.
     subject = _clean_subject(subject)
     body = _clean_body(message)
+    sales_order_id = await _check_order(customer, sales_order_id)
 
     now = _now()
     ticket_id = await get_next_id(TicketIdCounter, "next_ticket_id", Ticket)
     ticket = Ticket(
         id=ticket_id,
         cust_id=customer.id,
+        sales_order_id=sales_order_id,
         subject=subject,
         status=TicketStatus.open,
         raised_by=side,
@@ -193,11 +227,23 @@ async def _message_counts(ticket_ids: list[int]) -> dict[int, int]:
     return {row["_id"]: row["count"] async for row in cursor}
 
 
-def _to_list_item(ticket: Ticket, customer_name: str, message_count: int) -> TicketListItem:
+async def _order_nos(sales_order_ids: list[int]) -> dict[int, int]:
+    if not sales_order_ids:
+        return {}
+    orders = await SalesOrders.find(In(SalesOrders.id, sales_order_ids)).to_list()
+    return {order.id: order.order_no for order in orders}
+
+
+def _to_list_item(
+    ticket: Ticket, customer_name: str, message_count: int, order_no_by_id: dict[int, int]
+) -> TicketListItem:
     return TicketListItem(
         id=ticket.id,
         cust_id=ticket.cust_id,
         customer_name=customer_name,
+        sales_order_id=ticket.sales_order_id,
+        # None if the order was hard-deleted since; the id is kept regardless.
+        order_no=order_no_by_id.get(ticket.sales_order_id) if ticket.sales_order_id is not None else None,
         subject=ticket.subject,
         status=ticket.status,
         raised_by=ticket.raised_by,
@@ -215,7 +261,8 @@ async def _to_detail(ticket: Ticket, customer: CustomerDetails | None) -> Ticket
         .to_list()
     )
     message_count = sum(1 for message in messages if message.kind == TicketMessageKind.message)
-    base = _to_list_item(ticket, _customer_label(customer), message_count)
+    order_nos = await _order_nos([ticket.sales_order_id] if ticket.sales_order_id is not None else [])
+    base = _to_list_item(ticket, _customer_label(customer), message_count, order_nos)
     return TicketDetail(
         **base.model_dump(),
         messages=[
@@ -238,8 +285,11 @@ async def _list_items(tickets: list[Ticket]) -> list[TicketListItem]:
     customers = await CustomerDetails.find(In(CustomerDetails.id, cust_ids)).to_list() if cust_ids else []
     label_by_id = {customer.id: _customer_label(customer) for customer in customers}
     counts = await _message_counts([ticket.id for ticket in tickets])
+    order_nos = await _order_nos(sorted({t.sales_order_id for t in tickets if t.sales_order_id is not None}))
     return [
-        _to_list_item(ticket, label_by_id.get(ticket.cust_id, _customer_label(None)), counts.get(ticket.id, 0))
+        _to_list_item(
+            ticket, label_by_id.get(ticket.cust_id, _customer_label(None)), counts.get(ticket.id, 0), order_nos
+        )
         for ticket in tickets
     ]
 
@@ -273,13 +323,26 @@ async def get_my_ticket_details(
     return await _to_detail(ticket, customer)
 
 
+@customer_router.get("/get_my_ticket_orders", response_model=list[TicketOrderOption])
+async def get_my_ticket_orders(
+    customer: CustomerDetails = Depends(require_customer_account),
+) -> list[TicketOrderOption]:
+    return await _order_options(customer)
+
+
 @customer_router.post("/create_my_ticket", response_model=TicketDetail)
 async def create_my_ticket(
     payload: CreateMyTicketRequest,
     customer: CustomerDetails = Depends(require_customer_account),
 ) -> TicketDetail:
     ticket = await _create_ticket(
-        customer, payload.subject, payload.message, TicketSide.client, customer.user_id, customer.registered_name
+        customer,
+        payload.subject,
+        payload.message,
+        TicketSide.client,
+        customer.user_id,
+        customer.registered_name,
+        payload.sales_order_id,
     )
     await notify(
         "ticket.raised",
@@ -337,6 +400,16 @@ async def get_ticket_details(ticket_id: int, _: User | None = Depends(_require_t
     return await _to_detail(ticket, await CustomerDetails.get(ticket.cust_id))
 
 
+@router.get("/get_client_orders", response_model=list[TicketOrderOption])
+async def get_client_orders(cust_id: int, _: User | None = Depends(_require_tickets)) -> list[TicketOrderOption]:
+    # Lives under Tickets rather than Orders so a role with only the Tickets
+    # section can still fill in the picker.
+    customer = await CustomerDetails.get(cust_id)
+    if customer is None or customer.is_deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="client not found")
+    return await _order_options(customer)
+
+
 @router.post("/create_ticket", response_model=TicketDetail)
 async def create_ticket(
     payload: CreateTicketRequest,
@@ -353,6 +426,7 @@ async def create_ticket(
         TicketSide.team,
         current_user.id if current_user is not None else None,
         _team_author_name(current_user),
+        payload.sales_order_id,
     )
     return await _to_detail(ticket, customer)
 

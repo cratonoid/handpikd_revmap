@@ -25,6 +25,10 @@ export type Ticket = {
   id: number;
   custId: number;
   customerName: string;
+  // The order the ticket was raised about, if any. orderNo is what both
+  // sides call it; salesOrderId is for the team's link to the order.
+  salesOrderId: number | null;
+  orderNo: number | null;
   subject: string;
   status: TicketStatus;
   raisedBy: TicketSide;
@@ -51,6 +55,8 @@ export type TicketListItemResponse = {
   id: number;
   cust_id: number;
   customer_name: string;
+  sales_order_id: number | null;
+  order_no: number | null;
   subject: string;
   status: TicketStatus;
   raised_by: TicketSide;
@@ -83,6 +89,8 @@ export function toTicket(item: TicketListItemResponse): Ticket {
     id: item.id,
     custId: item.cust_id,
     customerName: item.customer_name,
+    salesOrderId: item.sales_order_id,
+    orderNo: item.order_no,
     subject: item.subject,
     status: item.status,
     raisedBy: item.raised_by,
@@ -106,6 +114,32 @@ export function toTicketDetail(item: TicketDetailResponse): TicketDetail {
       createdAt: utc(message.created_at),
     })),
   };
+}
+
+// One entry in the raise-a-ticket form's "Related order" picker.
+export type TicketOrderOption = {
+  id: number;
+  orderNo: number;
+  date: string;
+  totalAmountAfterTax: number;
+};
+
+type TicketOrderOptionResponse = {
+  id: number;
+  order_no: number;
+  date: string;
+  total_amount_after_tax: number;
+};
+
+export async function orderOptionsOrThrow(response: Response): Promise<TicketOrderOption[]> {
+  if (!response.ok) throw new Error("Failed to load orders");
+  const items: TicketOrderOptionResponse[] = await response.json();
+  return items.map((item) => ({
+    id: item.id,
+    orderNo: item.order_no,
+    date: utc(item.date),
+    totalAmountAfterTax: item.total_amount_after_tax,
+  }));
 }
 
 // The backend's 400s carry a readable `detail` ("this ticket is closed…"),
@@ -149,9 +183,23 @@ export async function fetchTicketDetail(ticketId: number): Promise<TicketDetail>
   );
 }
 
-export async function createTicket(custId: number, subject: string, message: string): Promise<TicketDetail> {
+export async function fetchClientOrders(custId: number): Promise<TicketOrderOption[]> {
+  return orderOptionsOrThrow(await apiFetch(`/admin/tickets/get_client_orders?cust_id=${custId}`));
+}
+
+export async function createTicket(
+  custId: number,
+  subject: string,
+  message: string,
+  salesOrderId: number | null,
+): Promise<TicketDetail> {
   return detailOrThrow(
-    await postJson("/admin/tickets/create_ticket", { cust_id: custId, subject, message }),
+    await postJson("/admin/tickets/create_ticket", {
+      cust_id: custId,
+      subject,
+      message,
+      sales_order_id: salesOrderId,
+    }),
     "Failed to raise ticket",
   );
 }

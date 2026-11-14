@@ -9,12 +9,14 @@
 import { apiFetch } from "@/lib/api";
 import {
   errorDetail,
+  orderOptionsOrThrow,
   postJson,
   toTicket,
   toTicketDetail,
   type Ticket,
   type TicketDetail,
   type TicketListItemResponse,
+  type TicketOrderOption,
 } from "@/lib/tickets";
 
 export async function fetchMyTickets(): Promise<Ticket[]> {
@@ -36,8 +38,20 @@ export async function fetchMyTicketDetail(ticketId: number): Promise<TicketDetai
   );
 }
 
-export async function createMyTicket(subject: string, message: string): Promise<TicketDetail> {
-  return detailOrThrow(await postJson("/customer/create_my_ticket", { subject, message }), "Failed to raise ticket");
+// The signed-in client's own orders, for the "Related order" picker.
+export async function fetchMyTicketOrders(): Promise<TicketOrderOption[]> {
+  return orderOptionsOrThrow(await apiFetch("/customer/get_my_ticket_orders"));
+}
+
+export async function createMyTicket(
+  subject: string,
+  message: string,
+  salesOrderId: number | null,
+): Promise<TicketDetail> {
+  return detailOrThrow(
+    await postJson("/customer/create_my_ticket", { subject, message, sales_order_id: salesOrderId }),
+    "Failed to raise ticket",
+  );
 }
 
 export async function postMyTicketMessage(ticketId: number, body: string): Promise<TicketDetail> {

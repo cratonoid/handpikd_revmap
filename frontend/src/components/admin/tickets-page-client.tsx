@@ -8,14 +8,22 @@
 // changing status.
 import { TicketsPage, type TicketsApi } from "@/components/tickets/tickets-page";
 import { fetchCustomerList } from "@/lib/customers";
-import { createTicket, fetchTicketDetail, fetchTickets, postTicketMessage, updateTicketStatus } from "@/lib/tickets";
+import {
+  createTicket,
+  fetchClientOrders,
+  fetchTicketDetail,
+  fetchTickets,
+  postTicketMessage,
+  updateTicketStatus,
+} from "@/lib/tickets";
 
 // Module-level, so the page's effects see the same functions every render.
 const ADMIN_TICKETS_API: TicketsApi = {
   list: fetchTickets,
   load: fetchTicketDetail,
   send: postTicketMessage,
-  create: (custId, subject, message) => createTicket(custId ?? 0, subject, message),
+  create: (custId, subject, message, salesOrderId) => createTicket(custId ?? 0, subject, message, salesOrderId),
+  loadOrders: (custId) => (custId === null ? Promise.resolve([]) : fetchClientOrders(custId)),
   updateStatus: updateTicketStatus,
   loadClients: fetchCustomerList,
 };

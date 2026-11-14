@@ -32,6 +32,11 @@ class TicketSide(str, Enum):
 class Ticket(Document):
     id: int
     cust_id: int  # FK -> CustomerDetails.id
+    # The order the ticket is about, if any. Optional: plenty of tickets
+    # ("please update our GST number") aren't about one order. Always one of
+    # cust_id's own orders (checked in routes/tickets.py), and set only when
+    # the ticket is raised.
+    sales_order_id: int | None = None  # FK -> SalesOrders.id
     subject: str
     status: TicketStatus = TicketStatus.open
     raised_by: TicketSide

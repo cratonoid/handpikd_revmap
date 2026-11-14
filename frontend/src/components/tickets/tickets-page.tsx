@@ -22,6 +22,7 @@ import {
   ticketStatusLabel,
   type Ticket,
   type TicketDetail,
+  type TicketOrderOption,
   type TicketSide,
   type TicketStatus,
 } from "@/lib/tickets";
@@ -31,7 +32,15 @@ export type TicketsApi = {
   list: () => Promise<Ticket[]>;
   load: (ticketId: number) => Promise<TicketDetail>;
   send: (ticketId: number, body: string) => Promise<TicketDetail>;
-  create: (custId: number | null, subject: string, message: string) => Promise<TicketDetail>;
+  create: (
+    custId: number | null,
+    subject: string,
+    message: string,
+    salesOrderId: number | null,
+  ) => Promise<TicketDetail>;
+  // Orders for the "Related order" picker. custId is the client picked on the
+  // team's form, and null on the portal, where the login decides.
+  loadOrders: (custId: number | null) => Promise<TicketOrderOption[]>;
   // Team only.
   updateStatus?: (ticketId: number, status: TicketStatus) => Promise<TicketDetail>;
   loadClients?: () => Promise<CustomerOption[]>;
@@ -174,6 +183,7 @@ export function TicketsPage({ viewer, api }: { viewer: TicketSide; api: TicketsA
               <th className={styles.tableHeadCell}>Ticket</th>
               <th className={styles.tableHeadCell}>Subject</th>
               {viewer === "team" && <th className={styles.tableHeadCell}>Client</th>}
+              <th className={styles.tableHeadCell}>Order</th>
               <th className={styles.tableHeadCell}>Status</th>
               <th className={styles.tableHeadCell}>Messages</th>
               <th className={styles.tableHeadCell}>Last activity</th>
@@ -192,6 +202,7 @@ export function TicketsPage({ viewer, api }: { viewer: TicketSide; api: TicketsA
                   )}
                 </td>
                 {viewer === "team" && <td className={styles.tableCell}>{ticket.customerName}</td>}
+                <td className={styles.tableCell}>{ticket.orderNo !== null ? `#${ticket.orderNo}` : "—"}</td>
                 <td className={`${styles.tableCell} ${styles.statusText} ${TICKET_STATUS_COLOR[ticket.status]}`}>
                   {ticketStatusLabel(ticket.status)}
                 </td>
@@ -219,6 +230,7 @@ export function TicketsPage({ viewer, api }: { viewer: TicketSide; api: TicketsA
         <NewTicketModal
           clients={viewer === "team" ? (clients ?? []) : undefined}
           onCreate={api.create}
+          loadOrders={api.loadOrders}
           onCreated={(detail) => {
             upsert(detail);
             setCreating(false);

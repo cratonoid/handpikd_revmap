@@ -5,7 +5,8 @@
 #   - a closed ticket takes no new messages from either side,
 #   - a client replying to a resolved ticket reopens it,
 #   - a team status change is recorded on the thread but doesn't count as a
-#     reply (the "awaiting reply" flag stays put).
+#     reply (the "awaiting reply" flag stays put),
+#   - a linked order must be one of the ticket's client's own live orders.
 #
 # Ticket / TicketMessage are stubbed rather than queried, same approach as
 # test_customer_invoice_access.py: real Beanie queries need a live Mongo.
@@ -239,3 +240,48 @@ def test_subject_is_trimmed_and_required():
         tickets._clean_subject("   ")
     with pytest.raises(HTTPException):
         tickets._clean_subject("x" * (tickets.SUBJECT_MAX_LENGTH + 1))
+
+
+# ---------------------------------------------------------------------------
+# Related order
+# ---------------------------------------------------------------------------
+class _StubOrder:
+    def __init__(self, order_id: int, cust_id: int, is_deleted: bool = False) -> None:
+        self.id = order_id
+        self.cust_id = cust_id
+        self.is_deleted = is_deleted
+
+
+@pytest.fixture
+def orders(monkeypatch):
+    by_id: dict[int, _StubOrder] = {}
+
+    async def _get(order_id):
+        return by_id.get(order_id)
+
+    monkeypatch.setattr(tickets.SalesOrders, "get", _get)
+    return by_id
+
+
+def test_no_order_is_fine(orders):
+    assert asyncio.run(tickets._check_order(_StubCustomer(4), None)) is None
+
+
+def test_the_clients_own_order_can_be_linked(orders):
+    orders[11] = _StubOrder(11, cust_id=4)
+    assert asyncio.run(tickets._check_order(_StubCustomer(4), 11)) == 11
+
+
+@pytest.mark.parametrize(
+    "order",
+    [None, _StubOrder(11, cust_id=9), _StubOrder(11, cust_id=4, is_deleted=True)],
+    ids=["missing", "another-clients", "deleted"],
+)
+def test_an_order_that_isnt_the_clients_is_refused(orders, order):
+    if order is not None:
+        orders[11] = order
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(tickets._check_order(_StubCustomer(4), 11))
+    # One answer for all three, so ids can't be probed.
+    assert error.value.status_code == 400
+    assert error.value.detail == "order not found for this client"

@@ -15,6 +15,10 @@ class TicketListItem(BaseModel):
     cust_id: int
     # "Name · Department", as every other admin picker labels a client.
     customer_name: str
+    # The linked order, if the ticket was raised about one. order_no is the
+    # number the client knows it by; sales_order_id is for the team's link.
+    sales_order_id: int | None
+    order_no: int | None
     subject: str
     status: TicketStatus
     raised_by: TicketSide
@@ -42,6 +46,8 @@ class TicketDetail(TicketListItem):
 class CreateMyTicketRequest(BaseModel):
     subject: str
     message: str
+    # Optional. Must be one of the ticket's client's own orders.
+    sales_order_id: int | None = None
 
 
 class CreateTicketRequest(CreateMyTicketRequest):
@@ -57,3 +63,11 @@ class PostTicketMessageRequest(BaseModel):
 class UpdateTicketStatusRequest(BaseModel):
     ticket_id: int
     status: TicketStatus
+
+
+class TicketOrderOption(BaseModel):
+    # One entry in the "Related order" picker on the raise-a-ticket form.
+    id: int  # SalesOrders.id
+    order_no: int
+    date: datetime
+    total_amount_after_tax: float
