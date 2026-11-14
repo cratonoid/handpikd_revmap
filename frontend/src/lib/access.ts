@@ -26,6 +26,8 @@ export type SectionKey =
   | "product_inquiries"
   | "quotation"
   | "letters"
+  | "information"
+  | "tickets"
   | "profile"
   | "emails"
   | "campaigns"
@@ -45,6 +47,7 @@ export type AdminSection = {
 export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "dashboard", label: "Analytical Dashboard", href: "/admin" },
   { key: "clients", label: "Clients", href: "/admin/clients" },
+  { key: "tickets", label: "Tickets", href: "/admin/tickets" },
   { key: "vendors", label: "Vendors", href: "/admin/vendors" },
   { key: "database", label: "Database", href: "/admin/database" },
   { key: "emails", label: "Emails", href: "/admin/emails" },
@@ -61,6 +64,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "product_inquiries", label: "Product Inquiries", href: "/admin/product-inquiries" },
   { key: "quotation", label: "Quotation", href: "/admin/quotation" },
   { key: "letters", label: "Letters", href: "/admin/letters" },
+  { key: "information", label: "Information", href: "/admin/information" },
   { key: "profile", label: "Profile", href: "/admin/profile" },
   { key: "users", label: "Users & Roles", href: "/admin/users" },
   { key: "backups", label: "Backup & Restore", href: "/admin/backups", administratorOnly: true },

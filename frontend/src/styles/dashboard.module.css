@@ -5692,3 +5692,389 @@ select.formInput:disabled {
   left: 0;
   z-index: 2;
 }
+
+/* -----------------------------------------------------------------------
+   Support tickets (components/tickets/*)
+   ----------------------------------------------------------------------- */
+
+.ticketPanel {
+  max-width: 48rem;
+}
+
+.ticketMeta {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+}
+
+/* The conversation. Capped and scrollable so the reply box stays in reach
+   on a long thread. */
+.ticketThread {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: min(50vh, 28rem);
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background-color: var(--color-cream);
+  padding: 0.85rem;
+}
+
+.ticketMessage {
+  align-self: flex-start;
+  max-width: 85%;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem 0.75rem 0.75rem 0.2rem;
+  background-color: var(--color-white);
+  padding: 0.6rem 0.8rem;
+}
+
+/* The viewer's own messages, on the right in the beige tertiary fill. */
+.ticketMessageOwn {
+  align-self: flex-end;
+  border-radius: 0.75rem 0.75rem 0.2rem 0.75rem;
+  background-color: var(--color-cream-deep);
+}
+
+.ticketMessageMeta {
+  margin-bottom: 0.25rem;
+  font-size: 0.7rem;
+  color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+}
+
+.ticketMessageAuthor {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.ticketMessageBody {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--color-ink);
+}
+
+/* A status change, as a quiet centred line between messages. */
+.ticketEvent {
+  align-self: center;
+  text-align: center;
+  font-size: 0.7rem;
+  color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+}
+
+.ticketReplyForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* "Awaiting reply" / "New reply" next to a subject in the list. Same pill as
+   .partialBadge, in the "new" blue. */
+.ticketWaitingBadge {
+  margin-left: 0.5rem;
+  white-space: nowrap;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, var(--color-status-new) 12%, transparent);
+  padding: 0.1rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-status-new);
+}
+
+/* -----------------------------------------------------------------------
+   Notification bell (components/admin/notification-bell.tsx)
+   ----------------------------------------------------------------------- */
+
+.notificationWrap {
+  position: relative;
+}
+
+.notificationButton {
+  position: relative;
+  display: inline-flex;
+  height: 2.25rem;
+  width: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: var(--color-charcoal);
+  transition: background-color 150ms ease;
+}
+
+.notificationButton:hover,
+.notificationButton[aria-expanded="true"] {
+  background-color: var(--color-button-tertiary);
+}
+
+.notificationBadge {
+  position: absolute;
+  top: 0.1rem;
+  right: 0.05rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 9999px;
+  background-color: var(--color-red);
+  padding: 0 0.3rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.1rem;
+  text-align: center;
+  color: var(--color-white);
+}
+
+/* Anchored under the bell. On a phone it spans the screen width instead, so
+   it never hangs off the left edge. */
+.notificationPanel {
+  position: fixed;
+  top: calc(3.75rem + env(safe-area-inset-top));
+  right: 0.75rem;
+  left: 0.75rem;
+  z-index: 60;
+  display: flex;
+  max-height: min(70vh, 32rem);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 0.85rem;
+  background-color: var(--color-white);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.12);
+}
+
+@media (min-width: 640px) {
+  .notificationPanel {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    right: 0;
+    left: auto;
+    width: 22rem;
+  }
+}
+
+.notificationPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0.75rem 1rem;
+  font-size: 0.8125rem;
+}
+
+.notificationPanelTitle {
+  font-weight: 700;
+  color: var(--color-charcoal);
+}
+
+.notificationList {
+  overflow-y: auto;
+}
+
+.notificationEmpty {
+  padding: 1.25rem 1rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: color-mix(in srgb, var(--color-ink) 60%, transparent);
+}
+
+.notificationItem {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+  padding: 0.7rem 1rem 0.7rem 1.4rem;
+  text-align: left;
+  transition: background-color 150ms ease;
+}
+
+.notificationItem:hover {
+  background-color: var(--color-cream);
+}
+
+/* Unread: a red dot in the left gutter and a bolder title. */
+.notificationItemUnread {
+  position: relative;
+  background-color: color-mix(in srgb, var(--color-cream-deep) 35%, transparent);
+}
+
+.notificationItemUnread::before {
+  content: "";
+  position: absolute;
+  top: 1rem;
+  left: 0.6rem;
+  height: 0.4rem;
+  width: 0.4rem;
+  border-radius: 9999px;
+  background-color: var(--color-red);
+}
+
+.notificationItemTitle {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-ink);
+}
+
+.notificationItemUnread .notificationItemTitle {
+  font-weight: 700;
+}
+
+.notificationItemBody {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--color-ink) 70%, transparent);
+}
+
+.notificationItemTime {
+  font-size: 0.68rem;
+  color: color-mix(in srgb, var(--color-ink) 50%, transparent);
+}
+
+/* -----------------------------------------------------------------------
+   Holiday calendar (components/admin/holiday-calendar-tab.tsx)
+   ----------------------------------------------------------------------- */
+
+.holidayToolbar {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.holidayToolbarText {
+  font-size: 0.875rem;
+  color: color-mix(in srgb, var(--color-ink) 72%, transparent);
+}
+
+.holidayGrid {
+  margin-top: 1rem;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+}
+
+.holidayMonth {
+  display: flex;
+  flex-direction: column;
+  border-radius: 1rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-white);
+  padding: 1rem 1rem 0.75rem;
+}
+
+/* The month we're in, so "what's coming up" is the first thing seen. */
+.holidayMonthCurrent {
+  border-color: var(--color-charcoal);
+  box-shadow: 0 0 0 1px var(--color-charcoal);
+}
+
+.holidayMonthHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.holidayMonthTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.holidayMonthBadge {
+  border-radius: 9999px;
+  background-color: var(--color-cream-deep);
+  padding: 0.1rem 0.55rem;
+  font-family: var(--font-sans, inherit);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-ink);
+}
+
+.holidayAddButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.875rem;
+  width: 1.875rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-cream);
+  color: var(--color-charcoal);
+  cursor: pointer;
+  transition: background-color 150ms;
+}
+
+.holidayAddButton:hover {
+  background-color: var(--color-cream-deep);
+}
+
+.holidayEmpty {
+  padding: 0.75rem 0 0.25rem;
+  font-size: 0.8125rem;
+  color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+}
+
+.holidayList {
+  margin-top: 0.4rem;
+  list-style: none;
+  padding: 0;
+}
+
+/* The whole row is the edit button; pulled out by its own padding so the
+   hover fill lines up with the card's content edge. */
+.holidayItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.5rem;
+  row-gap: 0.1rem;
+  width: calc(100% + 1rem);
+  margin: 0 -0.5rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: none;
+  padding: 0.45rem 0.5rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms;
+}
+
+.holidayItem:hover,
+.holidayItem:focus-visible {
+  background-color: var(--color-cream);
+}
+
+.holidayItemName {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+.holidayItemWhen {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--color-red);
+}
+
+.holidayItemNote {
+  flex-basis: 100%;
+  font-size: 0.78rem;
+  color: color-mix(in srgb, var(--color-ink) 65%, transparent);
+}

@@ -50,6 +50,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Logo } from "@/components/logo";
+import { NotificationBell } from "@/components/admin/notification-bell";
 import {
   ArchiveBoxIcon,
   BackupIcon,
@@ -61,6 +62,7 @@ import {
   GiftBoxIcon,
   HomeIcon,
   IdCardIcon,
+  InformationIcon,
   InboxIcon,
   LedgerIcon,
   LogoutIcon,
@@ -74,6 +76,7 @@ import {
   ShoppingCartIcon,
   StorefrontIcon,
   TagIcon,
+  TicketIcon,
   UsersIcon,
   XMarkIcon,
 } from "@/components/icons";
@@ -103,6 +106,7 @@ type NavItem = {
 const SECTION_ICONS: Record<SectionKey, Icon> = {
   dashboard: ChartBarIcon,
   clients: UsersIcon,
+  tickets: TicketIcon,
   vendors: StorefrontIcon,
   database: DatabaseIcon,
   emails: MailIcon,
@@ -119,6 +123,7 @@ const SECTION_ICONS: Record<SectionKey, Icon> = {
   product_inquiries: InboxIcon,
   quotation: DocumentTextIcon,
   letters: PenIcon,
+  information: InformationIcon,
   profile: IdCardIcon,
   users: ShieldUserIcon,
   backups: BackupIcon,
@@ -134,12 +139,13 @@ const NAV_ITEMS: Record<UserRole, NavItem[]> = {
   customer: [
     { label: "Dashboard", href: "/customer", icon: HomeIcon },
     { label: "Invoices", href: "/customer/invoices", icon: ReceiptIcon },
+    { label: "Support tickets", href: "/customer/tickets", icon: TicketIcon },
   ],
 };
 
 // The phone-only bottom tab bar: the screens reached for most often on the go,
 // one tap away instead of two through the drawer. Everything else (and these
-// too) stays in the drawer. Customers have only two destinations, so the
+// too) stays in the drawer. Customers have only three destinations, so the
 // drawer alone serves them and they get no tab bar.
 const TAB_ITEMS: Partial<Record<UserRole, NavItem[]>> = {
   admin: [
@@ -376,6 +382,8 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
         </div>
 
         <div className={styles.topbarRight}>
+          {/* Team accounts only: the notification module is admin-side. */}
+          {role === "admin" && <NotificationBell />}
           <span className={styles.roleBadge}>{roleLabel}</span>
           {/* aria-label rather than relying on the text: .logoutButtonLabel is
               display: none under 420px, which would otherwise leave this an

@@ -11,7 +11,6 @@ import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { ProductsPageClient } from "@/components/products/products-page-client";
 import styles from "@/styles/shared.module.css";
-import { SaleBand } from "@/components/sale/sale-band"; // SALE:
 
 // Page-specific metadata. Because layout.tsx's `metadata.title.template` is
 // `"%s | Handpikd"`, this "Shop Corporate Gifts" title actually renders as
@@ -34,9 +33,6 @@ export default function ProductsPage() {
             and search engines) so the page still has a proper heading for
             accessibility/SEO even without a visible title band. */}
         <h1 className="sr-only">Corporate Gifting Catalogue</h1>
-
-        {/* SALE: festive band */}
-        <SaleBand tagline="Festive gifts for your teams and clients this Diwali" />
 
         {/* Everything visible on this page — the filter sidebar, the price
             slider, and the product grid — lives in this one Client

@@ -15,10 +15,12 @@ from app.api.routes import (
     database_contacts,
     emails,
     expenses,
+    information,
     inquiry_form,
     inventory,
     invoices,
     letters,
+    notifications,
     orders,
     personal_details,
     price_lists,
@@ -30,6 +32,7 @@ from app.api.routes import (
     quotations,
     sales_orders,
     test,
+    tickets,
     unbilled_orders,
     users,
     vendors,
@@ -71,3 +74,7 @@ api_router.include_router(printing_purchase_invoices.router)
 api_router.include_router(unbilled_orders.router)
 api_router.include_router(quotations.router)
 api_router.include_router(letters.router)
+api_router.include_router(information.router)
+api_router.include_router(tickets.router)
+api_router.include_router(tickets.customer_router)
+api_router.include_router(notifications.router)

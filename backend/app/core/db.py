@@ -46,9 +46,14 @@ from app.models import (
     InventoryHistory,
     InventoryHistoryIdCounter,
     InventoryIdCounter,
+    HolidayEvent,
+    HolidayEventIdCounter,
     InvoiceDetails,
     InvoiceIdCounter,
     InvoiceNoCounterMaster,
+    Notification,
+    NotificationIdCounter,
+    NotificationRead,
     OrderNoCounterMaster,
     OrderStatusMaster,
     LetterDetails,
@@ -92,6 +97,10 @@ from app.models import (
     SalesSummary,
     SalesSummaryIdCounter,
     StandardInvoiceNoCounterMaster,
+    Ticket,
+    TicketIdCounter,
+    TicketMessage,
+    TicketMessageIdCounter,
     UnbilledPurchaseOrderIdCounter,
     UnbilledPurchaseOrders,
     UnbilledPurchaseSummary,
@@ -169,6 +178,42 @@ _PERSONAL_DETAILS_CORRECTIONS = {
 }
 
 
+# The Information section's holiday / gifting calendar, as first supplied.
+# (month, name, when, note). Seeded once by _seed_holiday_events; after that
+# the team edits it on /admin/information and this list is never re-applied.
+_HOLIDAY_EVENT_SEED: list[tuple[int, str, str, str]] = [
+    (1, "New Year", "1st", ""),
+    (1, "Lohri", "13th", ""),
+    (1, "Makar Sankranti / Pongal", "14th-15th", ""),
+    (1, "Republic Day", "26th", ""),
+    (1, "Chinese New Year", "late Jan/early Feb", ""),
+    (2, "Valentine's Day", "14th", ""),
+    (2, "Employee Appreciation", "", "concepts tie-in"),
+    (2, "Vasant Panchami", "", ""),
+    (3, "International Women's Day", "8th", ""),
+    (4, "Easter", "varies", ""),
+    (4, "Earth Day", "22nd", ""),
+    (4, "Corporate welcome kits", "", ""),
+    (5, "Labour Day", "1st", ""),
+    (6, "World Environment Day", "5th", ""),
+    (6, "Father's Day", "3rd Sunday", ""),
+    (8, "Indian Independence Day", "15th", ""),
+    (8, "Raksha Bandhan", "", ""),
+    (8, "Onam", "", ""),
+    (9, "Teacher's Day", "5th", ""),
+    (9, "Ganesh Chaturthi", "", ""),
+    (10, "Durga Puja", "", ""),
+    (10, "Dussehra", "", ""),
+    (10, "Boss's Day", "16th", ""),
+    (10, "Halloween", "31st", ""),
+    (11, "Diwali", "", "the biggest corporate gifting season"),
+    (11, "Black Friday", "", ""),
+    (12, "Christmas", "25th", ""),
+    (12, "New Year's Eve", "31st", ""),
+    (12, "Year-end employee rewards & client appreciation", "", "season"),
+]
+
+
 def get_db() -> AsyncDatabase:
     if client is None:
         raise RuntimeError("MongoDB client is not connected")
@@ -212,6 +257,25 @@ async def _seed_system_role() -> None:
     elif not existing.is_system:
         existing.is_system = True
         await existing.save()
+
+
+async def _seed_holiday_events() -> None:
+    # Only ever runs on a database that has never had the calendar: the
+    # counter document is the "already seeded" marker, so an admin who
+    # deletes every entry doesn't see the defaults come back on restart.
+    counters = HolidayEventIdCounter.get_pymongo_collection()
+    if await counters.find_one({"_id": 1}) is not None:
+        return
+    if await HolidayEvent.find_all().count() > 0:
+        return
+
+    order_in_month: dict[int, int] = {}
+    for event_id, (month, name, when, note) in enumerate(_HOLIDAY_EVENT_SEED, start=1):
+        sort_order = order_in_month.get(month, 0)
+        order_in_month[month] = sort_order + 1
+        await HolidayEvent(id=event_id, month=month, name=name, when=when, note=note, sort_order=sort_order).insert()
+    # Holds the last id used, same as get_next_id leaves it.
+    await counters.insert_one({"_id": 1, "next_holiday_event_id": len(_HOLIDAY_EVENT_SEED)})
 
 
 async def _backfill_admin_role_ids() -> None:
@@ -533,6 +597,15 @@ DOCUMENT_MODELS = [
     CampaignIdCounter,
     CampaignLead,
     CampaignLeadIdCounter,
+    Ticket,
+    TicketIdCounter,
+    TicketMessage,
+    TicketMessageIdCounter,
+    Notification,
+    NotificationIdCounter,
+    NotificationRead,
+    HolidayEvent,
+    HolidayEventIdCounter,
 ]
 
 
@@ -541,6 +614,7 @@ async def _run_seeds_and_backfills() -> None:
     await _backfill_admin_role_ids()
     await _seed_order_statuses()
     await _seed_personal_details()
+    await _seed_holiday_events()
     await _backfill_order_dates()
     await _backfill_product_delete_flag()
     await _backfill_product_unbilled_flag()

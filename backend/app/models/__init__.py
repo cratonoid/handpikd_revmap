@@ -30,6 +30,8 @@ from app.models.inquiry_form_node import InquiryFormNode
 from app.models.inquiry_form_node_id_counter import InquiryFormNodeIdCounter
 from app.models.inquiry_form_submission import InquiryFormSubmission, SelectedInquiryFormNode
 from app.models.inquiry_form_submission_id_counter import InquiryFormSubmissionIdCounter
+from app.models.holiday_event import HolidayEvent
+from app.models.holiday_event_id_counter import HolidayEventIdCounter
 from app.models.inventory import Inventory
 from app.models.inventory_history import InventoryHistory
 from app.models.inventory_history_id_counter import InventoryHistoryIdCounter
@@ -37,6 +39,9 @@ from app.models.inventory_id_counter import InventoryIdCounter
 from app.models.invoice_details import InvoiceBilling, InvoiceDetails, InvoiceStatus, InvoiceType, OnlineOrOffline
 from app.models.invoice_id_counter import InvoiceIdCounter
 from app.models.invoice_no_counter_master import InvoiceNoCounterMaster
+from app.models.notification import Notification
+from app.models.notification_id_counter import NotificationIdCounter
+from app.models.notification_read import NotificationRead
 from app.models.order_no_counter_master import OrderNoCounterMaster
 from app.models.order_status_master import OrderStatusMaster
 from app.models.personal_details import PersonalDetails
@@ -81,6 +86,10 @@ from app.models.sales_orders import PointsAllocation, SalesOrders
 from app.models.sales_summary import SalesSummary
 from app.models.sales_summary_id_counter import SalesSummaryIdCounter
 from app.models.standard_invoice_no_counter_master import StandardInvoiceNoCounterMaster
+from app.models.ticket import Ticket, TicketSide, TicketStatus
+from app.models.ticket_id_counter import TicketIdCounter
+from app.models.ticket_message import TicketMessage, TicketMessageKind
+from app.models.ticket_message_id_counter import TicketMessageIdCounter
 from app.models.unbilled_purchase_order_id_counter import UnbilledPurchaseOrderIdCounter
 from app.models.unbilled_purchase_orders import UnbilledPurchaseOrders
 from app.models.unbilled_purchase_summary import UnbilledPurchaseSummary
@@ -93,6 +102,8 @@ from app.models.vendor_poc_details import VendorPocDetails
 from app.models.vendor_poc_id_counter import VendorPocIdCounter
 
 __all__ = [
+    "HolidayEvent",
+    "HolidayEventIdCounter",
     "Campaign",
     "CampaignIdCounter",
     "CampaignLead",
@@ -145,6 +156,9 @@ __all__ = [
     "OnlineOrOffline",
     "InvoiceIdCounter",
     "InvoiceNoCounterMaster",
+    "Notification",
+    "NotificationIdCounter",
+    "NotificationRead",
     "OrderNoCounterMaster",
     "OrderStatusMaster",
     "PersonalDetails",
@@ -195,6 +209,13 @@ __all__ = [
     "SalesSummary",
     "SalesSummaryIdCounter",
     "StandardInvoiceNoCounterMaster",
+    "Ticket",
+    "TicketIdCounter",
+    "TicketMessage",
+    "TicketMessageIdCounter",
+    "TicketMessageKind",
+    "TicketSide",
+    "TicketStatus",
     "UnbilledPurchaseOrderIdCounter",
     "UnbilledPurchaseOrders",
     "UnbilledPurchaseSummary",

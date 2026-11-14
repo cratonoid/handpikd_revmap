@@ -15,7 +15,6 @@
 import Image from "next/image";
 import { resolveMediaUrl } from "@/lib/api";
 import { ArrowUpRightIcon } from "@/components/icons";
-import { SaleRibbon } from "@/components/sale/sale-ribbon"; // SALE:
 import styles from "@/styles/catalogue.module.css";
 
 export function CatalogueCard({
@@ -44,8 +43,6 @@ export function CatalogueCard({
         ) : (
           <span className={styles.cardThumbPlaceholder}>No pages yet</span>
         )}
-        {/* SALE: festive ribbon */}
-        <SaleRibbon corner="left" />
       </div>
       <div className={styles.cardBody}>
         <h3 className={styles.cardTitle}>{catalogueName}</h3>

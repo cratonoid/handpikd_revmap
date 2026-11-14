@@ -28,6 +28,8 @@ class Section(str, Enum):
     product_inquiries = "product_inquiries"
     quotation = "quotation"
     letters = "letters"
+    information = "information"
+    tickets = "tickets"
     profile = "profile"
     emails = "emails"
     campaigns = "campaigns"

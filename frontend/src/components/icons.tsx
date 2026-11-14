@@ -494,3 +494,35 @@ export function ShieldUserIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function TicketIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M7.5 8.25h9m-9 3h6M21 12c0 4.14-4.03 7.5-9 7.5a10.2 10.2 0 0 1-3.6-.65L3.75 20.25l1.32-3.53A7.04 7.04 0 0 1 3 12c0-4.14 4.03-7.5 9-7.5s9 3.36 9 7.5Z" />
+    </svg>
+  );
+}
+
+export function BellIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M14.86 17.08a23.85 23.85 0 0 0 5.45-1.31A8.97 8.97 0 0 1 18 9.75V9a6 6 0 1 0-12 0v.75a8.97 8.97 0 0 1-2.31 6.02c1.73.64 3.56 1.09 5.45 1.31m5.72 0a24.26 24.26 0 0 1-5.72 0m5.72 0a3 3 0 1 1-5.72 0" />
+    </svg>
+  );
+}
+
+export function InformationIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="m11.25 11.25.04-.02a.75.75 0 0 1 1.06.85l-.7 2.84a.75.75 0 0 0 1.06.85l.04-.02M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.01v.01H12v-.01Z" />
+    </svg>
+  );
+}
+
+export function CalendarIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5" />
+    </svg>
+  );
+}
