@@ -23,6 +23,9 @@ services:
       # Local dev runs uvicorn directly, not through compose, so its bypass
       # is unaffected.
       AUTH_ENABLED: "true"
+      # The deployed git sha, reported by GET /api/v1/health so ./deploy.sh
+      # can confirm the new commit is actually the one serving.
+      APP_COMMIT: ${IMAGE_TAG:-unknown}
       MEDIA_ROOT: /media
       PURCHASE_INVOICE_ROOT: /purchase_invoices
       BACKUP_ROOT: /backups

@@ -1,0 +1,2 @@
+*.sh text eol=lf
+deploy/claude-bot/** text eol=lf

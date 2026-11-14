@@ -1,0 +1,31 @@
+# /etc/systemd/system/claude-telegram.service
+# Claude Code with the Telegram channel, inside a detached tmux session
+# "claude" owned by claude-bot. Attach with:
+#   sudo -u claude-bot tmux attach -t claude      (detach: Ctrl-b d)
+#
+# tmux daemonizes, so ExecStart starts the session and then stays alive
+# watching it. If claude exits or crashes, the session ends, the watcher
+# exits 1, and Restart=on-failure brings it back.
+[Unit]
+Description=Claude Code Telegram channel (tmux session "claude")
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=claude-bot
+Group=claude-bot
+WorkingDirectory=/home/claude-bot/handpikd_revmap
+Environment=HOME=/home/claude-bot
+Environment=TERM=xterm-256color
+Environment=PATH=/home/claude-bot/.local/bin:/home/claude-bot/.bun/bin:/home/claude-bot/.local/node/bin:/usr/local/bin:/usr/bin:/bin
+ExecStartPre=-/usr/bin/tmux kill-session -t claude
+ExecStart=/bin/bash -c '/usr/bin/tmux new-session -d -s claude -x 200 -y 50 "claude --channels plugin:telegram@claude-plugins-official" && while /usr/bin/tmux has-session -t claude 2>/dev/null; do sleep 5; done; exit 1'
+ExecStop=-/usr/bin/tmux kill-session -t claude
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

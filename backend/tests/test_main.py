@@ -12,6 +12,13 @@ def test_root():
     assert "message" in response.json()
 
 
+def test_health_reports_commit(monkeypatch):
+    monkeypatch.setenv("APP_COMMIT", "abc123")
+    response = client.get("/api/v1/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "commit": "abc123"}
+
+
 def test_test_endpoint():
     response = client.get("/api/v1/test/")
     assert response.status_code == 200

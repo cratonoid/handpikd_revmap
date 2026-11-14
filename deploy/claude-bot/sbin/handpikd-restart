@@ -1,0 +1,8 @@
+#!/bin/bash
+# Restarts the app containers (not nginx). Root-owned, no arguments; claude-bot
+# may run it via sudo (see claude-bot.sudoers). `restart` keeps each
+# container's current image and env, so the running commit is unchanged.
+set -euo pipefail
+cd /opt/handpikd_revmap
+/usr/bin/docker compose restart backend frontend
+/usr/bin/docker compose ps --format 'table {{.Service}}\t{{.Status}}'

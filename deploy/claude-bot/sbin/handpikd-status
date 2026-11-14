@@ -1,0 +1,6 @@
+#!/bin/bash
+# Container status plus the commit the backend reports. Read-only, no arguments.
+set -euo pipefail
+cd /opt/handpikd_revmap
+/usr/bin/docker compose ps --format 'table {{.Service}}\t{{.Status}}'
+echo "checkout: $(git -c safe.directory=/opt/handpikd_revmap log -1 --format='%h %s')"

@@ -1,0 +1,5 @@
+#!/bin/bash
+# Last 200 log lines of the app containers. Read-only, no arguments.
+set -euo pipefail
+cd /opt/handpikd_revmap
+/usr/bin/docker compose logs --no-color --tail=200 backend frontend nginx

@@ -1,5 +1,6 @@
 # FastAPI application entrypoint: wires up middleware, routers, and the MongoDB lifespan hook.
 import asyncio
+import os
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -77,3 +78,12 @@ app.mount("/media", StaticFiles(directory=settings.media_root), name="media")
 @app.get("/")
 def root():
     return {"message": f"{settings.app_name} is running"}
+
+
+# Liveness check for ./deploy.sh: it confirms the backend answers through
+# nginx *and* that the running image is the commit just deployed.
+# APP_COMMIT is set by docker-compose.yml from IMAGE_TAG (the git sha CI
+# built). Deliberately touches no DB, so an Atlas blip doesn't fail a deploy.
+@app.get(f"{settings.api_v1_prefix}/health")
+def health():
+    return {"status": "ok", "commit": os.environ.get("APP_COMMIT", "unknown")}

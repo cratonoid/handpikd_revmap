@@ -1,0 +1,6 @@
+# /etc/sudoers.d/claude-bot: the ONLY root access claude-bot has.
+# The trailing "" means no arguments are allowed.
+Cmnd_Alias HANDPIKD_OPS = /usr/local/sbin/handpikd-restart "", \
+                          /usr/local/sbin/handpikd-status "", \
+                          /usr/local/sbin/handpikd-logs ""
+claude-bot ALL=(root) NOPASSWD: HANDPIKD_OPS
