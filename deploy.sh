@@ -165,7 +165,10 @@ fi
 
 # ---------- 4. test + build checks ----------
 step "backend tests"
-quiet in_dir backend venv/bin/python -m pytest -q -x
+# Settings() requires these two; this clone has (and must have) no .env. The
+# tests never touch a real DB or sign real tokens, so placeholders are enough.
+quiet in_dir backend env MONGODB_URI="mongodb://127.0.0.1:1/test-unused" \
+  JWT_SECRET_KEY="test-only-not-a-secret" venv/bin/python -m pytest -q -x
 
 step "frontend lint"
 quiet in_dir frontend npm run lint

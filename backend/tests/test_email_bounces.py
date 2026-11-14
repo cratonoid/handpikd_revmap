@@ -61,7 +61,10 @@ def test_ordinary_mail_is_not_a_bounce():
     assert parse_bounce(raw) == []
 
 
-def test_plain_text_report_falls_back_to_addresses():
+def test_plain_text_report_falls_back_to_addresses(monkeypatch):
+    # "Our own address" is settings.smtp_user. Set it here rather than relying
+    # on a developer's .env, so the test means the same thing in CI/deploy.sh.
+    monkeypatch.setattr(email_bounces.settings, "smtp_user", "info@handpikd.co")
     raw = (
         "From: Mail Delivery Subsystem <mailer-daemon@example.net>\r\n"
         "Subject: Delivery Status Notification (Failure)\r\n"
