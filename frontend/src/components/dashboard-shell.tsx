@@ -382,8 +382,8 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
         </div>
 
         <div className={styles.topbarRight}>
-          {/* Team accounts only: the notification module is admin-side. */}
-          {role === "admin" && <NotificationBell />}
+          {/* Each side sees its own: the team by section, a client only what is addressed to them. */}
+          <NotificationBell audience={role === "admin" ? "team" : "client"} />
           <span className={styles.roleBadge}>{roleLabel}</span>
           {/* aria-label rather than relying on the text: .logoutButtonLabel is
               display: none under 420px, which would otherwise leave this an

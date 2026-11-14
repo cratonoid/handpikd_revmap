@@ -67,3 +67,8 @@ def test_marking_read_twice_is_harmless(monkeypatch):
     asyncio.run(notifications.mark_read(5, [2, 3, 3]))
 
     assert sorted(inserted) == [(1, 5), (2, 5), (3, 5)]
+
+
+def test_a_client_sees_only_what_is_addressed_to_them():
+    # Never the team's section-wide broadcasts (recipient_user_id None).
+    assert notifications.client_filter(50) == {"recipient_user_id": 50}

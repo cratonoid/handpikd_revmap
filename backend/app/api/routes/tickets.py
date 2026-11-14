@@ -15,10 +15,10 @@
 # moves it is replying to a resolved ticket, which reopens it (see
 # TicketStatus).
 #
-# The team hears about a client's activity through the notification module
-# (services/notifications.py): a new ticket from a client, and a client reply.
-# Nothing is sent for the team's own actions, which the team already knows
-# about.
+# Both sides hear about the other's activity through the notification module
+# (services/notifications.py). The team is told of a new ticket from a client
+# and of a client reply; the client is told when the team replies, or raises
+# a ticket for them. Nobody is notified of their own side's actions.
 from datetime import datetime, timezone
 
 from beanie.operators import In
@@ -80,6 +80,24 @@ def _customer_label(customer: CustomerDetails | None) -> str:
 
 def _ticket_link(ticket: Ticket) -> str:
     return f"/admin/tickets?ticket={ticket.id}"
+
+
+def _client_ticket_link(ticket: Ticket) -> str:
+    return f"/customer/tickets?ticket={ticket.id}"
+
+
+async def _notify_client(kind: str, title: str, ticket: Ticket, customer: CustomerDetails | None, body: str) -> None:
+    # Addressed to the client's own login only (see models/notification.py).
+    if customer is None or customer.is_deleted:
+        return
+    await notify(
+        kind,
+        title,
+        Section.tickets,
+        body=body,
+        link=_client_ticket_link(ticket),
+        recipient_user_id=customer.user_id,
+    )
 
 
 def _preview(body: str, limit: int = 140) -> str:
@@ -428,6 +446,13 @@ async def create_ticket(
         _team_author_name(current_user),
         payload.sales_order_id,
     )
+    await _notify_client(
+        "ticket.raised_for_client",
+        f"The Handpikd team opened ticket #{ticket.id} for you",
+        ticket,
+        customer,
+        ticket.subject,
+    )
     return await _to_detail(ticket, customer)
 
 
@@ -440,14 +465,23 @@ async def post_ticket_message(
     _check_open_for_messages(ticket)
     body = _clean_body(payload.body)
 
+    author_name = _team_author_name(current_user)
     await _add_message(
         ticket,
         TicketSide.team,
         current_user.id if current_user is not None else None,
-        _team_author_name(current_user),
+        author_name,
         body,
     )
-    return await _to_detail(ticket, await CustomerDetails.get(ticket.cust_id))
+    customer = await CustomerDetails.get(ticket.cust_id)
+    await _notify_client(
+        "ticket.team_replied",
+        f"{author_name} replied on ticket #{ticket.id}",
+        ticket,
+        customer,
+        _preview(body),
+    )
+    return await _to_detail(ticket, customer)
 
 
 @router.post("/update_ticket_status", response_model=TicketDetail)

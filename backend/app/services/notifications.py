@@ -1,5 +1,5 @@
-# The notification module: the one way anything in the app tells the team
-# something happened, and the queries behind the admin panel's bell.
+# The notification module: the one way anything in the app tells the team,
+# or a client, that something happened, and the queries behind both bells.
 #
 # Producers only ever call notify(). It records the event and returns; it
 # doesn't know who is signed in, how the bell renders, or whether a
@@ -42,7 +42,8 @@ async def notify(
     """Record a notification for every team member who can open `section`.
 
     `kind` is a dotted name the producer owns ("ticket.raised"). Pass
-    `recipient_user_id` to show it to one person only. Returns the stored
+    `recipient_user_id` to show it to one person only, which is also how a
+    client is notified (pass their login's id). Returns the stored
     notification, or None if it couldn't be stored (logged, never raised).
     """
     try:
@@ -80,12 +81,19 @@ def visible_filter(user_id: int, allowed_sections: set[Section] | None) -> dict:
     return {"$and": conditions}
 
 
-async def list_for_user(
-    user_id: int, allowed_sections: set[Section] | None, limit: int
-) -> tuple[list[Notification], set[int]]:
-    """The newest `limit` visible notifications, and which of them are read."""
+def client_filter(user_id: int) -> dict:
+    """The raw Mongo filter for what a client login sees: only what is
+    addressed to them, never the team's section-wide broadcasts."""
+    return {"recipient_user_id": user_id}
+
+
+# The three queries below take the reader's filter (visible_filter for a team
+# member, client_filter for a client) rather than building it, so the same
+# code serves both bells.
+async def list_for_user(user_id: int, query: dict, limit: int) -> tuple[list[Notification], set[int]]:
+    """The newest `limit` notifications matching `query`, and which are read."""
     notifications = (
-        await Notification.find(visible_filter(user_id, allowed_sections))
+        await Notification.find(query)
         .sort(-Notification.created_at, -Notification.id)
         .limit(limit)
         .to_list()
@@ -97,7 +105,7 @@ async def list_for_user(
     return notifications, {read.notification_id for read in reads}
 
 
-async def unread_count(user_id: int, allowed_sections: set[Section] | None) -> int:
+async def unread_count(user_id: int, query: dict) -> int:
     # One aggregation instead of loading every read row this user has ever
     # made: the $lookup is served by notification_read's (user_id,
     # notification_id) index.
@@ -105,7 +113,7 @@ async def unread_count(user_id: int, allowed_sections: set[Section] | None) -> i
     read_collection = NotificationRead.get_pymongo_collection().name
     cursor = await collection.aggregate(
         [
-            {"$match": visible_filter(user_id, allowed_sections)},
+            {"$match": query},
             {
                 "$lookup": {
                     "from": read_collection,
@@ -136,9 +144,9 @@ async def mark_read(user_id: int, notification_ids: list[int]) -> None:
             pass
 
 
-async def mark_all_read(user_id: int, allowed_sections: set[Section] | None) -> None:
+async def mark_all_read(user_id: int, query: dict) -> None:
     collection = Notification.get_pymongo_collection()
-    ids = [doc["_id"] async for doc in collection.find(visible_filter(user_id, allowed_sections), {"_id": 1})]
+    ids = [doc["_id"] async for doc in collection.find(query, {"_id": 1})]
     if not ids:
         return
     already = {

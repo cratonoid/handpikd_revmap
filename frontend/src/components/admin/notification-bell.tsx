@@ -1,10 +1,10 @@
 "use client";
 
 // ---------------------------------------------------------------------------
-// <NotificationBell> — the admin top bar's notification bell and panel
+// <NotificationBell> — the top bar's notification bell and panel
 // ---------------------------------------------------------------------------
 // Renders whatever the notification module holds for the signed-in team
-// member (lib/notifications.ts). It doesn't know what a ticket is. Each
+// member or client (lib/notifications.ts); `audience` picks which. It doesn't know what a ticket is. Each
 // notification brings its own title, text and link, so any module that
 // starts calling notify() on the backend shows up here with no change.
 //
@@ -23,12 +23,13 @@ import {
   markNotificationsRead,
   timeAgo,
   type AppNotification,
+  type NotificationAudience,
 } from "@/lib/notifications";
 import styles from "@/styles/dashboard.module.css";
 
 const POLL_MS = 30_000;
 
-export function NotificationBell() {
+export function NotificationBell({ audience }: { audience: NotificationAudience }) {
   const router = useRouter();
   const pathname = usePathname();
   const [unread, setUnread] = useState(0);
@@ -38,12 +39,12 @@ export function NotificationBell() {
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const refreshCount = useCallback(() => {
-    fetchUnreadNotificationCount()
+    fetchUnreadNotificationCount(audience)
       .then(setUnread)
       .catch(() => {
         // Keep the last count. A missed poll isn't worth an error on screen.
       });
-  }, []);
+  }, [audience]);
 
   useEffect(() => {
     queueMicrotask(refreshCount);
@@ -67,7 +68,7 @@ export function NotificationBell() {
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    fetchNotifications()
+    fetchNotifications(audience)
       .then((data) => {
         if (cancelled) return;
         setItems(data.items);
@@ -80,7 +81,7 @@ export function NotificationBell() {
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, audience]);
 
   // Click outside or Escape closes the panel.
   useEffect(() => {
@@ -104,7 +105,7 @@ export function NotificationBell() {
     if (!item.isRead) {
       setItems((previous) => previous?.map((entry) => (entry.id === item.id ? { ...entry, isRead: true } : entry)) ?? null);
       setUnread((count) => Math.max(0, count - 1));
-      markNotificationsRead([item.id]).then(setUnread).catch(() => refreshCount());
+      markNotificationsRead(audience, [item.id]).then(setUnread).catch(() => refreshCount());
     }
     if (item.link) router.push(item.link);
   }
@@ -113,7 +114,7 @@ export function NotificationBell() {
     setItems((previous) => previous?.map((entry) => ({ ...entry, isRead: true })) ?? null);
     setUnread(0);
     try {
-      setUnread(await markAllNotificationsRead());
+      setUnread(await markAllNotificationsRead(audience));
     } catch {
       refreshCount();
     }

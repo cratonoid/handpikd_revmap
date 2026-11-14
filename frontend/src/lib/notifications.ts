@@ -1,11 +1,13 @@
 // ---------------------------------------------------------------------------
-// The admin panel's notifications (the bell in the top bar)
+// Notifications (the bell in the top bar), for the team and for clients
 // ---------------------------------------------------------------------------
 // Backed by backend/app/api/routes/notifications.py. Like the backend module,
 // this knows nothing about tickets or any other producer. A notification is a
 // kind, some text and a link, and the bell renders any of them the same way.
-// The backend already filters the list to the sections the signed-in team
-// member's role grants.
+//
+// Every call takes the side it's for. The team's endpoints are filtered to
+// the sections the member's role grants; the client's only ever return what
+// is addressed to that client's login.
 import { apiFetch } from "@/lib/api";
 import type { SectionKey } from "@/lib/access";
 
@@ -34,13 +36,36 @@ type NotificationItemResponse = {
 
 type UnreadCountResponse = { unread_count: number };
 
+export type NotificationAudience = "team" | "client";
+
+const ENDPOINTS: Record<
+  NotificationAudience,
+  { list: string; count: string; markRead: string; markAllRead: string }
+> = {
+  team: {
+    list: "/admin/notifications/get_notifications",
+    count: "/admin/notifications/get_unread_count",
+    markRead: "/admin/notifications/mark_notifications_read",
+    markAllRead: "/admin/notifications/mark_all_notifications_read",
+  },
+  client: {
+    list: "/customer/get_my_notifications",
+    count: "/customer/get_my_unread_notification_count",
+    markRead: "/customer/mark_my_notifications_read",
+    markAllRead: "/customer/mark_all_my_notifications_read",
+  },
+};
+
 // Backend datetimes are naive UTC.
 function utc(value: string): string {
   return /[zZ]|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`;
 }
 
-export async function fetchNotifications(limit = 20): Promise<{ items: AppNotification[]; unreadCount: number }> {
-  const response = await apiFetch(`/admin/notifications/get_notifications?limit=${limit}`);
+export async function fetchNotifications(
+  audience: NotificationAudience,
+  limit = 20,
+): Promise<{ items: AppNotification[]; unreadCount: number }> {
+  const response = await apiFetch(`${ENDPOINTS[audience].list}?limit=${limit}`);
   if (!response.ok) throw new Error("Failed to load notifications");
   const data: { items: NotificationItemResponse[]; unread_count: number } = await response.json();
   return {
@@ -58,15 +83,15 @@ export async function fetchNotifications(limit = 20): Promise<{ items: AppNotifi
   };
 }
 
-export async function fetchUnreadNotificationCount(): Promise<number> {
-  const response = await apiFetch("/admin/notifications/get_unread_count");
+export async function fetchUnreadNotificationCount(audience: NotificationAudience): Promise<number> {
+  const response = await apiFetch(ENDPOINTS[audience].count);
   if (!response.ok) throw new Error("Failed to load notifications");
   const data: UnreadCountResponse = await response.json();
   return data.unread_count;
 }
 
-export async function markNotificationsRead(ids: number[]): Promise<number> {
-  const response = await apiFetch("/admin/notifications/mark_notifications_read", {
+export async function markNotificationsRead(audience: NotificationAudience, ids: number[]): Promise<number> {
+  const response = await apiFetch(ENDPOINTS[audience].markRead, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ notification_ids: ids }),
@@ -76,8 +101,8 @@ export async function markNotificationsRead(ids: number[]): Promise<number> {
   return data.unread_count;
 }
 
-export async function markAllNotificationsRead(): Promise<number> {
-  const response = await apiFetch("/admin/notifications/mark_all_notifications_read", { method: "POST" });
+export async function markAllNotificationsRead(audience: NotificationAudience): Promise<number> {
+  const response = await apiFetch(ENDPOINTS[audience].markAllRead, { method: "POST" });
   if (!response.ok) throw new Error("Failed to mark notifications read");
   const data: UnreadCountResponse = await response.json();
   return data.unread_count;

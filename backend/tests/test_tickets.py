@@ -6,7 +6,8 @@
 #   - a client replying to a resolved ticket reopens it,
 #   - a team status change is recorded on the thread but doesn't count as a
 #     reply (the "awaiting reply" flag stays put),
-#   - a linked order must be one of the ticket's client's own live orders.
+#   - a linked order must be one of the ticket's client's own live orders,
+#   - a team reply notifies the ticket's client, and only them.
 #
 # Ticket / TicketMessage are stubbed rather than queried, same approach as
 # test_customer_invoice_access.py: real Beanie queries need a live Mongo.
@@ -57,7 +58,7 @@ def stored(monkeypatch):
     Returns a dict the tests fill with the ticket Ticket.get should return,
     and read back the messages and status-change entries that were written.
     """
-    state: dict = {"ticket": None, "messages": [], "inserted": [], "notified": []}
+    state: dict = {"ticket": None, "messages": [], "inserted": [], "notified": [], "recipients": []}
 
     class _TicketModel:
         @classmethod
@@ -86,6 +87,7 @@ def stored(monkeypatch):
 
     async def _notify(kind, title, section, body="", link="", recipient_user_id=None):
         state["notified"].append((kind, title, section, body, link))
+        state["recipients"].append(recipient_user_id)
 
     monkeypatch.setattr(tickets, "notify", _notify)
     monkeypatch.setattr(tickets, "Ticket", _TicketModel)
@@ -285,3 +287,40 @@ def test_an_order_that_isnt_the_clients_is_refused(orders, order):
     # One answer for all three, so ids can't be probed.
     assert error.value.status_code == 400
     assert error.value.detail == "order not found for this client"
+
+
+# ---------------------------------------------------------------------------
+# Telling the client
+# ---------------------------------------------------------------------------
+def test_a_team_reply_notifies_the_tickets_client(stored, monkeypatch):
+    stored["ticket"] = _StubTicket(3, cust_id=4)
+
+    async def _customer(_cust_id):
+        return _StubCustomer(4, user_id=50)
+
+    monkeypatch.setattr(tickets.CustomerDetails, "get", _customer)
+    asyncio.run(
+        tickets.post_ticket_message(PostTicketMessageRequest(ticket_id=3, body="Dispatched today"), _StubUser())
+    )
+
+    ((kind, title, section, body, link),) = stored["notified"]
+    assert kind == "ticket.team_replied"
+    assert title == "Priya replied on ticket #3"
+    assert section == tickets.Section.tickets
+    assert body == "Dispatched today"
+    # The portal's own page, not the admin one.
+    assert link == "/customer/tickets?ticket=3"
+    assert stored["recipients"] == [50]
+
+
+def test_a_team_reply_to_a_deleted_client_notifies_nobody(stored, monkeypatch):
+    stored["ticket"] = _StubTicket(3, cust_id=4)
+    gone = _StubCustomer(4)
+    gone.is_deleted = True
+
+    async def _customer(_cust_id):
+        return gone
+
+    monkeypatch.setattr(tickets.CustomerDetails, "get", _customer)
+    asyncio.run(tickets.post_ticket_message(PostTicketMessageRequest(ticket_id=3, body="hi"), _StubUser()))
+    assert stored["notified"] == []
