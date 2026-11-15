@@ -124,6 +124,7 @@
 
 .topbarRight {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 1rem;
 }
@@ -180,6 +181,13 @@
 
   .topbarRight {
     gap: 0.6rem;
+  }
+
+  /* Hamburger + logo + bell + role badge + logout don't fit side by side
+     here: the wordmark ran underneath the bell. The round logo mark alone
+     still identifies the app. */
+  .topbarWordmark {
+    display: none;
   }
 }
 

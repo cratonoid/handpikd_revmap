@@ -375,7 +375,7 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
           </button>
 
           <Link href={role === "admin" ? "/admin" : "/customer"} className={styles.topbarLogo}>
-            <Logo compact />
+            <Logo compact wordmarkClassName={styles.topbarWordmark} />
           </Link>
 
           {activeItem && <span className={styles.topbarSection}>{activeItem.label}</span>}

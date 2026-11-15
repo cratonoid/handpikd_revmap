@@ -100,10 +100,12 @@ export function Logo({
   variant = "dark", // "dark" = charcoal text for light backgrounds; "light" = cream text + inverted (white) logo mark, for dark backgrounds
   compact = false, // true = render smaller (used by the header once it shrinks on scroll — see header.tsx)
   className = "",
+  wordmarkClassName = "", // extra class on the "HANDPIKD" text, e.g. to hide it on narrow screens
 }: {
   variant?: "dark" | "light";
   compact?: boolean;
   className?: string;
+  wordmarkClassName?: string;
 }) {
   const tone = variant === "dark" ? styles.logoDark : styles.logoLight;
   return (
@@ -115,7 +117,7 @@ export function Logo({
         // instantly between the two sizes.
         className={compact ? styles.logoMarkWrapCompact : styles.logoMarkWrapNormal}
       />
-      <span className={`${styles.logoWordmark} ${compact ? styles.logoWordmarkCompact : styles.logoWordmarkNormal}`}>
+      <span className={`${styles.logoWordmark} ${compact ? styles.logoWordmarkCompact : styles.logoWordmarkNormal} ${wordmarkClassName}`}>
         Handpikd
       </span>
     </span>
