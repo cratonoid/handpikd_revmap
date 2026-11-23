@@ -8,19 +8,28 @@
 // story and its tasks in place: a task's status and assignee change straight
 // from their dropdowns. ?story=<id> opens one directly, which is where the
 // "assigned to you" notification links. Not client Tickets.
+//
+// Tasks can have a deadline (overdue ones are flagged red), and Active tasks
+// remind their assignee by phone every few hours once they've turned on
+// phone alerts (<PhoneAlertsButton>).
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/button";
+import { PhoneAlertsButton } from "@/components/admin/phone-alerts-button";
 import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import { XMarkIcon } from "@/components/icons";
 import { formatDateTime } from "@/lib/format-date";
 import {
   addTask,
   createStory,
+  deadlineToInputValue,
   fetchStories,
   fetchTeamMembers,
+  inputValueToDeadline,
+  isOverdue,
   updateStory,
   updateTask,
+  utc,
   WORK_STATUS_OPTIONS,
   workStatusLabel,
   type TeamMember,
@@ -49,9 +58,41 @@ const FILTERS: { value: Filter; label: string }[] = [
 
 const UNASSIGNED = "unassigned";
 
-// Backend datetimes are naive UTC.
-function utc(value: string): string {
-  return /[zZ]|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`;
+// A task's deadline, saved when the field loses focus (typing a date on a
+// computer passes through half-typed values that mustn't be saved).
+function DeadlineInput({
+  id,
+  label,
+  value,
+  onCommit,
+  disabled,
+}: {
+  id: string;
+  label: string;
+  value: string | null;
+  onCommit: (deadline: string | null) => void;
+  disabled: boolean;
+}) {
+  const saved = deadlineToInputValue(value);
+  const [draft, setDraft] = useState(saved);
+  useEffect(() => {
+    queueMicrotask(() => setDraft(saved));
+  }, [saved]);
+
+  return (
+    <input
+      id={id}
+      type="datetime-local"
+      aria-label={label}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        if (draft !== saved) onCommit(inputValueToDeadline(draft));
+      }}
+      className={styles.formInput}
+      disabled={disabled}
+    />
+  );
 }
 
 function AssigneeSelect({
@@ -208,7 +249,8 @@ export function WorkBoardPageClient() {
             </button>
           ))}
         </div>
-        <div className={styles.pageHeaderAction}>
+        <div className={styles.pageHeaderActions}>
+          <PhoneAlertsButton />
           <Button type="button" variant="primary" onClick={() => setCreating(true)} disabled={loadState !== "loaded"}>
             + New story
           </Button>
@@ -262,6 +304,12 @@ export function WorkBoardPageClient() {
                   {story.tasks.length === 0
                     ? "—"
                     : `${story.tasks.filter((task) => task.status === "completed").length} / ${story.tasks.length}`}
+                  {story.tasks.some((task) => isOverdue(task)) && (
+                    <span className={`${styles.statusText} ${styles.statusCancelled}`}>
+                      {" "}
+                      · {story.tasks.filter((task) => isOverdue(task)).length} overdue
+                    </span>
+                  )}
                 </td>
                 <td className={styles.tableCell}>{formatDateTime(utc(story.updatedAt))}</td>
               </tr>
@@ -448,6 +496,7 @@ function StoryModal({
   const [description, setDescription] = useState(story.description);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskAssignee, setNewTaskAssignee] = useState<number | null>(null);
+  const [newTaskDeadline, setNewTaskDeadline] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -477,10 +526,16 @@ function StoryModal({
     event.preventDefault();
     if (!newTaskTitle.trim()) return setError("Enter a task title.");
     void run(
-      () => addTask(story.id, { title: newTaskTitle.trim(), assignedUserId: newTaskAssignee }),
+      () =>
+        addTask(story.id, {
+          title: newTaskTitle.trim(),
+          assignedUserId: newTaskAssignee,
+          deadline: inputValueToDeadline(newTaskDeadline),
+        }),
       () => {
         setNewTaskTitle("");
         setNewTaskAssignee(null);
+        setNewTaskDeadline("");
       },
     );
   }
@@ -578,6 +633,7 @@ function StoryModal({
                     <th className={styles.tableHeadCell}>Task</th>
                     <th className={styles.tableHeadCell}>Status</th>
                     <th className={styles.tableHeadCell}>Assigned to</th>
+                    <th className={styles.tableHeadCell}>Deadline</th>
                     <th className={styles.tableHeadCell} aria-label="Delete" />
                   </tr>
                 </thead>
@@ -605,6 +661,18 @@ function StoryModal({
                           }
                           disabled={busy}
                         />
+                      </td>
+                      <td className={styles.tableCell}>
+                        <DeadlineInput
+                          id={`task-${task.id}-deadline`}
+                          label={`Deadline of ${task.title}`}
+                          value={task.deadline}
+                          onCommit={(deadline) => void run(() => updateTask(story.id, task.id, { deadline }))}
+                          disabled={busy}
+                        />
+                        {isOverdue(task) && (
+                          <span className={`${styles.statusText} ${styles.statusCancelled}`}>Overdue</span>
+                        )}
                       </td>
                       <td className={styles.tableCell}>
                         <button
@@ -649,6 +717,18 @@ function StoryModal({
                 onChange={setNewTaskAssignee}
                 disabled={busy}
               />
+            </div>
+            <div>
+              <input
+                id="newTaskDeadline"
+                type="datetime-local"
+                aria-label="New task deadline"
+                value={newTaskDeadline}
+                onChange={(event) => setNewTaskDeadline(event.target.value)}
+                className={styles.formInput}
+                disabled={busy}
+              />
+              <p className={styles.formHint}>Deadline (optional)</p>
             </div>
             <div>
               <Button type="submit" variant="secondary" disabled={busy}>

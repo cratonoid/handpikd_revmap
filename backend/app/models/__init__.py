@@ -97,6 +97,8 @@ from app.models.inquiry import Inquiry, InquiryStatus, InquiryStep
 from app.models.inquiry_id_counter import InquiryIdCounter
 from app.models.ticket import Ticket, TicketSide, TicketStatus
 from app.models.work_story import WorkStatus, WorkStory, WorkTask
+from app.models.push_settings import PushSettings
+from app.models.push_subscription import PushSubscription
 from app.models.work_story_id_counter import WorkStoryIdCounter
 from app.models.ticket_id_counter import TicketIdCounter
 from app.models.ticket_message import TicketMessage, TicketMessageKind
@@ -238,6 +240,8 @@ __all__ = [
     "UnbilledPurchaseSummaryIdCounter",
     "User",
     "UserRole",
+    "PushSettings",
+    "PushSubscription",
     "WorkStatus",
     "WorkStory",
     "WorkStoryIdCounter",

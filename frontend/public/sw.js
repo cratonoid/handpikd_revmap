@@ -28,3 +28,38 @@ self.addEventListener("fetch", (event) => {
 
   event.respondWith(fetch(event.request).catch(() => caches.match(OFFLINE_URL)));
 });
+
+// Phone alerts (backend/app/services/push.py): a push carries
+// {title, body, link}. Showing a notification for every push is required
+// (pushes were subscribed with userVisibleOnly).
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Handpikd", {
+      body: data.body || "",
+      icon: "/pwa/icon-192.png",
+      badge: "/pwa/icon-192.png",
+      data: { link: data.link || "/admin" },
+    }),
+  );
+});
+
+// Tapping one opens its link, reusing an open window of the app if there is
+// one.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const link = new URL((event.notification.data && event.notification.data.link) || "/admin", self.location.origin);
+  if (link.origin !== self.location.origin) return;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      const open = windows.find((client) => new URL(client.url).pathname.startsWith("/admin"));
+      if (open) return open.navigate(link.href).then((client) => (client || open).focus());
+      return self.clients.openWindow(link.href);
+    }),
+  );
+});

@@ -22,6 +22,11 @@ class WorkTask(BaseModel):
     title: str
     status: WorkStatus = WorkStatus.new
     assigned_user_id: int | None = None  # FK -> User.id (a team account)
+    deadline: datetime | None = None  # naive UTC
+    # When the assignee was last told about this task by phone (on being
+    # assigned, on it turning Active, or a reminder): reminders repeat every
+    # few hours from here while it stays Active (services/work_reminders.py).
+    reminded_at: datetime | None = None  # naive UTC
     created_at: datetime
     updated_at: datetime
 

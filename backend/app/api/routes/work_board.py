@@ -3,6 +3,9 @@
 # Completed) and can be assigned to a team member, who is told through the
 # notification bell. Separate from Tickets, which are client support threads.
 #
+# A task can carry a deadline. While a task is Active its assignee's phone is
+# reminded every few hours (services/work_reminders.py).
+#
 # Statuses are set by hand on each: a story isn't completed automatically
 # when its tasks are, since a story can still have work no task covers.
 from datetime import datetime, timezone
@@ -11,7 +14,7 @@ from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import require_section
-from app.models import Section, User, UserRole, WorkStory, WorkStoryIdCounter, WorkTask
+from app.models import Section, User, UserRole, WorkStatus, WorkStory, WorkStoryIdCounter, WorkTask
 from app.schemas.inquiries import AssignableUser
 from app.schemas.work_board import (
     AddTaskRequest,
@@ -76,6 +79,14 @@ async def _get_story_or_404(story_id: int) -> WorkStory:
     return story
 
 
+def _clean_deadline(value: datetime | None) -> datetime | None:
+    # Stored as naive UTC like every other datetime; a deadline sent with an
+    # offset (the board sends ISO with "Z") is converted first.
+    if value is None or value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def _find_task(story: WorkStory, task_id: int) -> WorkTask:
     for task in story.tasks:
         if task.id == task_id:
@@ -109,6 +120,7 @@ async def _to_items(stories: list[WorkStory]) -> list[WorkStoryItem]:
                     status=task.status,
                     assigned_user_id=task.assigned_user_id,
                     assigned_user_name=name_of(task.assigned_user_id),
+                    deadline=task.deadline,
                     created_at=task.created_at,
                     updated_at=task.updated_at,
                 )
@@ -225,6 +237,9 @@ async def add_task(
         title=title,
         status=payload.status,
         assigned_user_id=payload.assigned_user_id,
+        deadline=_clean_deadline(payload.deadline),
+        # The phone reminder clock starts at the assignment push.
+        reminded_at=now if payload.assigned_user_id is not None else None,
         created_at=now,
         updated_at=now,
     )
@@ -251,17 +266,25 @@ async def update_task(
         return await _story_response("task deleted", story)
 
     assignee_sent = "assigned_user_id" in payload.model_fields_set
-    if payload.title is None and payload.status is None and not assignee_sent:
+    deadline_sent = "deadline" in payload.model_fields_set
+    if payload.title is None and payload.status is None and not assignee_sent and not deadline_sent:
         raise _bad_request("no changes specified")
     if payload.title is not None:
         task.title = _clean_title(payload.title)
     if payload.status is not None:
+        if payload.status == WorkStatus.active and task.status != WorkStatus.active:
+            # Reminders come every few hours from the moment it turns Active.
+            task.reminded_at = now
         task.status = payload.status
+    if deadline_sent:
+        task.deadline = _clean_deadline(payload.deadline)
     newly_assigned = None
     if assignee_sent and payload.assigned_user_id != task.assigned_user_id:
         await _check_assignee(payload.assigned_user_id)
         task.assigned_user_id = payload.assigned_user_id
         newly_assigned = payload.assigned_user_id
+        if newly_assigned is not None:
+            task.reminded_at = now
     task.updated_at = now
     story.updated_at = now
     await story.save()

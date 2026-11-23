@@ -5514,6 +5514,15 @@ select.formInput:disabled {
   margin-left: auto;
 }
 
+/* Several header buttons side by side (Work board: phone alerts + new story). */
+.pageHeaderActions {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 /* -----------------------------------------------------------------------
    Backup & Restore (components/admin/backups-page-client.tsx)
    ----------------------------------------------------------------------- */

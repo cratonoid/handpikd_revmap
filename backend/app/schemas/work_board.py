@@ -12,6 +12,7 @@ class WorkTaskItem(BaseModel):
     status: WorkStatus
     assigned_user_id: int | None
     assigned_user_name: str | None
+    deadline: datetime | None = None  # naive UTC
     created_at: datetime
     updated_at: datetime
 
@@ -51,14 +52,18 @@ class AddTaskRequest(BaseModel):
     title: str = Field(min_length=1)
     status: WorkStatus = WorkStatus.new
     assigned_user_id: int | None = None
+    deadline: datetime | None = None
 
 
+# As for stories: assigned_user_id and deadline are set whenever they're
+# sent, so null clears them.
 class UpdateTaskRequest(BaseModel):
     story_id: int
     task_id: int
     title: str | None = None
     status: WorkStatus | None = None
     assigned_user_id: int | None = None
+    deadline: datetime | None = None
     delete: bool = False
 
 

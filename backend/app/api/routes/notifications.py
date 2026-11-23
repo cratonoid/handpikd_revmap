@@ -12,7 +12,7 @@
 #
 # Both sides return the same shapes, so the frontend's bell is one component
 # pointed at one set of endpoints or the other.
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import get_allowed_sections, require_staff
 from app.api.routes.customer_invoices import require_customer_account
@@ -20,10 +20,14 @@ from app.models import CustomerDetails, Notification, User
 from app.schemas.notifications import (
     MarkNotificationsReadRequest,
     NotificationItem,
+    PushPublicKeyResponse,
+    PushSubscribeRequest,
+    PushUnsubscribeRequest,
     NotificationListResponse,
     UnreadCountResponse,
 )
 from app.services import notifications as service
+from app.services import push
 
 router = APIRouter(prefix="/admin/notifications", tags=["notifications"])
 
@@ -107,6 +111,30 @@ async def mark_notifications_read(
 @router.post("/mark_all_notifications_read", response_model=UnreadCountResponse)
 async def mark_all_notifications_read(reader: Reader = Depends(_team_reader)) -> UnreadCountResponse:
     return await _mark_all(reader)
+
+
+# Phone alerts: the installed admin app subscribes this phone to pushes for
+# whoever is signed in (services/push.py).
+@router.get("/push_public_key", response_model=PushPublicKeyResponse)
+async def push_public_key(_: User | None = Depends(require_staff)) -> PushPublicKeyResponse:
+    return PushPublicKeyResponse(public_key=await push.public_key())
+
+
+@router.post("/push_subscribe")
+async def push_subscribe(payload: PushSubscribeRequest, current_user: User | None = Depends(require_staff)) -> dict:
+    if current_user is None:
+        # Auth disabled locally: there's no person to send to.
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="sign in to turn on phone alerts")
+    if not push.is_push_service(payload.endpoint):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid push subscription")
+    await push.subscribe(current_user.id, payload.endpoint, payload.keys.p256dh, payload.keys.auth)
+    return {"message": "phone alerts on"}
+
+
+@router.post("/push_unsubscribe")
+async def push_unsubscribe(payload: PushUnsubscribeRequest, _: User | None = Depends(require_staff)) -> dict:
+    await push.unsubscribe(payload.endpoint)
+    return {"message": "phone alerts off"}
 
 
 # ---------------------------------------------------------------------------

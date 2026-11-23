@@ -21,6 +21,8 @@ export type WorkTask = {
   status: WorkStatus;
   assignedUserId: number | null;
   assignedUserName: string;
+  // An instant as ISO with "Z", or null for no deadline.
+  deadline: string | null;
 };
 
 export type WorkStory = {
@@ -42,6 +44,7 @@ type TaskResponse = {
   status: WorkStatus;
   assigned_user_id: number | null;
   assigned_user_name: string | null;
+  deadline: string | null;
 };
 
 type StoryResponse = {
@@ -54,6 +57,31 @@ type StoryResponse = {
   tasks: TaskResponse[];
   updated_at: string;
 };
+
+// Backend datetimes are naive UTC.
+export function utc(value: string): string {
+  return /[zZ]|[+-]\d{2}:\d{2}$/.test(value) ? value : `${value}Z`;
+}
+
+// Past its deadline and not yet done.
+export function isOverdue(task: WorkTask, now: number = Date.now()): boolean {
+  return task.status !== "completed" && task.deadline !== null && new Date(task.deadline).getTime() <= now;
+}
+
+// <input type="datetime-local"> works in the phone's own time; deadlines
+// travel as UTC instants. These convert between the two.
+export function deadlineToInputValue(deadline: string | null): string {
+  if (!deadline) return "";
+  const date = new Date(deadline);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function inputValueToDeadline(value: string): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
 
 function toStory(item: StoryResponse): WorkStory {
   return {
@@ -69,6 +97,7 @@ function toStory(item: StoryResponse): WorkStory {
       status: task.status,
       assignedUserId: task.assigned_user_id,
       assignedUserName: task.assigned_user_name ?? "",
+      deadline: task.deadline ? utc(task.deadline) : null,
     })),
     updatedAt: item.updated_at,
   };
@@ -141,12 +170,13 @@ export function updateStory(
 
 export async function addTask(
   storyId: number,
-  fields: { title: string; assignedUserId: number | null },
+  fields: { title: string; assignedUserId: number | null; deadline: string | null },
 ): Promise<WorkStory> {
   const story = await post("add_task", {
     story_id: storyId,
     title: fields.title,
     assigned_user_id: fields.assignedUserId,
+    deadline: fields.deadline,
   });
   if (!story) throw new Error("Couldn't save. Please try again.");
   return story;
@@ -155,14 +185,22 @@ export async function addTask(
 export async function updateTask(
   storyId: number,
   taskId: number,
-  fields: { title?: string; status?: WorkStatus; assignedUserId?: number | null; delete?: boolean },
+  fields: {
+    title?: string;
+    status?: WorkStatus;
+    assignedUserId?: number | null;
+    deadline?: string | null;
+    delete?: boolean;
+  },
 ): Promise<WorkStory> {
+  // assigned_user_id and deadline are only sent when in `fields`; null clears.
   const story = await post("update_task", {
     story_id: storyId,
     task_id: taskId,
     title: fields.title,
     status: fields.status,
     ...("assignedUserId" in fields ? { assigned_user_id: fields.assignedUserId } : {}),
+    ...("deadline" in fields ? { deadline: fields.deadline } : {}),
     delete: fields.delete ?? false,
   });
   if (!story) throw new Error("Couldn't save. Please try again.");

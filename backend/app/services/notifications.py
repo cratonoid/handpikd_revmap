@@ -5,8 +5,8 @@
 # doesn't know who is signed in, how the bell renders, or whether a
 # notification will one day also go out by email or push. Those are this
 # module's concern, which is what lets delivery grow later without touching
-# the producers. A new channel (email, web push, a websocket) is just another
-# step inside notify(), or a worker reading #notification.
+# the producers. Web push to phones (services/push.py) is one such step: a
+# notification addressed to one person also goes to their phone.
 #
 # notify() never raises. A notification is a side effect of something that
 # already happened (a ticket was raised), and failing to record it must not
@@ -18,6 +18,7 @@ from pymongo.errors import DuplicateKeyError
 
 from app.models import Notification, NotificationIdCounter, NotificationRead, Section, User
 from app.services.counters import get_next_id
+from app.services.push import send_push_in_background
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,11 @@ async def notify(
             created_at=_now(),
         )
         await notification.insert()
+        if recipient_user_id is not None:
+            # Addressed to one person: also buzz their phone, if they've
+            # turned phone alerts on (services/push.py). Section-wide
+            # broadcasts stay on the bell only.
+            send_push_in_background(recipient_user_id, title, body, link)
         return notification
     except Exception:
         logger.exception("failed to record %s notification", kind)
