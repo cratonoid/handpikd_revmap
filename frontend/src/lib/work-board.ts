@@ -1,5 +1,7 @@
 // The Work board (backend/app/api/routes/work_board.py): the team's own
 // stories, each with tasks under it. Both have a status and an assignee.
+// Stories belong to groups: you see your groups' stories, and only a
+// group's members can be assigned. The Administrator manages groups.
 // Not client Tickets (lib/tickets.ts).
 import { apiFetch } from "@/lib/api";
 
@@ -25,8 +27,12 @@ export type WorkTask = {
   deadline: string | null;
 };
 
+export type WorkGroup = { id: number; name: string; members: TeamMember[] };
+
 export type WorkStory = {
   id: number;
+  groupId: number | null;
+  groupName: string;
   title: string;
   description: string;
   status: WorkStatus;
@@ -47,8 +53,20 @@ type TaskResponse = {
   deadline: string | null;
 };
 
+type GroupResponse = { group_id: number; name: string; members: { user_id: number; name: string }[] };
+
+function toGroup(item: GroupResponse): WorkGroup {
+  return {
+    id: item.group_id,
+    name: item.name,
+    members: item.members.map((member) => ({ id: member.user_id, name: member.name })),
+  };
+}
+
 type StoryResponse = {
   story_id: number;
+  group_id: number | null;
+  group_name: string | null;
   title: string;
   description: string | null;
   status: WorkStatus;
@@ -86,6 +104,8 @@ export function inputValueToDeadline(value: string): string | null {
 function toStory(item: StoryResponse): WorkStory {
   return {
     id: item.story_id,
+    groupId: item.group_id,
+    groupName: item.group_name ?? "",
     title: item.title,
     description: item.description ?? "",
     status: item.status,
@@ -140,10 +160,17 @@ export async function fetchTeamMembers(): Promise<TeamMember[]> {
   return items.map((item) => ({ id: item.user_id, name: item.name }));
 }
 
-export type StoryFields = { title: string; description: string; status: WorkStatus; assignedUserId: number | null };
+export type StoryFields = {
+  groupId: number;
+  title: string;
+  description: string;
+  status: WorkStatus;
+  assignedUserId: number | null;
+};
 
 export async function createStory(fields: StoryFields): Promise<WorkStory> {
   const story = await post("create_story", {
+    group_id: fields.groupId,
     title: fields.title,
     description: fields.description,
     status: fields.status,
@@ -160,6 +187,7 @@ export function updateStory(
 ): Promise<WorkStory | null> {
   return post("update_story", {
     story_id: id,
+    group_id: fields.groupId,
     title: fields.title,
     description: fields.description,
     status: fields.status,
@@ -205,4 +233,45 @@ export async function updateTask(
   });
   if (!story) throw new Error("Couldn't save. Please try again.");
   return story;
+}
+
+// Every group for the Administrator; your own groups for anyone else.
+export async function fetchGroups(): Promise<WorkGroup[]> {
+  const response = await apiFetch("/admin/work_board/get_groups");
+  if (!response.ok) throw new Error("Failed to load groups.");
+  const items: GroupResponse[] = await response.json();
+  return items.map(toGroup);
+}
+
+async function postGroup(path: string, body: unknown): Promise<WorkGroup | null> {
+  const response = await apiFetch(`/admin/work_board/${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(await detailOr(response, "Couldn't save. Please try again."));
+  }
+  const data: { group: GroupResponse | null } = await response.json();
+  return data.group ? toGroup(data.group) : null;
+}
+
+// Administrator only.
+export async function createGroup(name: string, memberIds: number[]): Promise<WorkGroup> {
+  const group = await postGroup("create_group", { name, member_user_ids: memberIds });
+  if (!group) throw new Error("Couldn't save. Please try again.");
+  return group;
+}
+
+// Administrator only. Returns null when the group was deleted.
+export function updateGroup(
+  id: number,
+  fields: { name?: string; memberIds?: number[]; delete?: boolean },
+): Promise<WorkGroup | null> {
+  return postGroup("update_group", {
+    group_id: id,
+    name: fields.name,
+    member_user_ids: fields.memberIds,
+    delete: fields.delete ?? false,
+  });
 }

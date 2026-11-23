@@ -12,27 +12,36 @@
 // Tasks can have a deadline (overdue ones are flagged red), and Active tasks
 // remind their assignee by phone every few hours once they've turned on
 // phone alerts (<PhoneAlertsButton>).
+//
+// Stories belong to groups. People see their own groups' stories and can
+// only assign a group's members; the Administrator sees every group and
+// manages them (<ManageGroupsModal>).
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/button";
 import { PhoneAlertsButton } from "@/components/admin/phone-alerts-button";
 import { matchesSearch, TableSearchInput } from "@/components/admin/table-search-input";
 import { XMarkIcon } from "@/components/icons";
+import { fetchMyAccess } from "@/lib/access";
 import { formatDateTime } from "@/lib/format-date";
 import {
   addTask,
+  createGroup,
   createStory,
   deadlineToInputValue,
+  fetchGroups,
   fetchStories,
   fetchTeamMembers,
   inputValueToDeadline,
   isOverdue,
+  updateGroup,
   updateStory,
   updateTask,
   utc,
   WORK_STATUS_OPTIONS,
   workStatusLabel,
   type TeamMember,
+  type WorkGroup,
   type WorkStatus,
   type WorkStory,
 } from "@/lib/work-board";
@@ -57,6 +66,13 @@ const FILTERS: { value: Filter; label: string }[] = [
 ];
 
 const UNASSIGNED = "unassigned";
+
+// Who can be assigned on a story in `groupId`: its members, or anyone for a
+// story with no group yet (only the Administrator sees those).
+function membersOf(groups: WorkGroup[], groupId: number | null, everyone: TeamMember[]): TeamMember[] {
+  if (groupId === null) return everyone;
+  return groups.find((group) => group.id === groupId)?.members ?? [];
+}
 
 // A task's deadline, saved when the field loses focus (typing a date on a
 // computer passes through half-typed values that mustn't be saved).
@@ -167,6 +183,10 @@ export function WorkBoardPageClient() {
 
   const [stories, setStories] = useState<WorkStory[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [groups, setGroups] = useState<WorkGroup[]>([]);
+  const [groupFilter, setGroupFilter] = useState("");
+  const [isAdministrator, setIsAdministrator] = useState(false);
+  const [managingGroups, setManagingGroups] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [filter, setFilter] = useState<Filter>("open");
   const [assigneeFilter, setAssigneeFilter] = useState("");
@@ -176,16 +196,22 @@ export function WorkBoardPageClient() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchStories(), fetchTeamMembers()])
-      .then(([storyData, memberData]) => {
+    Promise.all([fetchStories(), fetchTeamMembers(), fetchGroups()])
+      .then(([storyData, memberData, groupData]) => {
         if (cancelled) return;
         setStories(storyData);
         setMembers(memberData);
+        setGroups(groupData);
         setLoadState("loaded");
       })
       .catch(() => {
         if (!cancelled) setLoadState("failed");
       });
+    fetchMyAccess()
+      .then((access) => {
+        if (!cancelled) setIsAdministrator(access.sections === null);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -207,6 +233,14 @@ export function WorkBoardPageClient() {
     setStories((previous) => previous.filter((story) => story.id !== id));
   }, []);
 
+  // Taking someone out of a group unassigns them from its stories, so the
+  // board is reloaded after groups change.
+  async function reloadAfterGroupChange() {
+    const [storyData, groupData] = await Promise.all([fetchStories(), fetchGroups()]);
+    setStories(storyData);
+    setGroups(groupData);
+  }
+
   function closeDetail() {
     setOpenId(null);
     if (linked) router.replace(pathname);
@@ -225,6 +259,7 @@ export function WorkBoardPageClient() {
       filter === "all" ? true : filter === "open" ? story.status !== "completed" : story.status === filter,
     )
     .filter(matchesAssignee)
+    .filter((story) => groupFilter === "" || String(story.groupId) === groupFilter)
     .filter((story) =>
       matchesSearch(search, [story.title, story.description, story.assignedUserName, ...story.tasks.map((t) => t.title)]),
     );
@@ -251,7 +286,18 @@ export function WorkBoardPageClient() {
         </div>
         <div className={styles.pageHeaderActions}>
           <PhoneAlertsButton />
-          <Button type="button" variant="primary" onClick={() => setCreating(true)} disabled={loadState !== "loaded"}>
+          {isAdministrator && (
+            <Button type="button" variant="secondary" onClick={() => setManagingGroups(true)} disabled={loadState !== "loaded"}>
+              Manage groups
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="primary"
+            onClick={() => setCreating(true)}
+            disabled={loadState !== "loaded" || groups.length === 0}
+            title={groups.length === 0 ? "Stories go into a group: there isn't one yet" : undefined}
+          >
             + New story
           </Button>
         </div>
@@ -261,6 +307,21 @@ export function WorkBoardPageClient() {
 
       <div className={styles.filterToggleRow}>
         <TableSearchInput value={search} onChange={setSearch} label="Search stories" placeholder="Search stories or tasks…" />
+        {groups.length > 1 && (
+          <select
+            aria-label="Filter by group"
+            value={groupFilter}
+            onChange={(event) => setGroupFilter(event.target.value)}
+            className={styles.formInput}
+          >
+            <option value="">All groups</option>
+            {groups.map((group) => (
+              <option key={group.id} value={String(group.id)}>
+                {group.name}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           aria-label="Filter by assignee"
           value={assigneeFilter}
@@ -283,6 +344,7 @@ export function WorkBoardPageClient() {
             <tr>
               <th className={styles.tableHeadCell}>#</th>
               <th className={styles.tableHeadCell}>Story</th>
+              <th className={styles.tableHeadCell}>Group</th>
               <th className={styles.tableHeadCell}>Assigned to</th>
               <th className={styles.tableHeadCell}>Status</th>
               <th className={styles.tableHeadCell}>Tasks done</th>
@@ -296,6 +358,7 @@ export function WorkBoardPageClient() {
                 <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={story.title}>
                   {story.title}
                 </td>
+                <td className={styles.tableCell}>{story.groupName || "—"}</td>
                 <td className={styles.tableCell}>{story.assignedUserName || "—"}</td>
                 <td className={`${styles.tableCell} ${styles.statusText} ${STATUS_COLOR[story.status]}`}>
                   {workStatusLabel(story.status)}
@@ -325,13 +388,21 @@ export function WorkBoardPageClient() {
         )}
         {loadState === "loaded" && visible.length === 0 && (
           <p className={styles.pageSubtext}>
-            {stories.length === 0 ? "No stories yet. Add one with + New story." : "No stories in this view."}
+            {groups.length === 0
+              ? isAdministrator
+                ? "Stories go into groups. Start with Manage groups → New group."
+                : "You're not in any group yet. Ask the Administrator to add you to one."
+              : stories.length === 0
+                ? "No stories yet. Add one with + New story."
+                : "No stories in this view."}
           </p>
         )}
       </div>
 
       {creating && (
         <NewStoryModal
+          groups={groups}
+          defaultGroupId={groupFilter ? Number(groupFilter) : (groups[0]?.id ?? null)}
           members={members}
           onClose={() => setCreating(false)}
           onSaved={(story) => {
@@ -346,7 +417,8 @@ export function WorkBoardPageClient() {
         <StoryModal
           key={openStory.id}
           story={openStory}
-          members={members}
+          groups={groups}
+          members={membersOf(groups, openStory.groupId, members)}
           onSaved={upsert}
           onDeleted={() => {
             remove(openStory.id);
@@ -355,15 +427,28 @@ export function WorkBoardPageClient() {
           onClose={closeDetail}
         />
       )}
+
+      {managingGroups && (
+        <ManageGroupsModal
+          groups={groups}
+          members={members}
+          onChanged={() => void reloadAfterGroupChange().catch(() => setLoadState("failed"))}
+          onClose={() => setManagingGroups(false)}
+        />
+      )}
     </>
   );
 }
 
 function NewStoryModal({
+  groups,
+  defaultGroupId,
   members,
   onClose,
   onSaved,
 }: {
+  groups: WorkGroup[];
+  defaultGroupId: number | null;
   members: TeamMember[];
   onClose: () => void;
   onSaved: (story: WorkStory) => void;
@@ -372,17 +457,26 @@ function NewStoryModal({
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<WorkStatus>("new");
   const [assignee, setAssignee] = useState<number | null>(null);
+  const [groupId, setGroupId] = useState<number | null>(defaultGroupId);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const groupMembers = membersOf(groups, groupId, members);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (groupId === null) return setError("Pick a group.");
     if (!title.trim()) return setError("Enter a title.");
     setSaving(true);
     setError(null);
     try {
       onSaved(
-        await createStory({ title: title.trim(), description: description.trim(), status, assignedUserId: assignee }),
+        await createStory({
+          groupId,
+          title: title.trim(),
+          description: description.trim(),
+          status,
+          assignedUserId: assignee,
+        }),
       );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
@@ -409,6 +503,27 @@ function NewStoryModal({
         </div>
         <form onSubmit={handleSubmit} className={styles.modalForm} noValidate>
           <div className={styles.formGrid}>
+            <div className={styles.formGridFullSpan}>
+              <label htmlFor="storyGroup" className={styles.formLabel}>
+                Group<span className={styles.requiredMark}>*</span>
+              </label>
+              <select
+                id="storyGroup"
+                value={groupId === null ? "" : String(groupId)}
+                onChange={(event) => {
+                  setGroupId(event.target.value ? Number(event.target.value) : null);
+                  setAssignee(null);
+                }}
+                className={styles.formInput}
+                disabled={saving}
+              >
+                {groups.map((group) => (
+                  <option key={group.id} value={String(group.id)}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className={styles.formGridFullSpan}>
               <label htmlFor="storyTitle" className={styles.formLabel}>
                 Title<span className={styles.requiredMark}>*</span>
@@ -452,7 +567,7 @@ function NewStoryModal({
                 id="storyAssignee"
                 label="Assign to"
                 value={assignee}
-                members={members}
+                members={groupMembers}
                 onChange={setAssignee}
                 disabled={saving}
               />
@@ -481,12 +596,14 @@ function NewStoryModal({
 
 function StoryModal({
   story,
+  groups,
   members,
   onSaved,
   onDeleted,
   onClose,
 }: {
   story: WorkStory;
+  groups: WorkGroup[];
   members: TeamMember[];
   onSaved: (story: WorkStory) => void;
   onDeleted: () => void;
@@ -588,6 +705,30 @@ function StoryModal({
                 disabled={busy}
               />
             </div>
+            {groups.length > 1 && (
+              <div className={styles.formGridFullSpan}>
+                <label htmlFor="editStoryGroup" className={styles.formLabel}>
+                  Group
+                </label>
+                <select
+                  id="editStoryGroup"
+                  value={story.groupId === null ? "" : String(story.groupId)}
+                  onChange={(event) =>
+                    event.target.value && void run(() => updateStory(story.id, { groupId: Number(event.target.value) }))
+                  }
+                  className={styles.formInput}
+                  disabled={busy}
+                >
+                  {story.groupId === null && <option value="">No group</option>}
+                  {groups.map((group) => (
+                    <option key={group.id} value={String(group.id)}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+                <p className={styles.formHint}>Moving it unassigns anyone who isn&apos;t in the new group.</p>
+              </div>
+            )}
             <div>
               <label htmlFor="editStoryStatus" className={styles.formLabel}>
                 Status
@@ -774,6 +915,186 @@ function StoryModal({
               </Button>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Administrator only: create groups, rename them, add and remove people,
+// delete an empty one. Pick a group on the left to edit it, or "New group".
+function ManageGroupsModal({
+  groups,
+  members,
+  onChanged,
+  onClose,
+}: {
+  groups: WorkGroup[];
+  members: TeamMember[];
+  onChanged: () => void;
+  onClose: () => void;
+}) {
+  const [selectedId, setSelectedId] = useState<number | null>(groups[0]?.id ?? null);
+  const selected = groups.find((group) => group.id === selectedId) ?? null;
+  const [name, setName] = useState(selected?.name ?? "");
+  const [memberIds, setMemberIds] = useState<number[]>(selected?.members.map((member) => member.id) ?? []);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  function select(group: WorkGroup | null) {
+    setSelectedId(group?.id ?? null);
+    setName(group?.name ?? "");
+    setMemberIds(group?.members.map((member) => member.id) ?? []);
+    setError(null);
+    setConfirmingDelete(false);
+  }
+
+  function toggleMember(id: number) {
+    setMemberIds((previous) => (previous.includes(id) ? previous.filter((other) => other !== id) : [...previous, id]));
+  }
+
+  async function run(action: () => Promise<WorkGroup | null>) {
+    setBusy(true);
+    setError(null);
+    try {
+      const saved = await action();
+      onChanged();
+      if (saved) setSelectedId(saved.id);
+      else select(null);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleSave(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!name.trim()) return setError("Enter a group name.");
+    void run(() =>
+      selected ? updateGroup(selected.id, { name: name.trim(), memberIds }) : createGroup(name.trim(), memberIds),
+    );
+  }
+
+  return (
+    <div className={styles.modalBackdrop} onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="groups-title"
+        className={styles.modalPanelWide}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className={styles.modalHeader}>
+          <h2 id="groups-title" className={styles.modalTitle}>
+            Groups
+          </h2>
+          <button type="button" onClick={onClose} aria-label="Close" className={styles.modalCloseButton}>
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className={styles.modalForm}>
+          <div className={styles.viewToggle} role="tablist" aria-label="Groups">
+            {groups.map((group) => (
+              <button
+                key={group.id}
+                type="button"
+                role="tab"
+                aria-selected={selectedId === group.id}
+                onClick={() => select(group)}
+                className={`${styles.viewToggleButton} ${selectedId === group.id ? styles.viewToggleButtonActive : ""}`}
+              >
+                {group.name} ({group.members.length})
+              </button>
+            ))}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={selectedId === null}
+              onClick={() => select(null)}
+              className={`${styles.viewToggleButton} ${selectedId === null ? styles.viewToggleButtonActive : ""}`}
+            >
+              + New group
+            </button>
+          </div>
+
+          <form onSubmit={handleSave} noValidate className={styles.formGrid}>
+            <div className={styles.formGridFullSpan}>
+              <label htmlFor="groupName" className={styles.formLabel}>
+                Group name<span className={styles.requiredMark}>*</span>
+              </label>
+              <input
+                id="groupName"
+                type="text"
+                maxLength={80}
+                placeholder="e.g. Marketing"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                className={styles.formInput}
+                disabled={busy}
+              />
+            </div>
+            <fieldset className={styles.formGridFullSpan} disabled={busy}>
+              <legend className={styles.formLabel}>Members</legend>
+              {members.map((member) => (
+                <label key={member.id} className={styles.formHint} style={{ display: "block" }}>
+                  <input
+                    type="checkbox"
+                    checked={memberIds.includes(member.id)}
+                    onChange={() => toggleMember(member.id)}
+                  />{" "}
+                  {member.name}
+                </label>
+              ))}
+              {selected && (
+                <p className={styles.formHint}>Taking someone out unassigns them from this group&apos;s stories and tasks.</p>
+              )}
+            </fieldset>
+
+            {error && (
+              <p role="alert" aria-live="polite" className={`${styles.formGridFullSpan} ${styles.formError}`}>
+                {error}
+              </p>
+            )}
+
+            <div className={`${styles.formGridFullSpan} ${styles.modalActions}`}>
+              <div className={styles.modalActionsLeft}>
+                {selected &&
+                  (confirmingDelete ? (
+                    <>
+                      <span className={styles.formHint}>Delete {selected.name}?</span>{" "}
+                      <button
+                        type="button"
+                        onClick={() => void run(() => updateGroup(selected.id, { delete: true }))}
+                        disabled={busy}
+                        className={`${styles.triggerButtonBase} ${styles.deleteTriggerButton}`}
+                      >
+                        Yes, delete
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmingDelete(true)}
+                      disabled={busy}
+                      className={`${styles.triggerButtonBase} ${styles.deleteTriggerButton}`}
+                    >
+                      Delete group
+                    </button>
+                  ))}
+              </div>
+              <div className={styles.modalActionsRight}>
+                <Button type="button" variant="tertiary" onClick={onClose} disabled={busy}>
+                  Close
+                </Button>
+                <Button type="submit" variant="primary" disabled={busy}>
+                  {busy ? "Saving…" : selected ? "Save group" : "Create group"}
+                </Button>
+              </div>
+            </div>
+          </form>
         </div>
       </div>
     </div>

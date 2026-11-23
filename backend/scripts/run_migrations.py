@@ -154,6 +154,11 @@ MIGRATIONS: list[tuple[str, str, str]] = [
         AUTO,
         "database_contacts: existing leads get source = cold_call",
     ),
+    (
+        "migrate_work_story_groups",
+        AUTO,
+        "work_story: existing stories go into a 'General' group of every team member",
+    ),
 ]
 
 LEDGER_COLLECTION = "schema_migrations"

@@ -33,6 +33,10 @@ class WorkTask(BaseModel):
 
 class WorkStory(Document):
     id: int
+    # FK -> WorkGroup.id. Only None on a story from before groups existed
+    # that scripts/migrate_work_story_groups.py hasn't moved yet; such a
+    # story is visible to the Administrator only.
+    group_id: int | None = None
     title: str
     description: str | None = None
     status: WorkStatus = WorkStatus.new

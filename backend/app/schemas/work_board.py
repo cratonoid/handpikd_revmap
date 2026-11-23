@@ -17,8 +17,39 @@ class WorkTaskItem(BaseModel):
     updated_at: datetime
 
 
+class WorkGroupMember(BaseModel):
+    user_id: int
+    name: str
+
+
+class WorkGroupItem(BaseModel):
+    group_id: int
+    name: str
+    members: list[WorkGroupMember]
+
+
+class CreateGroupRequest(BaseModel):
+    name: str = Field(min_length=1)
+    member_user_ids: list[int] = []
+
+
+# Fields left out are unchanged. `delete` removes an empty group.
+class UpdateGroupRequest(BaseModel):
+    group_id: int
+    name: str | None = None
+    member_user_ids: list[int] | None = None
+    delete: bool = False
+
+
+class GroupResponse(BaseModel):
+    message: str
+    group: WorkGroupItem | None = None
+
+
 class WorkStoryItem(BaseModel):
     story_id: int
+    group_id: int | None
+    group_name: str | None
     title: str
     description: str | None
     status: WorkStatus
@@ -30,6 +61,7 @@ class WorkStoryItem(BaseModel):
 
 
 class CreateStoryRequest(BaseModel):
+    group_id: int
     title: str = Field(min_length=1)
     description: str | None = None
     status: WorkStatus = WorkStatus.new
@@ -37,9 +69,11 @@ class CreateStoryRequest(BaseModel):
 
 
 # Fields left out are unchanged. assigned_user_id is set whenever it's sent,
-# so null unassigns. `delete` removes the story and its tasks.
+# so null unassigns. `delete` removes the story and its tasks. Moving it to
+# another group (group_id) unassigns anyone on it who isn't in that group.
 class UpdateStoryRequest(BaseModel):
     story_id: int
+    group_id: int | None = None
     title: str | None = None
     description: str | None = None
     status: WorkStatus | None = None
