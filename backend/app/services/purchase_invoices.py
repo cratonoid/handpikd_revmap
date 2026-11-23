@@ -8,9 +8,13 @@
 # site is the orders module, and what's left in the purchase invoices module
 # is viewing, editing, voiding and PDFs.
 #
-# Amounts are snapshotted from the purchase order rather than recomputed, so
-# the invoice always states what the order said at the moment it was raised —
-# the same borrowing convention InvoiceDetails uses against SalesOrders.
+# Amounts are copied from the purchase order rather than recomputed. They used
+# to be copied once, at create time, so an invoice kept stating what its order
+# said when it was raised even after the order was edited. Since the invoice
+# is raised automatically and is one-to-one with its order, that only left
+# the two disagreeing, so editing an order now re-copies them as well (see
+# sync_purchase_invoice_with_order). The invoice's own number, date, vendor
+# invoice number and attached PDF are never touched by that.
 from app.models import (
     PurchaseInvoiceDetails,
     PurchaseInvoiceIdCounter,
@@ -32,10 +36,6 @@ async def create_purchase_invoice_for_order(
     for orders created by uploading one — it's what makes a re-upload of the
     same invoice a conflict (see services/purchase_invoice_intake.py).
     """
-    total_tax = purchase_order.total_amount_after_tax - purchase_order.total_amount_before_tax
-    tax_kind, place_of_supply_code, place_of_supply_name = await _tax_context_for_order(purchase_order)
-    split = split_tax(0.0, total_tax, tax_kind)
-
     purchase_invoice_no = await get_next_id(
         PurchaseInvoiceNoCounterMaster, "next_purchase_invoice_no", PurchaseInvoiceDetails
     )
@@ -52,22 +52,45 @@ async def create_purchase_invoice_for_order(
         id=purchase_invoice_id,
         purchase_invoice_no=purchase_invoice_no,
         date=purchase_order.date,
-        vendor_id=purchase_order.vendor_id,
         po_id=purchase_order.id,
         vendor_invoice_no=vendor_invoice_no,
         uploaded_pdf_path=None,
-        total_amount_before_tax=purchase_order.total_amount_before_tax,
-        total_tax_amount=total_tax,
-        total_amount_after_tax=purchase_order.total_amount_after_tax,
-        tax_kind=tax_kind,
-        place_of_supply_code=place_of_supply_code,
-        place_of_supply_name=place_of_supply_name,
-        total_igst_amount=split.igst_amount,
-        total_cgst_amount=split.cgst_amount,
-        total_sgst_amount=split.sgst_amount,
+        **await order_figures_for_invoice(purchase_order),
     )
     await purchase_invoice.insert()
     return purchase_invoice
+
+
+async def order_figures_for_invoice(purchase_order: PurchaseOrders) -> dict:
+    """The fields a purchase invoice copies from its order: vendor, totals and GST heads."""
+    total_tax = purchase_order.total_amount_after_tax - purchase_order.total_amount_before_tax
+    tax_kind, place_of_supply_code, place_of_supply_name = await _tax_context_for_order(purchase_order)
+    split = split_tax(0.0, total_tax, tax_kind)
+    return {
+        "vendor_id": purchase_order.vendor_id,
+        "total_amount_before_tax": purchase_order.total_amount_before_tax,
+        "total_tax_amount": total_tax,
+        "total_amount_after_tax": purchase_order.total_amount_after_tax,
+        "tax_kind": tax_kind,
+        "place_of_supply_code": place_of_supply_code,
+        "place_of_supply_name": place_of_supply_name,
+        "total_igst_amount": split.igst_amount,
+        "total_cgst_amount": split.cgst_amount,
+        "total_sgst_amount": split.sgst_amount,
+    }
+
+
+async def sync_purchase_invoice_with_order(purchase_order: PurchaseOrders) -> None:
+    """Re-copies an edited order's figures onto its live purchase invoice(s)."""
+    figures = await order_figures_for_invoice(purchase_order)
+    invoices = await PurchaseInvoiceDetails.find(
+        PurchaseInvoiceDetails.po_id == purchase_order.id,
+        PurchaseInvoiceDetails.is_deleted == False,  # noqa: E712 — Beanie needs the comparison
+    ).to_list()
+    for invoice in invoices:
+        for field, value in figures.items():
+            setattr(invoice, field, value)
+        await invoice.save()
 
 
 async def _tax_context_for_order(purchase_order: PurchaseOrders) -> tuple[TaxKind, str, str]:

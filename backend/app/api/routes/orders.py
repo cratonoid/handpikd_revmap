@@ -21,8 +21,9 @@
 from beanie.operators import In
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
-from app.api.deps import require_section, require_staff
+from app.api.deps import require_administrator, require_section, require_staff
 from app.models import (
+    InvoiceDetails,
     Section,
     ProductDetails,
     PurchaseInvoiceDetails,
@@ -37,6 +38,8 @@ from app.models import (
 from app.schemas.purchase_orders import (
     CreateNewPurchaseOrderRequest,
     CreateNewPurchaseOrderResponse,
+    DeletePurchaseOrderRequest,
+    DeletePurchaseOrderResponse,
     ParsedPurchaseInvoiceLineItem,
     ParsePurchaseInvoicePdfResponse,
     PurchaseOrderDetailItem,
@@ -63,7 +66,7 @@ from app.services.purchase_invoice_intake import (
     WrongVendorTypeError,
     read_uploaded_invoice,
 )
-from app.services.purchase_invoices import create_purchase_invoice_for_order
+from app.services.purchase_invoices import create_purchase_invoice_for_order, sync_purchase_invoice_with_order
 from app.services.vendor_rates import sync_vendor_rates_from_purchases
 
 router = APIRouter(prefix="/admin", tags=["orders"])
@@ -96,6 +99,21 @@ async def _reject_duplicate_vendor_invoice(vendor_id: int, vendor_invoice_no: st
                 f"purchase invoice {existing.purchase_invoice_no}"
             ),
         )
+
+
+async def _reject_vendor_change_colliding_invoice(purchase_order_id: int, new_vendor_id: int) -> None:
+    # Editing an order re-copies its vendor onto its invoice (see
+    # sync_purchase_invoice_with_order). If that invoice came from an upload,
+    # the vendor's invoice number moves with it, and the same number may
+    # already be recorded against the new vendor — which the unique index
+    # would reject mid-save. Checked up front so nothing is half-written.
+    invoices = await PurchaseInvoiceDetails.find(
+        PurchaseInvoiceDetails.po_id == purchase_order_id,
+        PurchaseInvoiceDetails.is_deleted == False,  # noqa: E712 — Beanie needs the comparison
+    ).to_list()
+    for invoice in invoices:
+        if invoice.vendor_id != new_vendor_id:
+            await _reject_duplicate_vendor_invoice(new_vendor_id, invoice.vendor_invoice_no)
 
 
 def _require_vendor_has_gst(vendor: VendorDetails) -> None:
@@ -518,9 +536,11 @@ async def update_purchase_order_details(
         STOCK_IN,
     )
     await _reject_stock_going_negative(stock_deltas)
+    await _reject_vendor_change_colliding_invoice(purchase_order.id, payload.vendor_id)
 
     purchase_order.description = payload.description
     await purchase_order.save()
+    await sync_purchase_invoice_with_order(purchase_order)
 
     # Products dropped from the order need their rate re-derived too.
     previous_product_ids = [
@@ -538,3 +558,77 @@ async def update_purchase_order_details(
     await _flag_related_sales_orders(purchase_order.id)
 
     return UpdatePurchaseOrderDetailsResponse(message="purchase order updated successfully")
+
+
+@router.post("/delete_purchase_order", response_model=DeletePurchaseOrderResponse)
+async def delete_purchase_order(
+    payload: DeletePurchaseOrderRequest,
+    _: User | None = Depends(require_administrator),
+) -> DeletePurchaseOrderResponse:
+    # Administrator only, and only for an order no sales invoice depends on:
+    # once a linked sales order has been invoiced, this purchase is part of
+    # that invoice's paper trail and has to stay.
+    #
+    # Deleting undoes everything the order did, in the same terms an edit
+    # down to zero lines would: its stock comes back out of #inventory (and
+    # the delete is refused if that stock has since been sold on), its
+    # ledger and line rows go, vendor rates are re-derived without it, and
+    # sales orders stop pointing at it. Its purchase invoice is voided
+    # (is_deleted) rather than removed, so the invoice number isn't reused
+    # and the vendor's PDF stays on file.
+    purchase_order = await PurchaseOrders.get(payload.id)
+    if purchase_order is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="purchase order not found")
+
+    linked_sales_orders = await SalesOrders.find(SalesOrders.related_purchase_order_ids == purchase_order.id).to_list()
+    linked_ids = [sales_order.id for sales_order in linked_sales_orders]
+    if linked_ids:
+        invoice = await InvoiceDetails.find_one(In(InvoiceDetails.sales_ids, linked_ids))
+        if invoice is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "this purchase order is linked to a sales order that has been invoiced "
+                    f"(invoice {invoice.invoice_no}), so it can't be deleted"
+                ),
+            )
+
+    stock_deltas = compute_stock_deltas(await get_applied_purchase_quantities(purchase_order.id), {}, STOCK_IN)
+    shortfalls = await find_stock_shortfalls(stock_deltas)
+    if shortfalls:
+        labels = await stock_shortfall_labels(shortfalls)
+        details = ", ".join(
+            f"{labels[product_id]} (on hand {on_hand}, this order added {-delta})"
+            for product_id, on_hand, delta in shortfalls
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"deleting this order would take stock negative for: {details}",
+        )
+
+    product_ids = [
+        line.product_id
+        for line in await PurchaseSummary.find(PurchaseSummary.purchase_order_id == purchase_order.id).to_list()
+    ]
+    # No lines and no quantities: moves stock back out and drops the ledger rows.
+    await apply_purchase_order_stock(purchase_order.id, [], [], stock_deltas, purchase_order.date)
+    await PurchaseSummary.find(PurchaseSummary.purchase_order_id == purchase_order.id).delete()
+
+    invoices = await PurchaseInvoiceDetails.find(
+        PurchaseInvoiceDetails.po_id == purchase_order.id,
+        PurchaseInvoiceDetails.is_deleted == False,  # noqa: E712 — Beanie needs the comparison
+    ).to_list()
+    for invoice in invoices:
+        invoice.is_deleted = True
+        await invoice.save()
+
+    for sales_order in linked_sales_orders:
+        sales_order.related_purchase_order_ids = [
+            po_id for po_id in sales_order.related_purchase_order_ids if po_id != purchase_order.id
+        ]
+        await sales_order.save()
+
+    await purchase_order.delete()
+    await sync_vendor_rates_from_purchases(product_ids)
+
+    return DeletePurchaseOrderResponse(message="purchase order deleted")

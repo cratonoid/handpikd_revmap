@@ -52,7 +52,10 @@ from app.services.printing_purchase_invoice_intake import (
     WrongVendorTypeError,
     read_uploaded_printing_invoice,
 )
-from app.services.printing_purchase_invoices import create_printing_purchase_invoice_for_order
+from app.services.printing_purchase_invoices import (
+    create_printing_purchase_invoice_for_order,
+    sync_printing_purchase_invoice_with_order,
+)
 
 router = APIRouter(prefix="/admin", tags=["printing-orders"])
 
@@ -85,6 +88,19 @@ async def _get_printing_vendor_or_error(vendor_id: int) -> VendorDetails:
         )
 
     return vendor
+
+
+async def _reject_vendor_change_colliding_invoice(purchase_order_id: int, new_vendor_id: int) -> None:
+    # See the material twin in routes/orders.py: an edit re-copies the vendor
+    # onto the invoice, so an uploaded invoice's number must not already be
+    # recorded against the new vendor.
+    invoices = await PrintingPurchaseInvoiceDetails.find(
+        PrintingPurchaseInvoiceDetails.po_id == purchase_order_id,
+        PrintingPurchaseInvoiceDetails.is_deleted == False,  # noqa: E712 — Beanie needs the comparison
+    ).to_list()
+    for invoice in invoices:
+        if invoice.vendor_id != new_vendor_id:
+            await _reject_duplicate_vendor_invoice(new_vendor_id, invoice.vendor_invoice_no)
 
 
 async def _reject_duplicate_vendor_invoice(vendor_id: int, vendor_invoice_no: str | None) -> None:
@@ -387,6 +403,8 @@ async def update_printing_purchase_order_details(
             detail="a printing purchase order with this number already exists",
         )
 
+    await _reject_vendor_change_colliding_invoice(purchase_order.id, payload.vendor_id)
+
     tax_kind = await _resolve_tax_kind(payload, vendor)
     total_amount_before_tax, total_amount_after_tax = _compute_totals(
         payload.quantities, payload.rates, payload.gst_percs
@@ -403,14 +421,13 @@ async def update_printing_purchase_order_details(
     purchase_order.total_amount_after_tax = total_amount_after_tax
     purchase_order.description = payload.description
     await purchase_order.save()
+    # The invoice raised from this order follows the edit — see
+    # services/purchase_invoices.py for why it no longer keeps a snapshot.
+    await sync_printing_purchase_invoice_with_order(purchase_order)
 
     # Deleted and reinserted wholesale, same as the material side's line
     # items — there is no stock to reconcile first, so nothing has to be
     # computed against what the order previously said.
-    #
-    # The printing purchase invoice raised from this order is deliberately
-    # NOT updated: it snapshots what the order said when it was raised, the
-    # same borrowing convention PurchaseInvoiceDetails follows.
     await PrintingPurchaseSummary.find(
         PrintingPurchaseSummary.printing_purchase_order_id == purchase_order.id
     ).delete()

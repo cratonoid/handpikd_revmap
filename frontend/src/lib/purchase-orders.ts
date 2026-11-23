@@ -274,3 +274,23 @@ export async function parsePurchaseInvoicePdf(file: File): Promise<ParsedPurchas
     source: parsed.source,
   };
 }
+
+// POST /admin/delete_purchase_order (backend/app/api/routes/orders.py).
+// Administrator only. The backend refuses (409/400) an order a sales
+// invoice depends on, or whose stock has since been sold on; that detail is
+// shown verbatim, so it's thrown as the error message.
+export async function deletePurchaseOrder(id: number): Promise<void> {
+  const response = await apiFetch("/admin/delete_purchase_order", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+
+  if (!response.ok) {
+    const detail = await response
+      .json()
+      .then((body: { detail?: string }) => body.detail)
+      .catch(() => undefined);
+    throw new Error(typeof detail === "string" ? detail : "Failed to delete purchase order");
+  }
+}

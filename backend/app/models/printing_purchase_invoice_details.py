@@ -24,7 +24,7 @@ class PrintingPurchaseInvoiceDetails(Document):
     id: int
     printing_purchase_invoice_no: int
     date: datetime
-    vendor_id: int  # FK -> VendorDetails.id, snapshotted from the linked PrintingPurchaseOrders at create time
+    vendor_id: int  # FK -> VendorDetails.id, copied from the linked PrintingPurchaseOrders, re-copied on every edit
     po_id: int  # FK -> PrintingPurchaseOrders.id — every printing purchase invoice is raised against one
     # The vendor's own invoice number as printed on their PDF, when the order
     # was created by uploading one. None for orders keyed in by hand, which

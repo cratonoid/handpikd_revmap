@@ -53,14 +53,21 @@
 // server-side, and the vendor PDF — the uploaded one, or an optional one
 // picked here — is attached to that invoice in a follow-up request once it
 // has an id.
-import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
+import { fetchMyAccess } from "@/lib/access";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
 import { fromDatetimeLocalValue, nowAsDatetimeLocalValue, toDatetimeLocalValue } from "@/lib/datetime-input";
 import { GST_PERCENT_OPTIONS, isIntraState, resolveStateCode, stateNameForCode } from "@/lib/gst";
 import { attachPurchaseInvoicePdf } from "@/lib/purchase-invoices";
-import type { ParsedInvoiceLineItem, ParsedPurchaseInvoice, PurchaseOrder, TaxKind } from "@/lib/purchase-orders";
+import {
+  deletePurchaseOrder,
+  type ParsedInvoiceLineItem,
+  type ParsedPurchaseInvoice,
+  type PurchaseOrder,
+  type TaxKind,
+} from "@/lib/purchase-orders";
 import type { VendorOption } from "@/lib/vendors";
 import { createProduct, type Product } from "@/lib/products";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
@@ -255,6 +262,13 @@ export function PurchaseOrderFormModal({
   const [pdfFile, setPdfFile] = useState<File | null>(initialPdfFile ?? null);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+  // Deleting an order is Administrator-only (require_administrator on the
+  // backend), so the button only shows for that role. sections === null is
+  // how get_my_access says "the built-in Administrator role".
+  const [isAdministrator, setIsAdministrator] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   // Index into prefill.lineItems of the unresolved line whose "create the
   // missing product" form is open, or null when none is.
   const [creatingForLine, setCreatingForLine] = useState<number | null>(null);
@@ -280,6 +294,39 @@ export function PurchaseOrderFormModal({
   });
 
   const isEdit = mode === "edit";
+
+  useEffect(() => {
+    if (!isEdit) return;
+    let cancelled = false;
+    fetchMyAccess()
+      .then((access) => {
+        if (!cancelled) setIsAdministrator(access.sections === null);
+      })
+      .catch(() => {
+        // No button is the safe default; the backend enforces it anyway.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isEdit]);
+
+  async function handleDelete() {
+    if (!initialOrder) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deletePurchaseOrder(initialOrder.id);
+    } catch (deleteFailure) {
+      setDeleteError(
+        deleteFailure instanceof Error ? deleteFailure.message : "Couldn't delete this order. Please try again.",
+      );
+      setDeleting(false);
+      return;
+    }
+    setDeleting(false);
+    setConfirmingDelete(false);
+    onSaved();
+  }
   const title = isEdit ? "Edit purchase order" : "New purchase order";
 
   // vendors comes from GET /admin/get_vendors_list, which only returns active
@@ -453,7 +500,13 @@ export function PurchaseOrderFormModal({
 
       if (!response.ok) {
         if (response.status === 409) {
-          setError("A purchase order with this number already exists.");
+          // Usually a duplicate order number, but an edit that moves an
+          // uploaded invoice to a vendor already holding that invoice number
+          // is a 409 too, so prefer the backend's own wording.
+          const detail = await response.json().catch(() => null);
+          setError(
+            typeof detail?.detail === "string" ? detail.detail : "A purchase order with this number already exists.",
+          );
         } else {
           // Surface the backend's actual reason (e.g. "vendor not found",
           // "product 12 does not belong to the selected vendor") instead of
@@ -831,6 +884,21 @@ export function PurchaseOrderFormModal({
           )}
 
           <div className={styles.modalActions}>
+            <div className={styles.modalActionsLeft}>
+              {isEdit && isAdministrator && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteError(null);
+                    setConfirmingDelete(true);
+                  }}
+                  disabled={status === "saving" || deleting}
+                  className={`${styles.triggerButtonBase} ${styles.deleteTriggerButton}`}
+                >
+                  Delete order
+                </button>
+              )}
+            </div>
             <div className={styles.modalActionsRight}>
               <Button type="button" variant="tertiary" onClick={onClose}>
                 Cancel
@@ -842,6 +910,66 @@ export function PurchaseOrderFormModal({
           </div>
         </form>
       </div>
+
+      {confirmingDelete && (
+        <div
+          className={styles.modalBackdrop}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (!deleting) setConfirmingDelete(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="purchase-order-delete-title"
+            className={styles.confirmDialogPanel}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className={styles.modalHeader}>
+              <h2 id="purchase-order-delete-title" className={styles.modalTitle}>
+                Delete this purchase order?
+              </h2>
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={deleting}
+                aria-label="Close"
+                className={styles.modalCloseButton}
+              >
+                <XMarkIcon className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className={styles.confirmDialogBody}>
+              <p className={styles.confirmDialogIntro}>
+                Purchase order {initialOrder?.purchaseOrderNo} will be removed for good. The stock it added comes back
+                out of inventory, its purchase invoice is voided, and any sales order linked to it is unlinked. This
+                can&apos;t be undone.
+              </p>
+              {deleteError && (
+                <p role="alert" aria-live="polite" className={styles.formError}>
+                  {deleteError}
+                </p>
+              )}
+            </div>
+
+            <div className={styles.confirmDialogActions}>
+              <Button type="button" variant="tertiary" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
+                Cancel
+              </Button>
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                disabled={deleting}
+                className={`${styles.triggerButtonBase} ${styles.deleteTriggerButton}`}
+              >
+                {deleting ? "Deleting…" : "Yes, delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

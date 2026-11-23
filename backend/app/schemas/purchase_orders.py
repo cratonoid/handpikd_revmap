@@ -147,6 +147,14 @@ class UpdatePurchaseOrderDetailsResponse(BaseModel):
     message: str
 
 
+class DeletePurchaseOrderRequest(BaseModel):
+    id: int
+
+
+class DeletePurchaseOrderResponse(BaseModel):
+    message: str
+
+
 class PurchaseOrderListItem(BaseModel):
     # Lightweight id+PO no.+vendor name shape for the sales order form's
     # "related purchase orders" multiselect — see get_purchase_order_list in

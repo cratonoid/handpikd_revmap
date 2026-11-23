@@ -11,7 +11,7 @@ class PurchaseInvoiceDetails(Document):
     id: int
     purchase_invoice_no: int
     date: datetime
-    vendor_id: int  # FK -> VendorDetails.id, snapshotted from the linked PurchaseOrders at create time
+    vendor_id: int  # FK -> VendorDetails.id, copied from the linked PurchaseOrders, re-copied on every edit
     po_id: int  # FK -> PurchaseOrders.id — every purchase invoice is raised against a purchase order
     # The vendor's own invoice number as printed on their PDF, when the
     # purchase order was created by uploading one (see routes/orders.py's
