@@ -37,3 +37,22 @@ class UpdatePurchaseInvoiceDetailsResponse(BaseModel):
 
 class AttachPurchaseInvoicePdfResponse(BaseModel):
     message: str
+
+
+class ResyncFieldChange(BaseModel):
+    field: str
+    old: str
+    new: str
+
+
+class ResyncInvoiceItem(BaseModel):
+    kind: str  # "purchase" or "printing"
+    invoice_id: int
+    invoice_no: str  # formatted, as the invoices list shows it
+    purchase_order_no: str
+    changes: list[ResyncFieldChange]
+
+
+class ResyncPurchaseInvoicesResponse(BaseModel):
+    applied: bool
+    invoices: list[ResyncInvoiceItem]

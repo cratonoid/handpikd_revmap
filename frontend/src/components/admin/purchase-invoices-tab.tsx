@@ -34,6 +34,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { PurchaseInvoiceFormModal } from "@/components/admin/purchase-invoice-form-modal";
 import { PrintingPurchaseInvoiceFormModal } from "@/components/admin/printing-purchase-invoice-form-modal";
+import { PurchaseInvoiceResync } from "@/components/admin/purchase-invoice-resync";
 import {
   downloadPurchaseInvoicesZip,
   downloadUploadedPurchaseInvoicePdf,
@@ -257,6 +258,7 @@ export function PurchaseInvoicesTab() {
             >
               {bulkDownloading ? "Preparing…" : "Download all"}
             </Button>
+            <PurchaseInvoiceResync onApplied={() => void loadAll().catch(() => {})} />
           </div>
         </div>
       </div>

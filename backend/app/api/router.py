@@ -16,6 +16,7 @@ from app.api.routes import (
     emails,
     expenses,
     information,
+    inquiries,
     inquiry_form,
     inventory,
     invoices,
@@ -75,6 +76,7 @@ api_router.include_router(unbilled_orders.router)
 api_router.include_router(quotations.router)
 api_router.include_router(letters.router)
 api_router.include_router(information.router)
+api_router.include_router(inquiries.router)
 api_router.include_router(tickets.router)
 api_router.include_router(tickets.customer_router)
 api_router.include_router(notifications.router)

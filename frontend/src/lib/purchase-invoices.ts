@@ -173,3 +173,48 @@ export async function downloadPurchaseInvoicesZip(startDate: string, endDate: st
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
+
+// Administrator only (backend/app/api/routes/purchase_invoices.py,
+// resync_purchase_invoices_*): material and printing purchase invoices whose
+// figures disagree with their (since edited) orders. Preview changes nothing;
+// apply re-copies each order's totals, GST and vendor onto its invoice.
+export type InvoiceResync = {
+  kind: "purchase" | "printing";
+  invoiceId: number;
+  invoiceNo: string;
+  purchaseOrderNo: string;
+  changes: { field: string; old: string; new: string }[];
+};
+
+type ResyncResponse = {
+  applied: boolean;
+  invoices: {
+    kind: "purchase" | "printing";
+    invoice_id: number;
+    invoice_no: string;
+    purchase_order_no: string;
+    changes: { field: string; old: string; new: string }[];
+  }[];
+};
+
+function toResyncs(body: ResyncResponse): InvoiceResync[] {
+  return body.invoices.map((item) => ({
+    kind: item.kind,
+    invoiceId: item.invoice_id,
+    invoiceNo: item.invoice_no,
+    purchaseOrderNo: item.purchase_order_no,
+    changes: item.changes,
+  }));
+}
+
+export async function previewPurchaseInvoiceResync(): Promise<InvoiceResync[]> {
+  const response = await apiFetch("/admin/resync_purchase_invoices_preview");
+  if (!response.ok) throw new Error("Couldn't check the invoices. Please try again.");
+  return toResyncs(await response.json());
+}
+
+export async function applyPurchaseInvoiceResync(): Promise<InvoiceResync[]> {
+  const response = await apiFetch("/admin/resync_purchase_invoices_apply", { method: "POST" });
+  if (!response.ok) throw new Error("Couldn't update the invoices. Please try again.");
+  return toResyncs(await response.json());
+}

@@ -93,6 +93,8 @@ from app.models.sales_orders import PointsAllocation, SalesOrders
 from app.models.sales_summary import SalesSummary
 from app.models.sales_summary_id_counter import SalesSummaryIdCounter
 from app.models.standard_invoice_no_counter_master import StandardInvoiceNoCounterMaster
+from app.models.inquiry import Inquiry, InquiryStatus, InquiryStep
+from app.models.inquiry_id_counter import InquiryIdCounter
 from app.models.ticket import Ticket, TicketSide, TicketStatus
 from app.models.ticket_id_counter import TicketIdCounter
 from app.models.ticket_message import TicketMessage, TicketMessageKind
@@ -217,6 +219,10 @@ __all__ = [
     "SalesSummary",
     "SalesSummaryIdCounter",
     "StandardInvoiceNoCounterMaster",
+    "Inquiry",
+    "InquiryIdCounter",
+    "InquiryStatus",
+    "InquiryStep",
     "Ticket",
     "TicketIdCounter",
     "TicketMessage",

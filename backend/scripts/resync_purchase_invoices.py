@@ -16,7 +16,10 @@
 # Read-only by default: it lists every invoice that would change and how.
 # Pass --apply to write. Safe to re-run: an invoice that already matches its
 # order is left alone. Not registered in run_migrations.py, because it is a
-# judgement call to run, not a shape change.
+# judgement call to run, not a shape change. The same check and fix are on
+# the Purchase Invoices tab for an Administrator (resync_purchase_invoices_*
+# in routes/purchase_invoices.py); the logic lives in
+# services/purchase_invoice_resync.py.
 #
 # Production:
 #   docker compose run --rm backend python scripts/resync_purchase_invoices.py [--apply]
@@ -32,68 +35,22 @@ from pymongo import AsyncMongoClient
 
 from app.core.config import settings
 from app.core.db import DOCUMENT_MODELS
-from app.models import (
-    PrintingPurchaseInvoiceDetails,
-    PrintingPurchaseOrders,
-    PurchaseInvoiceDetails,
-    PurchaseOrders,
-)
-from app.services.printing_purchase_invoices import order_figures_for_printing_invoice
-from app.services.purchase_invoices import order_figures_for_invoice
-
-
-def _differs(current: object, wanted: object) -> bool:
-    if isinstance(current, float) or isinstance(wanted, float):
-        return round(float(current or 0), 2) != round(float(wanted or 0), 2)
-    return current != wanted
-
-
-async def _resync(label: str, invoice_model, order_model, figures_for, number_field: str, apply: bool) -> int:
-    changed = 0
-    invoices = await invoice_model.find(invoice_model.is_deleted == False).to_list()  # noqa: E712
-    for invoice in sorted(invoices, key=lambda row: row.id):
-        order = await order_model.get(invoice.po_id)
-        if order is None:
-            print(f"  ! {label} invoice {getattr(invoice, number_field)}: order {invoice.po_id} not found, skipped")
-            continue
-        figures = await figures_for(order)
-        diffs = {
-            field: (getattr(invoice, field), value)
-            for field, value in figures.items()
-            if _differs(getattr(invoice, field), value)
-        }
-        if not diffs:
-            continue
-        changed += 1
-        print(f"  {label} invoice {getattr(invoice, number_field)} (order {order.purchase_order_no}):")
-        for field, (old, new) in diffs.items():
-            print(f"      {field}: {old} -> {new}")
-        if apply:
-            for field, value in figures.items():
-                setattr(invoice, field, value)
-            await invoice.save()
-    return changed
+from app.services.purchase_invoice_resync import resync_purchase_invoices
 
 
 async def main(apply: bool) -> None:
     client = AsyncMongoClient(settings.mongodb_uri)
     await init_beanie(database=client[settings.mongodb_db_name], document_models=DOCUMENT_MODELS)
 
-    material = await _resync(
-        "purchase", PurchaseInvoiceDetails, PurchaseOrders, order_figures_for_invoice, "purchase_invoice_no", apply
-    )
-    printing = await _resync(
-        "printing",
-        PrintingPurchaseInvoiceDetails,
-        PrintingPurchaseOrders,
-        order_figures_for_printing_invoice,
-        "printing_purchase_invoice_no",
-        apply,
-    )
+    results = await resync_purchase_invoices(apply)
+    for result in results:
+        print(f"  {result.kind} invoice {result.invoice_no} (order {result.purchase_order_no}):")
+        for change in result.changes:
+            print(f"      {change.field}: {change.old} -> {change.new}")
 
     verb = "updated" if apply else "would update"
-    print(f"{verb}: {material} purchase invoice(s), {printing} printing purchase invoice(s)")
-    if not apply and (material or printing):
+    print(f"{verb}: {len(results)} invoice(s)")
+    if not apply and results:
         print("re-run with --apply to write these changes")
     await client.close()
 

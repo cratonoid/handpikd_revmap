@@ -37,15 +37,19 @@ from datetime import date, datetime, time
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 
-from app.api.deps import require_section
+from app.api.deps import require_administrator, require_section
 from app.models import Section, PurchaseInvoiceDetails, User
 from app.schemas.purchase_invoices import (
+    ResyncFieldChange,
+    ResyncInvoiceItem,
+    ResyncPurchaseInvoicesResponse,
     AttachPurchaseInvoicePdfResponse,
     PurchaseInvoiceDetailItem,
     UpdatePurchaseInvoiceDetailsRequest,
     UpdatePurchaseInvoiceDetailsResponse,
 )
-from app.services.invoice_numbering import format_purchase_invoice_no
+from app.services.invoice_numbering import format_printing_purchase_invoice_no, format_purchase_invoice_no
+from app.services.purchase_invoice_resync import resync_purchase_invoices
 from app.services.purchase_invoice_storage import delete_uploaded_pdf, read_uploaded_pdf, save_uploaded_pdf
 from app.services.storage import LocalUploadBlockedError
 
@@ -198,3 +202,51 @@ async def get_purchase_invoices_pdf_zip(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
     )
+
+
+def _display(value: object) -> str:
+    if isinstance(value, float):
+        return f"{value:,.2f}"
+    if hasattr(value, "value"):  # enums, e.g. tax_kind
+        return str(value.value)
+    return "—" if value is None or value == "" else str(value)
+
+
+def _resync_response(results, applied: bool) -> ResyncPurchaseInvoicesResponse:
+    return ResyncPurchaseInvoicesResponse(
+        applied=applied,
+        invoices=[
+            ResyncInvoiceItem(
+                kind=result.kind,
+                invoice_id=result.invoice_id,
+                invoice_no=(
+                    format_purchase_invoice_no(result.invoice_no)
+                    if result.kind == "purchase"
+                    else format_printing_purchase_invoice_no(result.invoice_no)
+                ),
+                purchase_order_no=result.purchase_order_no,
+                changes=[
+                    ResyncFieldChange(field=change.field, old=_display(change.old), new=_display(change.new))
+                    for change in result.changes
+                ],
+            )
+            for result in results
+        ],
+    )
+
+
+# Administrator only: invoices raised before edits carried over to them can
+# disagree with their (since edited) orders. Preview lists them and changes
+# nothing; apply re-copies the order's figures (services/purchase_invoice_resync.py).
+@router.get("/resync_purchase_invoices_preview", response_model=ResyncPurchaseInvoicesResponse)
+async def resync_purchase_invoices_preview(
+    _: User | None = Depends(require_administrator),
+) -> ResyncPurchaseInvoicesResponse:
+    return _resync_response(await resync_purchase_invoices(apply=False), applied=False)
+
+
+@router.post("/resync_purchase_invoices_apply", response_model=ResyncPurchaseInvoicesResponse)
+async def resync_purchase_invoices_apply(
+    _: User | None = Depends(require_administrator),
+) -> ResyncPurchaseInvoicesResponse:
+    return _resync_response(await resync_purchase_invoices(apply=True), applied=True)

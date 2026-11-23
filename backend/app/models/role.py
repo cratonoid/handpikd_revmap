@@ -30,6 +30,7 @@ class Section(str, Enum):
     letters = "letters"
     information = "information"
     tickets = "tickets"
+    inquiries = "inquiries"
     profile = "profile"
     emails = "emails"
     campaigns = "campaigns"

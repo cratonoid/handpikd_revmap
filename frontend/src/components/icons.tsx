@@ -503,6 +503,15 @@ export function TicketIcon(props: IconProps) {
   );
 }
 
+// Inquiries (admin sidebar): a clipboard with a checklist.
+export function ClipboardListIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.11c0-1.13-.84-2.09-1.96-2.18a48.4 48.4 0 0 0-1.12-.08m-5.8 0a2.25 2.25 0 0 0-.1.66c0 .41.34.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.66m-5.8 0A2.25 2.25 0 0 1 13.5 2.25H15a2.25 2.25 0 0 1 2.15 1.6m-5.8 0c-.38.03-.75.05-1.12.08A2.2 2.2 0 0 0 8.25 6.11V8.25m0 0H4.88c-.62 0-1.13.5-1.13 1.13v10.12c0 .62.5 1.13 1.13 1.13h9.75c.62 0 1.12-.5 1.12-1.13V9.38c0-.62-.5-1.13-1.12-1.13H8.25ZM6.75 12h.01v.01h-.01V12Zm0 3h.01v.01h-.01V15Zm0 3h.01v.01h-.01V18Z" />
+    </svg>
+  );
+}
+
 export function BellIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
