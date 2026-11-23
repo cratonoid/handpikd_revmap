@@ -33,6 +33,20 @@ export const SD_STATUS_OPTIONS: { value: SdStatus; label: string }[] = [
   { value: "sdl", label: "SDL" },
 ];
 
+// Where a lead came from (LeadSource in backend/app/models/database_contact.py).
+export type LeadSource = "cold_call" | "referral" | "maps" | "website";
+
+export const LEAD_SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
+  { value: "cold_call", label: "Cold call" },
+  { value: "referral", label: "Referral" },
+  { value: "maps", label: "Maps" },
+  { value: "website", label: "Website" },
+];
+
+export function leadSourceLabel(source: LeadSource | ""): string {
+  return LEAD_SOURCE_OPTIONS.find((option) => option.value === source)?.label ?? "";
+}
+
 export type OutreachChannel = "whatsapp" | "mail";
 
 export const OUTREACH_OPTIONS: { value: OutreachChannel; label: string }[] = [
@@ -76,6 +90,8 @@ export type Contact = {
   contactPerson: string;
   // Lead-only: the contact person's role ("Marketing Head"); "" if not given.
   contactRole: string;
+  // Lead-only: where the lead came from; "" if never set.
+  source: LeadSource | "";
   // From before campaigns kept their own per lead: the lead's old Status
   // and Sent status, still used to tell if it was emailed from the Database
   // page. Not shown or edited any more.
@@ -100,6 +116,8 @@ export type ContactFields = {
   location: string;
   contactPerson: string;
   contactRole: string;
+  // Lead-only; "" leaves it unset.
+  source: LeadSource | "";
 };
 
 // Shape returned by the backend's ContactItem schema.
@@ -114,6 +132,7 @@ type ContactItemResponse = {
   location: string | null;
   contact_person: string | null;
   contact_role?: string | null;
+  source?: LeadSource | null;
   lead_status: LeadStatus | null;
   temperature?: LeadTemperature | null;
   outreach_channels?: OutreachChannel[];
@@ -134,6 +153,7 @@ function toContact(item: ContactItemResponse): Contact {
     location: item.location ?? "",
     contactPerson: item.contact_person ?? "",
     contactRole: item.contact_role ?? "",
+    source: item.source ?? "",
     leadStatus: item.lead_status ?? "new",
     temperature: item.temperature ?? "cold",
     outreachChannels: item.outreach_channels ?? [],
@@ -154,6 +174,7 @@ function toRequestFields(fields: ContactFields) {
     location: fields.location,
     contact_person: fields.contactPerson,
     contact_role: fields.contactRole,
+    source: fields.source || null,
   };
 }
 

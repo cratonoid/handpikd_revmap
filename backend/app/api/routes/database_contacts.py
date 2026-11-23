@@ -65,6 +65,7 @@ def _to_item(contact: DatabaseContact, warm: bool = False) -> ContactItem:
         lead_status=(contact.lead_status or LeadStatus.new) if contact.contact_type == ContactType.lead else None,
         temperature=("warm" if warm else "cold") if is_lead else None,
         sd_status=contact.sd_status if contact.contact_type == ContactType.lead else None,
+        source=contact.source if is_lead else None,
         outreach_channels=_ordered_channels(contact.outreach_channels) if contact.contact_type == ContactType.lead else [],
         sent_channels=_ordered_channels(contact.sent_channels) if contact.contact_type == ContactType.lead else [],
         email_bounce_reason=contact.email_bounce_reason if contact.email_bounced_at else None,
@@ -150,6 +151,7 @@ async def add_contact(
         contact_role=_optional(payload.contact_role) if is_lead else None,
         lead_status=(payload.lead_status or LeadStatus.new) if is_lead else None,
         sd_status=(payload.sd_status or None) if is_lead else None,
+        source=payload.source if is_lead else None,
         outreach_channels=_ordered_channels(payload.outreach_channels) if is_lead else [],
         sent_channels=_ordered_channels(payload.sent_channels) if is_lead else [],
     )
@@ -210,6 +212,9 @@ async def update_contact(
             changed = True
         if payload.sd_status is not None:
             contact.sd_status = SdStatus(payload.sd_status) if payload.sd_status else None
+            changed = True
+        if payload.source is not None:
+            contact.source = payload.source
             changed = True
         if payload.outreach_channels is not None:
             contact.outreach_channels = _ordered_channels(payload.outreach_channels)

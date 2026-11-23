@@ -103,6 +103,7 @@ export function CampaignsPageClient() {
               <th className={`${styles.tableHeadCell} ${styles.databaseColSerial}`}>S.No</th>
               <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Campaign</th>
               <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Description</th>
+              <th className={styles.tableHeadCell}>Start – End</th>
               <th className={styles.tableHeadCell}>Created</th>
               <th className={styles.tableHeadCell}>Leads</th>
               <th className={styles.tableHeadCell}>Sent</th>
@@ -129,6 +130,13 @@ export function CampaignsPageClient() {
                 </td>
                 <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={campaign.description}>
                   {campaign.description || "—"}
+                </td>
+                <td className={styles.tableCell}>
+                  {campaign.startDate || campaign.endDate
+                    ? `${campaign.startDate ? formatDate(campaign.startDate) : "—"} – ${
+                        campaign.endDate ? formatDate(campaign.endDate) : "—"
+                      }`
+                    : "—"}
                 </td>
                 <td className={styles.tableCell}>{formatDate(utc(campaign.createdAt))}</td>
                 <td className={styles.tableCell}>{campaign.leadCount}</td>

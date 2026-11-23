@@ -115,6 +115,8 @@ def _to_item(
         campaign_id=campaign.id,
         name=campaign.name,
         description=campaign.description,
+        start_date=campaign.start_date,
+        end_date=campaign.end_date,
         lead_count=lead_count,
         sent_lead_count=sum(1 for row in leads if row.status == CampaignLeadStatus.sent),
         sent_count=sum(1 for entry in statuses if entry.status == RecipientStatus.sent),
@@ -150,6 +152,17 @@ async def _lead_count() -> int:
     return await DatabaseContact.find(DatabaseContact.contact_type == ContactType.lead).count()
 
 
+def _check_dates(campaign: Campaign) -> None:
+    # Stored naive, like every other datetime here, so they compare against
+    # created_at when campaigns are ordered for Warm / Cold.
+    for field in ("start_date", "end_date"):
+        value = getattr(campaign, field)
+        if value is not None and value.tzinfo is not None:
+            setattr(campaign, field, value.astimezone(timezone.utc).replace(tzinfo=None))
+    if campaign.start_date and campaign.end_date and campaign.end_date < campaign.start_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end date can't be before start date")
+
+
 async def _get_campaign_or_404(campaign_id: int) -> Campaign:
     campaign = await Campaign.get(campaign_id)
     if campaign is None:
@@ -175,6 +188,7 @@ async def get_campaign(campaign_id: int, _: User | None = Depends(_require_campa
     return CampaignDetail(
         campaign=_to_item(campaign, sends, leads, await _lead_count()),
         leads=[_to_lead_item(row) for row in leads],
+        warm_contact_ids=sorted(await campaign_leads.warm_contact_ids_in(campaign)),
         contacts=list(contact_statuses(sends).values()),
         sends=sends,
     )
@@ -186,7 +200,10 @@ async def add_campaign(payload: AddCampaignRequest, _: User | None = Depends(_re
         id=0,
         name=_required(payload.name, "campaign name"),
         description=_optional(payload.description),
+        start_date=payload.start_date,
+        end_date=payload.end_date,
     )
+    _check_dates(campaign)
     campaign.id = await get_next_id(CampaignIdCounter, "next_campaign_id", Campaign)
     await campaign.insert()
     return CampaignResponse(message="campaign added successfully", campaign=_to_item(campaign, [], [], await _lead_count()))
@@ -207,8 +224,14 @@ async def update_campaign(
         await campaign.delete()
         return CampaignResponse(message="campaign deleted successfully")
 
-    if payload.name is None and payload.description is None:
+    dates_sent = {"start_date", "end_date"} & payload.model_fields_set
+    if payload.name is None and payload.description is None and not dates_sent:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no changes specified")
+    if "start_date" in dates_sent:
+        campaign.start_date = payload.start_date
+    if "end_date" in dates_sent:
+        campaign.end_date = payload.end_date
+    _check_dates(campaign)
     if payload.name is not None:
         campaign.name = _required(payload.name, "campaign name")
     if payload.description is not None:

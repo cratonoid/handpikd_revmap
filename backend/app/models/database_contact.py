@@ -30,6 +30,15 @@ class SdStatus(str, Enum):
     sdl = "sdl"
 
 
+class LeadSource(str, Enum):
+    # Where a lead came from. Leads that predate this field were set to
+    # cold_call by scripts/migrate_lead_source_cold_call.py.
+    cold_call = "cold_call"
+    referral = "referral"
+    maps = "maps"
+    website = "website"
+
+
 class OutreachChannel(str, Enum):
     whatsapp = "whatsapp"
     mail = "mail"
@@ -60,6 +69,7 @@ class DatabaseContact(Document):
     # Lead-only, optional: the "SD Status" dropdown. None on client and
     # vendor rows, and on leads that haven't been given one.
     sd_status: SdStatus | None = None
+    source: LeadSource | None = None  # Lead-only.
     # Lead-only: the channels we have this lead's details for — the
     # "Data present" tick boxes in the Leads table. Ticked by hand. Empty on
     # client and vendor rows.

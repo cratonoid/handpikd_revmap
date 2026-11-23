@@ -15,6 +15,8 @@ class CampaignItem(BaseModel):
     campaign_id: int
     name: str
     description: str | None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
     # Every Database lead is in every campaign; how many are Sent in this one.
     lead_count: int
     sent_lead_count: int
@@ -59,11 +61,16 @@ class CampaignDetail(BaseModel):
     contacts: list[CampaignContactStatus]
     # Newest first.
     sends: list[EmailSendItem]
+    # Leads Warm in THIS campaign: already reached in an earlier campaign
+    # (see services/campaign_leads.py). Every other lead is Cold here.
+    warm_contact_ids: list[int] = []
 
 
 class AddCampaignRequest(BaseModel):
     name: str = Field(min_length=1)
     description: str | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
 
 
 # None leaves a field as it is; "" clears the description. `delete` on its
@@ -72,6 +79,10 @@ class UpdateCampaignRequest(BaseModel):
     campaign_id: int
     name: str | None = None
     description: str | None = None
+    # Dates are the exception to "None leaves it": when sent, even as null,
+    # they're set (null clears); only when left out are they unchanged.
+    start_date: datetime | None = None
+    end_date: datetime | None = None
     delete: bool = False
 
 

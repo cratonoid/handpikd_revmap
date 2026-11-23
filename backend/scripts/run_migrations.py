@@ -149,6 +149,11 @@ MIGRATIONS: list[tuple[str, str, str]] = [
         AUTO,
         "campaign_leads.status: Sent only where every Data present channel is ticked",
     ),
+    (
+        "migrate_lead_source_cold_call",
+        AUTO,
+        "database_contacts: existing leads get source = cold_call",
+    ),
 ]
 
 LEDGER_COLLECTION = "schema_migrations"

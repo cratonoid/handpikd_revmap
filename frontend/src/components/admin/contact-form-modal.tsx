@@ -15,7 +15,15 @@
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { XMarkIcon } from "@/components/icons";
-import { addContact, updateContact, type Contact, type ContactFields, type ContactType } from "@/lib/database-contacts";
+import {
+  addContact,
+  LEAD_SOURCE_OPTIONS,
+  updateContact,
+  type Contact,
+  type ContactFields,
+  type ContactType,
+  type LeadSource,
+} from "@/lib/database-contacts";
 import styles from "@/styles/dashboard.module.css";
 
 const EMPTY_FIELDS: ContactFields = {
@@ -27,6 +35,7 @@ const EMPTY_FIELDS: ContactFields = {
   location: "",
   contactPerson: "",
   contactRole: "",
+  source: "",
 };
 
 // Loose on purpose: only catches obvious typos. The backend applies the same
@@ -64,6 +73,7 @@ export function ContactFormModal({
           location: initialContact.location,
           contactPerson: initialContact.contactPerson,
           contactRole: initialContact.contactRole,
+          source: initialContact.source,
         }
       : EMPTY_FIELDS,
   );
@@ -85,9 +95,14 @@ export function ContactFormModal({
       location: isVendor ? fields.location.trim() : "",
       contactPerson: isLead ? fields.contactPerson.trim() : "",
       contactRole: isLead ? fields.contactRole.trim() : "",
+      source: isLead ? fields.source : "",
     };
     if (!trimmed.name) {
       setError(`Enter a ${nameLabel.toLowerCase()}.`);
+      return;
+    }
+    if (isLead && !trimmed.source) {
+      setError("Pick where this lead came from.");
       return;
     }
     if (!trimmed.phone) {
@@ -175,6 +190,28 @@ export function ContactFormModal({
                     className={styles.formInput}
                     disabled={saving}
                   />
+                </div>
+                <div>
+                  <label htmlFor="contactSource" className={styles.formLabel}>
+                    Source<span className={styles.requiredMark}>*</span>
+                  </label>
+                  <select
+                    id="contactSource"
+                    required
+                    value={fields.source}
+                    onChange={(event) => setField("source", event.target.value as LeadSource)}
+                    className={styles.formInput}
+                    disabled={saving}
+                  >
+                    <option value="" disabled>
+                      Select a source
+                    </option>
+                    {LEAD_SOURCE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </>
             )}

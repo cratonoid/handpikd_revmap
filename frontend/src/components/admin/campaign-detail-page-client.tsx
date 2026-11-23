@@ -13,9 +13,11 @@
 // (lib/database-contacts.ts), so editing it here changes it everywhere, and
 // a lead added here with "+ Add new lead" joins the Database and so every
 // campaign. Each column header has a funnel filter, as on /admin/database.
-// The leads sit under two tabs, Warm and Cold, by the lead's Database
-// standing: Warm once every Data present channel is ticked in Sent status in
-// some campaign. The filters and search apply to both.
+// The leads sit under two tabs relative to THIS campaign: Existing (already
+// reached — every Data present channel ticked — in an earlier campaign, so
+// this one retargets them) and New (this campaign is the first to reach
+// them). Campaigns are ordered by start date; see warm_contact_ids_in in
+// backend/app/services/campaign_leads.py. The filters and search apply to both.
 //
 // Tick rows and "Send mail" opens <EmailComposeModal>; the send carries the
 // campaign's id, and each delivered email ticks Mail in that lead's Sent
@@ -52,7 +54,6 @@ import {
   updateDataPresent,
   type ChannelFilterChoice,
   type Contact,
-  type LeadTemperature,
   type OutreachChannel,
   type SdStatus,
 } from "@/lib/database-contacts";
@@ -70,20 +71,22 @@ const VIEWS: { key: View; label: string }[] = [
   { key: "summary", label: "Summary" },
 ];
 
+type LeadSection = "existing" | "new";
+
 const LEAD_SECTIONS: {
-  key: LeadTemperature;
+  key: LeadSection;
   label: string;
   emptyText: string;
 }[] = [
   {
-    key: "warm",
-    label: "Warm",
-    emptyText: "No warm leads yet. A lead turns Warm once it's reached in any campaign.",
+    key: "existing",
+    label: "Existing",
+    emptyText: "No existing leads. A lead shows here once a campaign that starts before this one has reached it.",
   },
   {
-    key: "cold",
-    label: "Cold",
-    emptyText: "No cold leads. Add one with + Add new lead.",
+    key: "new",
+    label: "New",
+    emptyText: "No new leads. Add one with + Add new lead.",
   },
 ];
 
@@ -109,7 +112,7 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
   const [rowError, setRowError] = useState<string | null>(null);
 
   const [view, setView] = useState<View>("leads");
-  const [section, setSection] = useState<LeadTemperature>("warm");
+  const [section, setSection] = useState<LeadSection>("existing");
   const [search, setSearch] = useState("");
   // Header filters; empty means no filter.
   const [statusFilter, setStatusFilter] = useState<CampaignLeadStatus[]>([]);
@@ -196,9 +199,11 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
     );
 
   const activeSection = LEAD_SECTIONS.find((option) => option.key === section) ?? LEAD_SECTIONS[0];
-  const sectionRows = rows.filter(({ contact }) => contact.temperature === section);
-  const sectionVisible = visibleRows.filter(({ contact }) => contact.temperature === section);
-  const sectionCount = (key: LeadTemperature) => rows.filter(({ contact }) => contact.temperature === key).length;
+  const sectionOf = (contactId: number): LeadSection =>
+    detail?.warmContactIds.has(contactId) ? "existing" : "new";
+  const sectionRows = rows.filter(({ contact }) => sectionOf(contact.id) === section);
+  const sectionVisible = visibleRows.filter(({ contact }) => sectionOf(contact.id) === section);
+  const sectionCount = (key: LeadSection) => rows.filter(({ contact }) => sectionOf(contact.id) === key).length;
 
   const selectedRows = sectionRows.filter((row) => canBulkEmail(row) && selectedIds.includes(row.contact.id));
 
@@ -583,7 +588,7 @@ export function CampaignDetailPageClient({ campaignId }: { campaignId: number })
               placeholder="Search company name, email or phone…"
             />
 
-            <div className={styles.viewToggle} role="tablist" aria-label="Warm or cold leads">
+            <div className={styles.viewToggle} role="tablist" aria-label="Existing or new leads">
               {LEAD_SECTIONS.map((option) => (
                 <button
                   key={option.key}

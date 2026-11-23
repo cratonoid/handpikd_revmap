@@ -15,7 +15,14 @@ from app.models.customer_poc_details import CustomerPocDetails
 from app.models.customer_poc_id_counter import CustomerPocIdCounter
 from app.models.customer_points_lot import CustomerPointsLot, PointsSource
 from app.models.customer_points_lot_id_counter import CustomerPointsLotIdCounter
-from app.models.database_contact import ContactType, DatabaseContact, LeadStatus, OutreachChannel, SdStatus
+from app.models.database_contact import (
+    ContactType,
+    DatabaseContact,
+    LeadSource,
+    LeadStatus,
+    OutreachChannel,
+    SdStatus,
+)
 from app.models.database_contact_id_counter import DatabaseContactIdCounter
 from app.models.email_attachment import EmailAttachment
 from app.models.email_attachment_id_counter import EmailAttachmentIdCounter
@@ -125,6 +132,7 @@ __all__ = [
     "ContactType",
     "LeadStatus",
     "SdStatus",
+    "LeadSource",
     "OutreachChannel",
     "DatabaseContact",
     "DatabaseContactIdCounter",

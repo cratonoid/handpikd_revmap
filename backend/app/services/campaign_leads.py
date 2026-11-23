@@ -11,9 +11,16 @@
 # Data present channel) turns it back to Unsent. The admin can still set the
 # Status by hand afterwards; the rule runs again on the next tick change.
 # Warm / Cold doesn't look at Status at all, only at the ticks.
+#
+# Warm / Cold means two things. On the Database page a lead is Warm once it
+# has been reached (fully sent) in any campaign. Inside a campaign it is
+# relative to that campaign: Warm if it was already reached in an EARLIER
+# campaign (the ones to retarget), Cold if this campaign is the first to
+# reach it. Campaigns are ordered by start date, falling back to created_at.
 from pymongo.errors import DuplicateKeyError
 
 from app.models import (
+    Campaign,
     CampaignLead,
     CampaignLeadIdCounter,
     CampaignLeadStatus,
@@ -67,6 +74,40 @@ async def warm_contact_ids() -> set[int]:
         row["contact_id"]
         async for row in CampaignLead.get_pymongo_collection().find(
             {"contact_id": {"$in": list(data_present)}, "sent_channels.0": {"$exists": True}},
+            {"contact_id": 1, "sent_channels": 1},
+        )
+        if fully_sent(data_present[row["contact_id"]], row.get("sent_channels"))
+    }
+
+
+def _campaign_order(campaign: Campaign) -> tuple:
+    return (campaign.start_date or campaign.created_at, campaign.id)
+
+
+async def warm_contact_ids_in(campaign: Campaign) -> set[int]:
+    """Leads Warm inside this campaign: fully sent in an earlier campaign."""
+    earlier_ids = [
+        other.id
+        for other in await Campaign.find_all().to_list()
+        if other.id != campaign.id and _campaign_order(other) < _campaign_order(campaign)
+    ]
+    if not earlier_ids:
+        return set()
+    data_present = {
+        row["_id"]: row.get("outreach_channels")
+        async for row in DatabaseContact.get_pymongo_collection().find(
+            {"contact_type": ContactType.lead.value, "outreach_channels.0": {"$exists": True}},
+            {"outreach_channels": 1},
+        )
+    }
+    return {
+        row["contact_id"]
+        async for row in CampaignLead.get_pymongo_collection().find(
+            {
+                "campaign_id": {"$in": earlier_ids},
+                "contact_id": {"$in": list(data_present)},
+                "sent_channels.0": {"$exists": True},
+            },
             {"contact_id": 1, "sent_channels": 1},
         )
         if fully_sent(data_present[row["contact_id"]], row.get("sent_channels"))

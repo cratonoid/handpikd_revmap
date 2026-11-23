@@ -26,14 +26,21 @@ export function CampaignFormModal({
   const isEdit = initialCampaign !== undefined;
   const [name, setName] = useState(initialCampaign?.name ?? "");
   const [description, setDescription] = useState(initialCampaign?.description ?? "");
+  const [startDate, setStartDate] = useState(initialCampaign?.startDate ?? "");
+  const [endDate, setEndDate] = useState(initialCampaign?.endDate ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const fields = { name: name.trim(), description: description.trim() };
+    const fields = { name: name.trim(), description: description.trim(), startDate, endDate };
     if (!fields.name) {
       setError("Enter a campaign name.");
+      return;
+    }
+    // "YYYY-MM-DD" strings compare in date order.
+    if (startDate && endDate && endDate < startDate) {
+      setError("End date can't be before the start date.");
       return;
     }
 
@@ -97,6 +104,36 @@ export function CampaignFormModal({
                 disabled={saving}
               />
             </div>
+            <div>
+              <label htmlFor="campaignStartDate" className={styles.formLabel}>
+                Start date
+              </label>
+              <input
+                id="campaignStartDate"
+                type="date"
+                value={startDate}
+                onChange={(event) => setStartDate(event.target.value)}
+                className={styles.formInput}
+                disabled={saving}
+              />
+            </div>
+            <div>
+              <label htmlFor="campaignEndDate" className={styles.formLabel}>
+                End date
+              </label>
+              <input
+                id="campaignEndDate"
+                type="date"
+                value={endDate}
+                min={startDate || undefined}
+                onChange={(event) => setEndDate(event.target.value)}
+                className={styles.formInput}
+                disabled={saving}
+              />
+            </div>
+            <p className={`${styles.formHint} ${styles.formGridFullSpan}`}>
+              Leads already reached in a campaign that starts before this one show as Warm here; the rest are Cold.
+            </p>
             {!isEdit && (
               <p className={`${styles.formHint} ${styles.formGridFullSpan}`}>
                 Every lead, client and vendor in the Database is listed in the campaign, including ones added later.

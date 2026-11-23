@@ -18,6 +18,11 @@ class Campaign(Document):
     id: int
     name: str
     description: str | None = None
+    # Optional, as campaigns created before these existed have neither. The
+    # start date also orders campaigns for Warm / Cold (see
+    # services/campaign_leads.py), falling back to created_at when unset.
+    start_date: datetime | None = None
+    end_date: datetime | None = None
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
 

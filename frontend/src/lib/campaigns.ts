@@ -42,6 +42,9 @@ export type Campaign = {
   id: number;
   name: string;
   description: string;
+  // "YYYY-MM-DD", or "" when not set.
+  startDate: string;
+  endDate: string;
   leadCount: number;
   sentLeadCount: number;
   // Distinct contacts reached (delivered, not bounced).
@@ -70,6 +73,9 @@ export type CampaignDetail = {
   campaign: Campaign;
   // By lead id; only leads with something set in this campaign.
   leads: Map<number, CampaignLead>;
+  // Leads Warm in this campaign: reached in an earlier campaign. The rest
+  // are Cold here, whatever their standing on the Database page.
+  warmContactIds: Set<number>;
   statuses: Map<number, CampaignContactStatus>;
   // Newest first.
   sends: EmailSend[];
@@ -79,6 +85,8 @@ type CampaignItemResponse = {
   campaign_id: number;
   name: string;
   description: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
   lead_count: number;
   sent_lead_count: number;
   sent_count: number;
@@ -101,6 +109,7 @@ type CampaignLeadResponse = {
 type CampaignDetailResponse = {
   campaign: CampaignItemResponse;
   leads: CampaignLeadResponse[];
+  warm_contact_ids?: number[];
   contacts: {
     contact_id: number;
     status: RecipientStatus;
@@ -117,6 +126,8 @@ function toCampaign(item: CampaignItemResponse): Campaign {
     id: item.campaign_id,
     name: item.name,
     description: item.description ?? "",
+    startDate: item.start_date ? item.start_date.slice(0, 10) : "",
+    endDate: item.end_date ? item.end_date.slice(0, 10) : "",
     leadCount: item.lead_count,
     sentLeadCount: item.sent_lead_count,
     sentCount: item.sent_count,
@@ -178,6 +189,7 @@ export async function fetchCampaign(id: number): Promise<CampaignDetail> {
   return {
     campaign: toCampaign(body.campaign),
     leads: new Map(body.leads.map((item) => [item.contact_id, toCampaignLead(item)])),
+    warmContactIds: new Set(body.warm_contact_ids ?? []),
     statuses: new Map(
       body.contacts.map((entry) => [
         entry.contact_id,
@@ -195,17 +207,33 @@ export async function fetchCampaign(id: number): Promise<CampaignDetail> {
   };
 }
 
-export async function addCampaign(fields: { name: string; description: string }): Promise<Campaign> {
-  const response = await postJson("/admin/campaign/add_campaign", fields, "Couldn't save the campaign. Please try again.");
+export type CampaignFields = { name: string; description: string; startDate: string; endDate: string };
+
+// Dates go as "YYYY-MM-DD"; "" is sent as null, which clears it on an update.
+function toCampaignRequest(fields: CampaignFields) {
+  return {
+    name: fields.name,
+    description: fields.description,
+    start_date: fields.startDate || null,
+    end_date: fields.endDate || null,
+  };
+}
+
+export async function addCampaign(fields: CampaignFields): Promise<Campaign> {
+  const response = await postJson(
+    "/admin/campaign/add_campaign",
+    toCampaignRequest(fields),
+    "Couldn't save the campaign. Please try again.",
+  );
   const body: { campaign: CampaignItemResponse } = await response.json();
   return toCampaign(body.campaign);
 }
 
 // "" clears the description.
-export async function updateCampaign(id: number, fields: { name: string; description: string }): Promise<Campaign> {
+export async function updateCampaign(id: number, fields: CampaignFields): Promise<Campaign> {
   const response = await postJson(
     "/admin/campaign/update_campaign",
-    { campaign_id: id, ...fields },
+    { campaign_id: id, ...toCampaignRequest(fields) },
     "Couldn't save the campaign. Please try again.",
   );
   const body: { campaign: CampaignItemResponse } = await response.json();

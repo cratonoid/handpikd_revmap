@@ -38,6 +38,7 @@ import {
   deleteContact,
   fetchContacts,
   LEAD_TEMPERATURE_OPTIONS,
+  leadSourceLabel,
   matchesChannelFilters,
   OUTREACH_OPTIONS,
   updateDataPresent,
@@ -310,6 +311,7 @@ export function DatabasePageClient() {
               <th className={`${styles.tableHeadCell} ${styles.databaseColSerial}`}>S.No</th>
               <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>{nameLabel}</th>
               {isLead && <th className={`${styles.tableHeadCell} ${styles.databaseCellClip}`}>Contact person / Role</th>}
+              {isLead && <th className={styles.tableHeadCell}>Source</th>}
               <th className={`${styles.tableHeadCell} ${styles.databaseColPhone}`}>Phone no.</th>
               {isLead && (
                 <th className={`${styles.tableHeadCell} ${styles.databaseColStatus}`}>
@@ -403,6 +405,7 @@ export function DatabasePageClient() {
                     {contact.contactRole && <span className={emailStyles.contactRole}> · {contact.contactRole}</span>}
                   </td>
                 )}
+                {isLead && <td className={styles.tableCell}>{leadSourceLabel(contact.source) || "—"}</td>}
                 <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={contact.phone}>
                   {contact.phone}
                 </td>

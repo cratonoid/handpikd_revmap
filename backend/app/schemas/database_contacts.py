@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.models.database_contact import ContactType, LeadStatus, OutreachChannel, SdStatus
+from app.models.database_contact import ContactType, LeadSource, LeadStatus, OutreachChannel, SdStatus
 
 
 class ContactItem(BaseModel):
@@ -25,6 +25,7 @@ class ContactItem(BaseModel):
     temperature: Literal["cold", "warm"] | None = None
     # Lead-only; None until one is picked.
     sd_status: SdStatus | None = None
+    source: LeadSource | None = None  # Lead-only.
     # Lead-only; [] on client and vendor rows.
     outreach_channels: list[OutreachChannel] = []
     sent_channels: list[OutreachChannel] = []
@@ -48,6 +49,7 @@ class AddContactRequest(BaseModel):
     contact_role: str | None = None
     lead_status: LeadStatus | None = None
     sd_status: SdStatus | Literal[""] | None = None
+    source: LeadSource | None = None  # Lead-only; left out, unchanged.
     outreach_channels: list[OutreachChannel] | None = None
     sent_channels: list[OutreachChannel] | None = None
 
@@ -72,6 +74,7 @@ class UpdateContactRequest(BaseModel):
     lead_status: LeadStatus | None = None
     # "" clears it, like the optional text fields.
     sd_status: SdStatus | Literal[""] | None = None
+    source: LeadSource | None = None  # Lead-only; left out, unchanged.
     # The full set of ticked channels, not a delta; [] unticks both.
     outreach_channels: list[OutreachChannel] | None = None
     sent_channels: list[OutreachChannel] | None = None
