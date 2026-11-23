@@ -32,6 +32,7 @@
 // rules in table-search-input.tsx. Page count is deliberately left out: it
 // is the one numeric column, and including it would make a query like "10"
 // match every catalogue with ten pages alongside the name matches.
+import { CatalogueTabs } from "@/components/admin/catalogue-tabs";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { CatalogueFormModal } from "@/components/admin/catalogue-form-modal";
@@ -114,6 +115,7 @@ export function CataloguesPageClient() {
       <div className={styles.pageHeaderRow}>
         <div>
           <h1 className={styles.pageHeading}>Catalogues</h1>
+          <CatalogueTabs current="catalogues" />
         </div>
         <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
           + Add new catalogue

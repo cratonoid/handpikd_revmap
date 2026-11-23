@@ -15,6 +15,7 @@
 // Vendor and catalogue names are resolved locally from the same option lists
 // the form modal's pickers use. The search box filters client-side over the
 // four text columns: name, vendor, linked catalogue and notes.
+import { CatalogueTabs } from "@/components/admin/catalogue-tabs";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/button";
 import { PriceListFormModal } from "@/components/admin/price-list-form-modal";
@@ -97,7 +98,8 @@ export function PriceListsPageClient() {
     <>
       <div className={styles.pageHeaderRow}>
         <div>
-          <h1 className={styles.pageHeading}>Price Lists</h1>
+          <h1 className={styles.pageHeading}>Catalogues</h1>
+          <CatalogueTabs current="price_lists" />
         </div>
         <Button type="button" variant="primary" onClick={() => setModalState({ mode: "add" })}>
           + Add price list

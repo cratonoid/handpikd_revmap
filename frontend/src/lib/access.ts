@@ -43,6 +43,10 @@ export type AdminSection = {
   // as a checkbox in the role editor — see require_administrator in
   // backend/app/api/deps.py, which has no matching backend Section.
   administratorOnly?: boolean;
+  // Shown as a tab inside another section's page instead of its own sidebar
+  // entry (Price Lists is a tab on Catalogues). Still its own permission: the
+  // parent's sidebar link shows for anyone who can open either.
+  navParent?: SectionKey;
 };
 
 export const ADMIN_SECTIONS: AdminSection[] = [
@@ -61,7 +65,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "products", label: "Products", href: "/admin/products" },
   { key: "categories", label: "Categories", href: "/admin/categories" },
   { key: "catalogues", label: "Catalogues", href: "/admin/catalogues" },
-  { key: "price_lists", label: "Price Lists", href: "/admin/price-lists" },
+  { key: "price_lists", label: "Price Lists", href: "/admin/price-lists", navParent: "catalogues" },
   { key: "inquiry_form", label: "Hamper Inquiry Form", href: "/admin/inquiry-form" },
   { key: "product_inquiries", label: "Product Inquiries", href: "/admin/product-inquiries" },
   { key: "quotation", label: "Quotation", href: "/admin/quotation" },

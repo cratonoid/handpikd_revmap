@@ -102,6 +102,9 @@ type NavItem = {
   icon: Icon;
   // Admin items only: the section a role must grant for the link to show.
   section?: SectionKey;
+  // Admin items only: sections shown as tabs inside this item's page (see
+  // navParent in lib/access.ts). Granting any of them shows the link too.
+  children?: { section: SectionKey; href: string }[];
 };
 
 const SECTION_ICONS: Record<SectionKey, Icon> = {
@@ -132,11 +135,15 @@ const SECTION_ICONS: Record<SectionKey, Icon> = {
 };
 
 const NAV_ITEMS: Record<UserRole, NavItem[]> = {
-  admin: ADMIN_SECTIONS.map((section) => ({
+  admin: ADMIN_SECTIONS.filter((section) => !section.navParent).map((section) => ({
     label: section.label,
     href: section.href,
     icon: SECTION_ICONS[section.key],
     section: section.key,
+    children: ADMIN_SECTIONS.filter((child) => child.navParent === section.key).map((child) => ({
+      section: child.key,
+      href: child.href,
+    })),
   })),
   customer: [
     { label: "Dashboard", href: "/customer", icon: HomeIcon },
@@ -161,11 +168,23 @@ const TAB_ITEMS: Partial<Record<UserRole, NavItem[]>> = {
 
 // A section's root link also stays lit on its sub-pages (the sales order
 // details page under /admin/orders) — see isSectionPath in lib/access.ts.
-const isActiveHref = isSectionPath;
+// An item is also active on its children's pages (Price Lists lights up
+// Catalogues).
+function isActiveItem(pathname: string, item: NavItem): boolean {
+  return isSectionPath(pathname, item.href) || (item.children ?? []).some((child) => isSectionPath(pathname, child.href));
+}
 
 // Customers have no roles, so `access` is only ever set for team accounts.
 function isAllowed(item: NavItem, access: MyAccess | null) {
-  return !item.section || !access || canAccess(access, item.section);
+  if (!item.section || !access) return true;
+  return canAccess(access, item.section) || (item.children ?? []).some((child) => canAccess(access, child.section));
+}
+
+// Where the link goes: its own page, or — for a role granted only a child —
+// the first child it can open.
+function resolveHref(item: NavItem, access: MyAccess | null): string {
+  if (!item.section || !access || canAccess(access, item.section)) return item.href;
+  return (item.children ?? []).find((child) => canAccess(access, child.section))?.href ?? item.href;
 }
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -320,12 +339,14 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
     return null;
   }
 
-  const navItems = NAV_ITEMS[role].filter((item) => isAllowed(item, access));
+  const navItems = NAV_ITEMS[role]
+    .filter((item) => isAllowed(item, access))
+    .map((item) => ({ ...item, href: resolveHref(item, access) }));
   // What the hamburger sits next to on a phone: the label of the page you are
   // actually on. The top bar otherwise shows only the logo, which says nothing
   // about where in the dashboard you are once the horizontal pill strip (which
   // used to answer that) is gone.
-  const activeItem = NAV_ITEMS[role].find((item) => isActiveHref(pathname, item.href));
+  const activeItem = NAV_ITEMS[role].find((item) => isActiveItem(pathname, item));
   const allowedTabItems = TAB_ITEMS[role]?.filter((item) => isAllowed(item, access));
   const tabItems = allowedTabItems && allowedTabItems.length > 0 ? allowedTabItems : undefined;
   const roleLabel = access?.roleName || ROLE_LABEL[role];
@@ -431,7 +452,7 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
           </div>
 
           {navItems.map((item) => {
-            const isActive = isActiveHref(pathname, item.href);
+            const isActive = isActiveItem(pathname, item);
             const Icon = item.icon;
             return (
               <Link
@@ -466,7 +487,7 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
       {tabItems && (
         <nav className={styles.tabBar} aria-label="Quick navigation">
           {tabItems.map((item) => {
-            const isActive = isActiveHref(pathname, item.href);
+            const isActive = isActiveItem(pathname, item);
             const Icon = item.icon;
             return (
               <Link
