@@ -78,6 +78,7 @@ import {
   TagIcon,
   TicketIcon,
   ClipboardListIcon,
+  ViewColumnsIcon,
   UsersIcon,
   XMarkIcon,
 } from "@/components/icons";
@@ -114,6 +115,7 @@ const SECTION_ICONS: Record<SectionKey, Icon> = {
   vendors: StorefrontIcon,
   database: DatabaseIcon,
   inquiries: ClipboardListIcon,
+  work_board: ViewColumnsIcon,
   emails: MailIcon,
   campaigns: MegaphoneIcon,
   orders: ShoppingCartIcon,

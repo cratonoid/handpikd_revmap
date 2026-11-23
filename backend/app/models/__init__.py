@@ -96,6 +96,8 @@ from app.models.standard_invoice_no_counter_master import StandardInvoiceNoCount
 from app.models.inquiry import Inquiry, InquiryStatus, InquiryStep
 from app.models.inquiry_id_counter import InquiryIdCounter
 from app.models.ticket import Ticket, TicketSide, TicketStatus
+from app.models.work_story import WorkStatus, WorkStory, WorkTask
+from app.models.work_story_id_counter import WorkStoryIdCounter
 from app.models.ticket_id_counter import TicketIdCounter
 from app.models.ticket_message import TicketMessage, TicketMessageKind
 from app.models.ticket_message_id_counter import TicketMessageIdCounter
@@ -236,6 +238,10 @@ __all__ = [
     "UnbilledPurchaseSummaryIdCounter",
     "User",
     "UserRole",
+    "WorkStatus",
+    "WorkStory",
+    "WorkStoryIdCounter",
+    "WorkTask",
     "UserIdCounter",
     "VendorDetails",
     "VendorIdCounter",

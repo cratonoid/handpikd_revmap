@@ -31,6 +31,7 @@ class Section(str, Enum):
     information = "information"
     tickets = "tickets"
     inquiries = "inquiries"
+    work_board = "work_board"
     profile = "profile"
     emails = "emails"
     campaigns = "campaigns"

@@ -512,6 +512,15 @@ export function ClipboardListIcon(props: IconProps) {
   );
 }
 
+// Work board (admin sidebar): three columns, like a kanban board.
+export function ViewColumnsIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M9 4.5v15m6-15v15m-10.88 0h15.75c.62 0 1.13-.5 1.13-1.13V5.63c0-.62-.5-1.13-1.13-1.13H4.13C3.5 4.5 3 5 3 5.63v12.75c0 .62.5 1.12 1.13 1.12Z" />
+    </svg>
+  );
+}
+
 export function BellIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>
