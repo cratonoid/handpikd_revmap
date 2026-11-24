@@ -83,6 +83,12 @@ const VIEWS: { value: View; label: string }[] = [
 
 type TaskRow = { task: WorkTask; story: WorkStory };
 
+// Task ids are numbered per story (every story has a task 1), so a task is
+// only unique across the board together with its story's id.
+function taskKey(row: TaskRow): string {
+  return `${row.story.id}-${row.task.id}`;
+}
+
 // Overdue first, then the nearest deadline, then tasks with no deadline;
 // ties by story, then task, so the order is stable.
 function byUrgency(a: TaskRow, b: TaskRow, now: number): number {
@@ -226,7 +232,7 @@ export function WorkBoardPageClient() {
   const [view, setView] = useState<View>("stories");
   // The task whose status/assignee is being saved from the Tasks table, and
   // why the last such save failed.
-  const [savingTaskId, setSavingTaskId] = useState<number | null>(null);
+  const [savingTaskKey, setSavingTaskKey] = useState<string | null>(null);
   const [taskError, setTaskError] = useState<string | null>(null);
   // "Now" for the Tasks view's overdue flags and ordering, refreshed every
   // minute so a deadline passing while the page is open shows up.
@@ -330,14 +336,14 @@ export function WorkBoardPageClient() {
     .sort((a, b) => byUrgency(a, b, now));
 
   async function saveTask(row: TaskRow, fields: { status?: WorkStatus; assignedUserId?: number | null }) {
-    setSavingTaskId(row.task.id);
+    setSavingTaskKey(taskKey(row));
     setTaskError(null);
     try {
       upsert(await updateTask(row.story.id, row.task.id, fields));
     } catch (caught) {
       setTaskError(caught instanceof Error ? caught.message : "Couldn't save the task. Please try again.");
     } finally {
-      setSavingTaskId(null);
+      setSavingTaskKey(null);
     }
   }
 
@@ -453,7 +459,7 @@ export function WorkBoardPageClient() {
             </thead>
             <tbody>
               {visibleTasks.map((row) => (
-                <tr key={row.task.id} className={styles.tableRow}>
+                <tr key={taskKey(row)} className={styles.tableRow}>
                   <td className={`${styles.tableCell} ${styles.tableCellPrimary} ${styles.databaseCellClip}`} title={row.task.title}>
                     {row.task.title}
                   </td>
@@ -470,23 +476,23 @@ export function WorkBoardPageClient() {
                   {groups.length > 1 && <td className={styles.tableCell}>{row.story.groupName || "—"}</td>}
                   <td className={styles.tableCell}>
                     <AssigneeSelect
-                      id={`board-task-${row.task.id}-assignee`}
+                      id={`board-task-${taskKey(row)}-assignee`}
                       className={styles.workCellControl}
                       label={`Assignee of ${row.task.title}`}
                       value={row.task.assignedUserId}
                       members={membersOf(groups, row.story.groupId, members)}
                       onChange={(assignedUserId) => void saveTask(row, { assignedUserId })}
-                      disabled={savingTaskId === row.task.id}
+                      disabled={savingTaskKey === taskKey(row)}
                     />
                   </td>
                   <td className={`${styles.tableCell} ${styles.statusText} ${STATUS_COLOR[row.task.status]}`}>
                     <StatusSelect
-                      id={`board-task-${row.task.id}-status`}
+                      id={`board-task-${taskKey(row)}-status`}
                       className={styles.workCellControl}
                       label={`Status of ${row.task.title}`}
                       value={row.task.status}
                       onChange={(status) => void saveTask(row, { status })}
-                      disabled={savingTaskId === row.task.id}
+                      disabled={savingTaskKey === taskKey(row)}
                     />
                   </td>
                   <td className={`${styles.tableCell} ${styles.workNoWrap}`}>
@@ -1070,8 +1076,8 @@ function StoryModal({
               />
             </div>
             <div className={`${styles.formGridFullSpan} ${styles.modalActionsRight}`}>
-              <Button type="submit" variant="secondary" disabled={busy || !newTaskTitle.trim()}>
-                + Add task
+              <Button type="submit" variant="primary" disabled={busy}>
+                {busy ? "Saving…" : "Save task"}
               </Button>
             </div>
           </form>
