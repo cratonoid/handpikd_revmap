@@ -1,5 +1,7 @@
-# Keeps a standard invoice's snapshotted totals in step with the sales orders
-# it was raised against.
+# Keeps a DRAFT standard invoice's snapshotted totals in step with the sales
+# orders it was raised against. An issued invoice is frozen (see InvoiceState
+# in models/invoice_details.py) and is never restated from here: once it has
+# gone out, an order edit no longer reaches it.
 #
 # A standard invoice has no line items of its own. It SNAPSHOTS its orders'
 # totals at the moment it is raised (see billed_totals below, used by
@@ -30,7 +32,7 @@
 # bills what its orders' live partials have left.
 from beanie.operators import In
 
-from app.models import InvoiceBilling, InvoiceDetails, InvoiceStatus, InvoiceType, SalesOrders
+from app.models import InvoiceBilling, InvoiceDetails, InvoiceState, InvoiceStatus, InvoiceType, SalesOrders
 from app.services.gst import split_tax
 from app.services.invoice_numbering import format_sales_invoice_no
 
@@ -47,6 +49,11 @@ def order_totals(orders: list) -> Totals:
 
 def is_partial(invoice) -> bool:
     return getattr(invoice, "billing", InvoiceBilling.full) == InvoiceBilling.partial
+
+
+def is_draft(invoice) -> bool:
+    # Rows (and test stubs) without the field are issued — see InvoiceState.
+    return getattr(invoice, "state", InvoiceState.issued) == InvoiceState.draft
 
 
 def partials_alongside(invoice, candidates: list) -> list:
@@ -129,12 +136,14 @@ def billing_room_problem(sales_orders: list, invoice, claimed_by: list) -> str |
 
 
 async def refresh_invoice_totals_for_sales_orders(sales_order_ids: list[int]) -> int:
-    """Re-snapshots every live standard invoice raised against these orders.
+    """Re-snapshots every live DRAFT standard invoice raised against these orders.
 
     Returns how many invoices actually changed, so a caller can log or
-    surface it. Voided invoices are skipped — a withdrawn invoice is not a
-    document anyone will print again — and so are proforma invoices, which
-    carry their own line items and no sales order at all.
+    surface it. Issued invoices are skipped — they are frozen, and an order
+    edit after the fact no longer restates a document already sent out — and
+    so are voided ones and proforma invoices, which carry their own line
+    items and no sales order at all. Issued invoices are still loaded, since
+    a draft full invoice bills what the issued partials beside it left.
     """
     if not sales_order_ids:
         return 0
@@ -159,6 +168,8 @@ async def refresh_invoice_totals_for_sales_orders(sales_order_ids: list[int]) ->
     # Partials first: a full invoice beside them bills what they leave, so it
     # has to be worked out from their new figures, not their old ones.
     for invoice in sorted(invoices, key=lambda item: not is_partial(item)):
+        if not is_draft(invoice):
+            continue
         linked = [orders_by_id[sales_id] for sales_id in invoice.sales_ids if sales_id in orders_by_id]
         if not linked:
             # Its orders have gone missing entirely. Leave the snapshot
@@ -207,9 +218,11 @@ async def live_standard_invoices_on_sales_orders(sales_order_ids: list[int]) -> 
 
 
 async def void_unpaid_invoices_for_sales_order(sales_order_id: int) -> list[InvoiceDetails]:
-    """Voids the live unpaid standard invoices of an order just cancelled.
+    """Voids the live unpaid standard invoices of an order just cancelled,
+    and deletes its drafts outright (a draft was never issued, so there is
+    no number to account for and nothing to restore).
 
-    Returns the ones voided, so the caller can say so. The whole invoice goes
+    Returns the ones voided or deleted, so the caller can say so. The whole invoice goes
     even if it also lists other orders: it can't go on billing a cancelled
     one, and voiding puts those others back in the invoice picker.
 
@@ -221,6 +234,10 @@ async def void_unpaid_invoices_for_sales_order(sales_order_id: int) -> list[Invo
     voided = []
     for invoice in await live_standard_invoices_on_sales_orders([sales_order_id]):
         if invoice.status != InvoiceStatus.unpaid:
+            continue
+        if is_draft(invoice):
+            await invoice.delete()
+            voided.append(invoice)
             continue
         invoice.is_deleted = True
         invoice.voided_by_cancellation = True

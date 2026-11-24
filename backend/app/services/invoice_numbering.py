@@ -34,6 +34,10 @@ def format_standard_invoice_no(invoice_no: int, fy_start_year: int) -> str:
 
 
 def format_sales_invoice_no(invoice: InvoiceDetails) -> str:
+    # A draft has no number yet (it is drawn on issue), so it goes by its row
+    # id, in a form that can't be mistaken for a number in the series.
+    if invoice.invoice_no is None:
+        return f"DRAFT-{invoice.id}"
     if invoice.type == InvoiceType.proforma:
         return f"{_PROFORMA_INVOICE_PREFIX}-{invoice.invoice_no:04d}"
 

@@ -10,7 +10,7 @@ import asyncio
 
 import pytest
 
-from app.models.invoice_details import InvoiceStatus
+from app.models.invoice_details import InvoiceState, InvoiceStatus
 from app.services import invoice_totals
 
 
@@ -25,13 +25,18 @@ class _Field:
 
 
 class _Invoice:
-    def __init__(self, status: InvoiceStatus) -> None:
+    def __init__(self, status: InvoiceStatus, state: InvoiceState = InvoiceState.issued) -> None:
         self.status = status
+        self.state = state
         self.is_deleted = False
         self.saves = 0
+        self.deleted = False
 
     async def save(self) -> None:
         self.saves += 1
+
+    async def delete(self) -> None:
+        self.deleted = True
 
 
 class _StubInvoices:
@@ -93,3 +98,15 @@ def test_an_order_with_no_invoices_voids_nothing():
     _StubInvoices.result = []
 
     assert _run() == []
+
+
+def test_a_draft_is_deleted_rather_than_voided():
+    # A draft was never issued, so there is no number to keep and nothing to
+    # restore if the order comes back.
+    draft = _Invoice(InvoiceStatus.unpaid, InvoiceState.draft)
+    _StubInvoices.result = [draft]
+
+    assert _run() == [draft]
+    assert draft.deleted is True
+    assert draft.is_deleted is False
+    assert draft.saves == 0

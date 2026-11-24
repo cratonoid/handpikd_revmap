@@ -458,7 +458,7 @@
     })();
   </script>
 
-  {% if cancelled %}{% include "_cancelled_stamp.html" %}{% endif %}
+  {% if cancelled %}{% include "_cancelled_stamp.html" %}{% elif draft %}{% include "_draft_stamp.html" %}{% endif %}
 
 </body>
 </html>

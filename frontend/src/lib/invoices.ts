@@ -15,7 +15,14 @@
 // partialPercent of its orders' value or a fixed partialAmount (tax
 // included); any number may sit on the same orders up to their value, and
 // the full invoice after them bills what's left. See InvoiceBilling in
-// backend/app/models/invoice_details.py. Fixed once raised.
+// backend/app/models/invoice_details.py.
+//
+// A standard invoice starts as a draft: no number yet (invoiceNo null,
+// invoiceNoDisplay "DRAFT-<id>"), editable including its billing, re-totalled
+// when its sales orders change, watermarked DRAFT on its PDF, deletable, and
+// left out of the books and the client portal. Issuing it (issueInvoice)
+// gives it its number and freezes it: from then on only its payment status
+// changes, or it is cancelled. See InvoiceState in the same backend model.
 import { apiFetch } from "@/lib/api";
 import { printPdfBlob } from "@/lib/print-pdf";
 
@@ -25,10 +32,12 @@ export type OnlineOrOffline = "online" | "offline";
 // settled, matching InvoiceStatus in backend/app/models/invoice_details.py.
 export type InvoiceStatus = "unpaid" | "paid";
 export type InvoiceBilling = "full" | "partial";
+export type InvoiceState = "draft" | "issued";
 
 export type Invoice = {
   id: number;
-  invoiceNo: number;
+  // null on a draft — the number is given when it is issued.
+  invoiceNo: number | null;
   invoiceNoDisplay: string;
   date: string;
   salesIds: number[];
@@ -59,12 +68,15 @@ export type Invoice = {
   totalTaxAmount: number;
   totalAmountAfterTax: number;
   isDeleted: boolean;
+  state: InvoiceState;
+  issuedAt: string | null;
+  issuedBy: string;
 };
 
 // Shape returned by the backend's InvoiceDetailItem schema.
 type InvoiceDetailItem = {
   id: number;
-  invoice_no: number;
+  invoice_no: number | null;
   invoice_no_display: string;
   date: string;
   sales_ids: number[];
@@ -89,6 +101,9 @@ type InvoiceDetailItem = {
   total_tax_amount: number;
   total_amount_after_tax: number;
   is_deleted: boolean;
+  state?: InvoiceState;
+  issued_at?: string | null;
+  issued_by?: string;
 };
 
 function toInvoice(item: InvoiceDetailItem): Invoice {
@@ -119,6 +134,9 @@ function toInvoice(item: InvoiceDetailItem): Invoice {
     totalTaxAmount: item.total_tax_amount,
     totalAmountAfterTax: item.total_amount_after_tax,
     isDeleted: item.is_deleted,
+    state: item.state ?? "issued",
+    issuedAt: item.issued_at ?? null,
+    issuedBy: item.issued_by ?? "",
   };
 }
 
@@ -203,6 +221,11 @@ export type UpdateInvoicePayload = {
   // today if there is none.
   paidOn: string | null;
   isDeleted: boolean;
+  // Drafts only: the new billing. Left out keeps the invoice's own. An
+  // issued invoice ignores everything here but status, paidOn and isDeleted.
+  billing?: InvoiceBilling;
+  partialPercent?: number | null;
+  partialAmount?: number | null;
 };
 
 // Backs the status dropdown and the "Paid on" date in each row of the sales
@@ -254,8 +277,47 @@ export async function updateInvoice(payload: UpdateInvoicePayload): Promise<Resp
       status: payload.status,
       paid_on: payload.status === "paid" ? payload.paidOn : null,
       is_deleted: payload.isDeleted,
+      ...(payload.billing
+        ? {
+            billing: payload.billing,
+            partial_percent: payload.billing === "partial" ? (payload.partialPercent ?? null) : null,
+            partial_amount: payload.billing === "partial" ? (payload.partialAmount ?? null) : null,
+          }
+        : {}),
     }),
   });
+}
+
+async function errorDetail(response: Response, fallback: string): Promise<string> {
+  const body = await response.json().catch(() => null);
+  return typeof body?.detail === "string" ? body.detail : fallback;
+}
+
+// Issues a draft: gives it its number and freezes it. Resolves to the new
+// number (H/26-27/41), or throws with the reason the backend refused.
+export async function issueInvoice(id: number): Promise<string> {
+  const response = await apiFetch("/admin/issue_invoice", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  if (!response.ok) {
+    throw new Error(await errorDetail(response, "Couldn't issue the invoice. Please try again."));
+  }
+  const body: { invoice_no_display: string } = await response.json();
+  return body.invoice_no_display;
+}
+
+// Deletes a draft outright (an issued invoice is cancelled instead).
+export async function deleteDraftInvoice(id: number): Promise<void> {
+  const response = await apiFetch("/admin/delete_draft_invoice", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  if (!response.ok) {
+    throw new Error(await errorDetail(response, "Couldn't delete the draft. Please try again."));
+  }
 }
 
 // Proforma invoices are raised by hand — own customer + line items, no

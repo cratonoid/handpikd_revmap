@@ -78,3 +78,22 @@ def test_a_live_invoice_is_not_stamped(render, html_of_last_render):
     render()
 
     assert "CANCELLED" not in html_of_last_render["html"]
+
+
+def test_a_draft_invoice_is_watermarked(html_of_last_render):
+    _render_standard(draft=True)
+
+    assert "DRAFT INVOICE" in html_of_last_render["html"]
+
+
+def test_an_issued_invoice_carries_no_draft_watermark(html_of_last_render):
+    _render_standard()
+
+    assert "DRAFT INVOICE" not in html_of_last_render["html"]
+
+
+def test_a_cancelled_stamp_wins_over_the_draft_one(html_of_last_render):
+    _render_standard(cancelled=True, draft=True)
+
+    assert "CANCELLED" in html_of_last_render["html"]
+    assert "DRAFT INVOICE" not in html_of_last_render["html"]

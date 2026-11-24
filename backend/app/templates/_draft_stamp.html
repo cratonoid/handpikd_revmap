@@ -1,0 +1,7 @@
+{# Diagonal stamp across a draft invoice, so a draft that gets printed or
+   forwarded can't pass for one that was issued. Same mechanics as
+   _cancelled_stamp.html: position: fixed repeats it on every printed page and
+   keeps it out of the flow; translucent so the draft stays readable. #}
+<div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-35deg); border: 3mm solid rgba(110, 110, 110, 0.28); border-radius: 4mm; padding: 2mm 8mm; font-family: Helvetica, Arial, sans-serif; font-size: 54pt; font-weight: bold; letter-spacing: 2mm; white-space: nowrap; color: rgba(110, 110, 110, 0.28);">
+  DRAFT INVOICE
+</div>

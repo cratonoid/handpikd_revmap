@@ -25,11 +25,16 @@
 // Proforma invoices have their own dedicated modal
 // (proforma-invoice-form-modal.tsx), since they carry their own line items
 // instead of a sales-order link.
-//   - mode "add"  -> POST /admin/create_new_invoice
-//   - mode "edit" -> POST /admin/update_invoice_details (salesIds is
-//                    immutable once raised — shown read-only)
-// Both live in backend/app/api/routes/invoices.py.
-import { useMemo, useState, type FormEvent } from "react";
+//
+// Three ways in (see InvoiceState in lib/invoices.ts):
+//   - new    -> POST /admin/create_new_invoice, always saved as a draft
+//   - draft  -> everything editable but the sales orders, billing included;
+//               "Save draft" posts update_invoice_details, "Issue invoice"
+//               saves then posts issue_invoice (numbers and freezes it), and
+//               "Delete draft" posts delete_draft_invoice
+//   - issued -> read-only except the payment status, plus Cancel/Restore
+// All live in backend/app/api/routes/invoices.py.
+import { useMemo, useState, type FormEvent, type MouseEvent } from "react";
 import { Button } from "@/components/button";
 import {
   addDaysToDatetimeLocalValue,
@@ -39,9 +44,17 @@ import {
   toDatetimeLocalValue,
 } from "@/lib/datetime-input";
 import type { Invoice, InvoiceBilling, InvoiceStatus, OnlineOrOffline } from "@/lib/invoices";
-import { billedTotals, createInvoice, printInvoicePdf, updateInvoice } from "@/lib/invoices";
+import {
+  billedTotals,
+  createInvoice,
+  deleteDraftInvoice,
+  issueInvoice,
+  printInvoicePdf,
+  updateInvoice,
+} from "@/lib/invoices";
 import type { SalesOrder } from "@/lib/sales-orders";
 import type { CustomerOption } from "@/lib/customers";
+import { formatDate } from "@/lib/format-date";
 import { MultiSelectDropdown, type MultiSelectOption } from "@/components/admin/multi-select-dropdown";
 import { SingleSelectDropdown, type SingleSelectOption } from "@/components/admin/single-select-dropdown";
 import { XMarkIcon } from "@/components/icons";
@@ -49,6 +62,8 @@ import styles from "@/styles/dashboard.module.css";
 
 type Status = "idle" | "saving";
 type PartialMode = "percent" | "amount";
+// Which "Are you sure?" row is showing, if any.
+type Confirming = null | "cancel" | "delete" | "issue";
 
 const BILLING_OPTIONS: { value: InvoiceBilling; label: string }[] = [
   { value: "full", label: "Full" },
@@ -116,10 +131,14 @@ export function InvoiceFormModal({
   );
   const [transport, setTransport] = useState(initialInvoice?.transport ?? "Hand Delivery");
   const [notes, setNotes] = useState(initialInvoice?.notes ?? "");
-  const [billing, setBilling] = useState<InvoiceBilling>("full");
-  const [partialMode, setPartialMode] = useState<PartialMode>("percent");
+  const [billing, setBilling] = useState<InvoiceBilling>(initialInvoice?.billing ?? "full");
+  const [partialMode, setPartialMode] = useState<PartialMode>(
+    initialInvoice?.partialAmount != null ? "amount" : "percent",
+  );
   // The typed %, or rupees including tax, per partialMode.
-  const [partialValue, setPartialValue] = useState("");
+  const [partialValue, setPartialValue] = useState(
+    String(initialInvoice?.partialAmount ?? initialInvoice?.partialPercent ?? ""),
+  );
   const [invoiceStatus, setInvoiceStatus] = useState<InvoiceStatus>(initialInvoice?.status ?? "unpaid");
   // "YYYY-MM-DD", only shown and sent while the status is paid. Filled with
   // today when the status is switched to paid, then editable. Blank on an
@@ -133,12 +152,18 @@ export function InvoiceFormModal({
   }
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirming, setConfirming] = useState<Confirming>(null);
   const [printing, setPrinting] = useState(false);
 
   const isEdit = mode === "edit";
+  const isDraft = isEdit && initialInvoice?.state === "draft";
+  const isIssued = isEdit && !isDraft;
   const wasDeleted = initialInvoice?.isDeleted ?? false;
-  const title = isEdit ? "Edit invoice" : "New invoice";
+  // Billing, dates and the rest of the document are open on a new invoice
+  // and on a draft; an issued one is frozen.
+  const canEditDocument = !isEdit || isDraft;
+  const locked = !canEditDocument || wasDeleted;
+  const title = !isEdit ? "New invoice" : isDraft ? "Edit draft invoice" : "Invoice";
 
   const customersById = useMemo(() => new Map(customers.map((c) => [c.id, c])), [customers]);
   const selectedSalesOrders = useMemo(
@@ -207,10 +232,15 @@ export function InvoiceFormModal({
     [salesOrders, cancelledStatusIds, customersById, lockedCustId, invoicedSalesIds],
   );
 
-  async function submitPayload(isDeletedValue: boolean) {
-    setStatus("saving");
-    setError(null);
+  const billingPayload = {
+    billing,
+    partialPercent: billing === "partial" && partialMode === "percent" ? partialNumber : null,
+    partialAmount: billing === "partial" && partialMode === "amount" ? partialNumber : null,
+  };
 
+  // Saves the form; resolves to whether it went through (the error is shown
+  // here when it didn't).
+  async function save(isDeletedValue: boolean): Promise<boolean> {
     try {
       const response = isEdit
         ? await updateInvoice({
@@ -220,9 +250,11 @@ export function InvoiceFormModal({
             onlineOrOffline,
             transport,
             notes,
-            status: invoiceStatus,
+            // A draft has no payment state yet.
+            status: isDraft ? "unpaid" : invoiceStatus,
             paidOn: paidOn || null,
             isDeleted: isDeletedValue,
+            ...(isDraft ? billingPayload : {}),
           })
         : await createInvoice({
             salesIds: salesIds.map(Number),
@@ -231,59 +263,107 @@ export function InvoiceFormModal({
             onlineOrOffline,
             transport,
             notes,
-            billing,
-            partialPercent: billing === "partial" && partialMode === "percent" ? partialNumber : null,
-            partialAmount: billing === "partial" && partialMode === "amount" ? partialNumber : null,
+            ...billingPayload,
           });
 
       if (!response.ok) {
         const detail = await response.json().catch(() => null);
         setError(typeof detail?.detail === "string" ? detail.detail : "Something went wrong. Please try again.");
-        setStatus("idle");
-        return;
+        return false;
       }
-
-      onSaved();
+      return true;
     } catch {
       setError("Couldn't reach the server. Please try again.");
+      return false;
+    }
+  }
+
+  async function submitPayload(isDeletedValue: boolean) {
+    setStatus("saving");
+    setError(null);
+    if (await save(isDeletedValue)) {
+      onSaved();
+    } else {
       setStatus("idle");
     }
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-
-    if (!isEdit && salesIds.length === 0) {
-      setError("Please select at least one sales order.");
+  // Issuing saves the draft first, so what gets issued is what's on screen.
+  async function saveAndIssue() {
+    setConfirming(null);
+    setStatus("saving");
+    setError(null);
+    if (!(await save(false))) {
+      setStatus("idle");
       return;
     }
+    try {
+      await issueInvoice(initialInvoice!.id);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't issue the invoice. Please try again.");
+      setStatus("idle");
+    }
+  }
 
-    if (!isEdit && billing === "partial") {
+  async function handleDeleteDraft() {
+    setConfirming(null);
+    setStatus("saving");
+    setError(null);
+    try {
+      await deleteDraftInvoice(initialInvoice!.id);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't delete the draft. Please try again.");
+      setStatus("idle");
+    }
+  }
+
+  // The checks a new invoice or a draft has to pass before it's saved or
+  // issued. Returns false, with the reason shown, when it doesn't.
+  function validate(form: HTMLFormElement): boolean {
+    if (!isEdit && salesIds.length === 0) {
+      setError("Please select at least one sales order.");
+      return false;
+    }
+
+    if (canEditDocument && billing === "partial") {
       if (!(partialNumber > 0) || (partialMode === "percent" && partialNumber > 100)) {
         setError(partialMode === "percent" ? "Enter a percentage above 0, up to 100." : "Enter an amount above ₹0.");
-        return;
+        return false;
       }
       if (preview.afterTax > leftToBill + 0.005) {
         setError(`Only ${rupees(Math.max(leftToBill, 0))} of ${rupees(orderAfterTax)} is left to bill on these orders.`);
-        return;
+        return false;
       }
     }
-    if (!isEdit && billing === "full" && partialsOnSelection.length > 0 && leftToBill <= 0.005) {
+    if (canEditDocument && billing === "full" && partialsOnSelection.length > 0 && leftToBill <= 0.005) {
       setError("These orders are already fully billed by partial invoices.");
-      return;
+      return false;
     }
 
     if (!form.checkValidity()) {
       form.reportValidity();
-      return;
+      return false;
     }
+    return true;
+  }
 
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!validate(event.currentTarget)) return;
     void submitPayload(wasDeleted);
   }
 
-  function handleDeleteOrRestore() {
-    setConfirmingDelete(false);
+  function handleIssueClick(event: MouseEvent<HTMLButtonElement>) {
+    const form = event.currentTarget.form;
+    setError(null);
+    if (form && !validate(form)) return;
+    setConfirming("issue");
+  }
+
+  function handleCancelOrRestore() {
+    setConfirming(null);
     void submitPayload(!wasDeleted);
   }
 
@@ -300,6 +380,25 @@ export function InvoiceFormModal({
     } finally {
       setPrinting(false);
     }
+  }
+
+  const confirmText: Record<Exclude<Confirming, null>, string> = {
+    cancel: wasDeleted
+      ? "Are you sure you want to restore this invoice?"
+      : "Are you sure you want to cancel this invoice?",
+    delete: "Delete this draft? It has no number, so nothing is left behind.",
+    issue:
+      "Issue this invoice? It gets the next invoice number, and after that it can't be changed — only its payment status, or cancelling it.",
+  };
+  const confirmButton: Record<Exclude<Confirming, null>, string> = {
+    cancel: wasDeleted ? "Yes, restore" : "Yes, cancel invoice",
+    delete: "Yes, delete draft",
+    issue: "Yes, issue invoice",
+  };
+  function handleConfirm() {
+    if (confirming === "issue") void saveAndIssue();
+    else if (confirming === "delete") void handleDeleteDraft();
+    else handleCancelOrRestore();
   }
 
   return (
@@ -322,17 +421,23 @@ export function InvoiceFormModal({
 
         <form onSubmit={handleSubmit} className={styles.modalForm}>
           <div className={styles.formGrid}>
-            {isEdit ? (
-              <div>
-                <span className={styles.formLabel}>Invoice no.</span>
-                <p className={styles.pageSubtext}>{initialInvoice?.invoiceNoDisplay}</p>
-              </div>
-            ) : (
-              <div>
-                <span className={styles.formLabel}>Invoice no.</span>
-                <p className={styles.pageSubtext}>Assigned automatically on save</p>
-              </div>
-            )}
+            <div>
+              <span className={styles.formLabel}>Invoice no.</span>
+              <p className={styles.pageSubtext}>
+                {!isEdit
+                  ? "Saved as a draft. The number is given when it's issued."
+                  : isDraft
+                    ? `${initialInvoice?.invoiceNoDisplay} · draft, numbered when issued`
+                    : initialInvoice?.invoiceNoDisplay}
+                {isIssued && initialInvoice?.issuedAt && (
+                  <>
+                    {" "}
+                    · issued {formatDate(initialInvoice.issuedAt)}
+                    {initialInvoice.issuedBy ? ` by ${initialInvoice.issuedBy}` : ""}
+                  </>
+                )}
+              </p>
+            </div>
 
             {isEdit ? (
               <div>
@@ -357,7 +462,7 @@ export function InvoiceFormModal({
               />
             )}
 
-            {isEdit ? (
+            {locked ? (
               initialInvoice?.billing === "partial" && (
                 <div>
                   <span className={styles.formLabel}>Billing</span>
@@ -389,7 +494,7 @@ export function InvoiceFormModal({
               </div>
             )}
 
-            {!isEdit && billing === "partial" && (
+            {!locked && billing === "partial" && (
               <div>
                 <label htmlFor="partialValue" className={styles.formLabel}>
                   {partialMode === "percent" ? "Advance (% of order value)" : "Advance amount (incl. tax)"}
@@ -443,6 +548,7 @@ export function InvoiceFormModal({
                 id="invoiceDate"
                 type="datetime-local"
                 required
+                disabled={locked}
                 value={date}
                 onChange={(e) => {
                   setDate(e.target.value);
@@ -462,6 +568,7 @@ export function InvoiceFormModal({
                 id="dueDate"
                 type="datetime-local"
                 required
+                disabled={locked}
                 value={dueDate}
                 onChange={(e) => {
                   setDueDate(e.target.value);
@@ -471,7 +578,7 @@ export function InvoiceFormModal({
               />
             </div>
 
-            {isEdit && (
+            {isIssued && (
               <SingleSelectDropdown
                 label="Status"
                 placeholder="Select a status"
@@ -484,7 +591,7 @@ export function InvoiceFormModal({
               />
             )}
 
-            {isEdit && invoiceStatus === "paid" && (
+            {isIssued && invoiceStatus === "paid" && (
               <div>
                 <label htmlFor="paidOn" className={styles.formLabel}>
                   Paid on
@@ -507,6 +614,7 @@ export function InvoiceFormModal({
               <select
                 id="onlineOrOffline"
                 required
+                disabled={locked}
                 value={onlineOrOffline}
                 onChange={(e) => setOnlineOrOffline(e.target.value as OnlineOrOffline)}
                 className={styles.formInput}
@@ -523,6 +631,7 @@ export function InvoiceFormModal({
               <input
                 id="transport"
                 type="text"
+                disabled={locked}
                 value={transport}
                 onChange={(e) => setTransport(e.target.value)}
                 className={styles.formInput}
@@ -540,20 +649,21 @@ export function InvoiceFormModal({
             <textarea
               id="invoiceNotes"
               rows={2}
+              disabled={locked}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className={styles.formTextarea}
             />
           </div>
 
-          {!isEdit && selectedSalesOrders.length > 0 && billing === "full" && partialsOnSelection.length > 0 && (
+          {canEditDocument && selectedSalesOrders.length > 0 && billing === "full" && partialsOnSelection.length > 0 && (
             <p className={styles.pageSubtext}>
               Bills the balance: {rupees(orderAfterTax)} less {rupees(alreadyBilled)} already billed on{" "}
               {partialsOnSelection.map((invoice) => invoice.invoiceNoDisplay).join(", ")}.
             </p>
           )}
 
-          {!isEdit && selectedSalesOrders.length > 0 && (
+          {canEditDocument && selectedSalesOrders.length > 0 && (
             <div className={styles.totalsRow}>
               <div className={styles.totalsRowItem}>
                 <p className={styles.totalsRowLabel}>Total before tax</p>
@@ -570,7 +680,7 @@ export function InvoiceFormModal({
             </div>
           )}
 
-          {isEdit && (
+          {isIssued && (
             <div className={styles.totalsRow}>
               <div className={styles.totalsRowItem}>
                 <p className={styles.totalsRowLabel}>Total before tax</p>
@@ -594,18 +704,30 @@ export function InvoiceFormModal({
           )}
 
           {wasDeleted && <p className={styles.formHint}>This invoice is cancelled. Restore it to make changes.</p>}
+          {isIssued && !wasDeleted && (
+            <p className={styles.formHint}>
+              This invoice has been issued, so it can&apos;t be changed. Only its payment status can be updated, or it
+              can be cancelled.
+            </p>
+          )}
+          {isDraft && (
+            <p className={styles.formHint}>
+              Draft: it follows any change to its sales orders and isn&apos;t counted in accounts or shown to the
+              client until it&apos;s issued.
+            </p>
+          )}
 
           <div className={styles.modalActions}>
             <div className={styles.modalActionsLeft}>
-              {isEdit && !confirmingDelete && (
+              {isEdit && confirming === null && (
                 <>
                   <button
                     type="button"
-                    onClick={() => setConfirmingDelete(true)}
+                    onClick={() => setConfirming(isDraft ? "delete" : "cancel")}
                     disabled={status === "saving"}
                     className={`${styles.triggerButtonBase} ${wasDeleted ? styles.restoreTriggerButton : styles.deleteTriggerButton}`}
                   >
-                    {wasDeleted ? "Restore invoice" : "Cancel invoice"}
+                    {isDraft ? "Delete draft" : wasDeleted ? "Restore invoice" : "Cancel invoice"}
                   </button>
                   <Button
                     type="button"
@@ -613,41 +735,42 @@ export function InvoiceFormModal({
                     onClick={() => void handlePrint()}
                     disabled={status === "saving" || printing}
                   >
-                    {printing ? "Preparing…" : "Print invoice"}
+                    {printing ? "Preparing…" : isDraft ? "Print draft" : "Print invoice"}
                   </Button>
                 </>
               )}
 
-              {isEdit && confirmingDelete && (
+              {confirming !== null && (
                 <div className={styles.deleteConfirmRow}>
-                  <span className={styles.deleteConfirmText}>
-                    {wasDeleted
-                      ? "Are you sure you want to restore this invoice?"
-                      : "Are you sure you want to cancel this invoice?"}
-                  </span>
+                  <span className={styles.deleteConfirmText}>{confirmText[confirming]}</span>
                   <Button
                     type="button"
                     variant="tertiary"
-                    onClick={() => setConfirmingDelete(false)}
+                    onClick={() => setConfirming(null)}
                     disabled={status === "saving"}
                   >
                     Go back
                   </Button>
-                  <Button type="button" variant="primary" onClick={handleDeleteOrRestore} disabled={status === "saving"}>
-                    {status === "saving" ? "Saving…" : wasDeleted ? "Yes, restore" : "Yes, cancel invoice"}
+                  <Button type="button" variant="primary" onClick={handleConfirm} disabled={status === "saving"}>
+                    {status === "saving" ? "Saving…" : confirmButton[confirming]}
                   </Button>
                 </div>
               )}
             </div>
 
-            {!confirmingDelete && (
+            {confirming === null && (
               <div className={styles.modalActionsRight}>
                 <Button type="button" variant="tertiary" onClick={onClose}>
                   {wasDeleted ? "Close" : "Cancel"}
                 </Button>
                 {!wasDeleted && (
-                  <Button type="submit" variant="primary" disabled={status === "saving"}>
-                    {status === "saving" ? "Saving…" : "Save"}
+                  <Button type="submit" variant={isDraft ? "secondary" : "primary"} disabled={status === "saving"}>
+                    {status === "saving" ? "Saving…" : canEditDocument ? "Save draft" : "Save"}
+                  </Button>
+                )}
+                {isDraft && (
+                  <Button type="button" variant="primary" onClick={handleIssueClick} disabled={status === "saving"}>
+                    Issue invoice
                   </Button>
                 )}
               </div>

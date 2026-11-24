@@ -28,6 +28,7 @@ from app.api.routes.invoices import (
     resolve_invoice_customer_id,
 )
 from app.models import (
+    NOT_DRAFT,
     CustomerDetails,
     InvoiceDetails,
     InvoiceType,
@@ -46,6 +47,7 @@ from app.schemas.customer_invoices import (
 )
 from app.services.customer_points import get_customer_lots, today
 from app.services.invoice_numbering import format_sales_invoice_no
+from app.services.invoice_totals import is_draft
 
 router = APIRouter(prefix="/customer", tags=["customer-invoices"])
 
@@ -80,7 +82,8 @@ async def _owned_invoices(customer: CustomerDetails) -> list[InvoiceDetails]:
     whose array contains any of this client's orders.
 
     Voided invoices (is_deleted) are left out — from the client's side an
-    invoice that was withdrawn simply isn't one.
+    invoice that was withdrawn simply isn't one — and so are drafts, which
+    haven't been issued to anyone yet.
     """
     orders = await SalesOrders.find(SalesOrders.cust_id == customer.id).to_list()
     sales_order_ids = [order.id for order in orders]
@@ -90,7 +93,7 @@ async def _owned_invoices(customer: CustomerDetails) -> list[InvoiceDetails]:
         owned.append(In(InvoiceDetails.sales_ids, sales_order_ids))
 
     return (
-        await InvoiceDetails.find(InvoiceDetails.is_deleted == False, Or(*owned))
+        await InvoiceDetails.find(InvoiceDetails.is_deleted == False, NOT_DRAFT, Or(*owned))
         .sort(-InvoiceDetails.date, -InvoiceDetails.id)
         .to_list()
     )
@@ -101,7 +104,7 @@ async def _get_owned_invoice_or_404(invoice_id: int, customer: CustomerDetails) 
     # 404 rather than 403 on someone else's invoice, deliberately: a client
     # walking ids must not be able to tell "not yours" apart from "no such
     # invoice", which would leak how many invoices exist and for whom.
-    if invoice is None or invoice.is_deleted:
+    if invoice is None or invoice.is_deleted or is_draft(invoice):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invoice not found")
 
     if await resolve_invoice_customer_id(invoice) != customer.id:
@@ -157,6 +160,26 @@ def _hsn_code(products_by_id: dict[int, ProductDetails], product_id: int) -> str
 
 
 async def _standard_line_items(invoice: InvoiceDetails) -> list[CustomerInvoiceLineItem]:
+    if invoice.issued_lines is not None:
+        # Frozen as issued — the same rows its PDF prints. The "Less: ..."
+        # adjustment rows of a partial/balance invoice are left out, as they
+        # always have been on this screen.
+        return [
+            CustomerInvoiceLineItem(
+                product_name=line.product_name,
+                hsn_code=line.hsn_code,
+                quantity=line.quantity,
+                rate=line.rate,
+                discount=line.discount,
+                taxable_value=line.taxable_value,
+                tax_perc=line.tax_perc,
+                tax_amount=line.tax_amount,
+                total=line.total,
+            )
+            for line in invoice.issued_lines
+            if not line.is_adjustment
+        ]
+
     summaries = await SalesSummary.find(In(SalesSummary.sales_order_id, invoice.sales_ids)).to_list()
     products_by_id = await _products_by_id([summary.product_id for summary in summaries])
 
@@ -256,6 +279,8 @@ async def get_my_invoice_details(
     )
 
     base = _to_list_item(invoice, _order_nos_for(invoice, await _order_nos_by_id(invoice.sales_ids)))
+    # The billed-to block as issued, where the invoice carries one.
+    party = invoice.issued_party
     return CustomerInvoiceDetail(
         **base.model_dump(),
         transport=invoice.transport,
@@ -268,9 +293,9 @@ async def get_my_invoice_details(
         total_igst_amount=invoice.total_igst_amount,
         total_cgst_amount=invoice.total_cgst_amount,
         total_sgst_amount=invoice.total_sgst_amount,
-        billed_to_name=customer.registered_name,
-        billed_to_address=customer.address,
-        billed_to_gstin=customer.company_gst,
+        billed_to_name=party.name if party else customer.registered_name,
+        billed_to_address=party.address if party else customer.address,
+        billed_to_gstin=party.gstin if party else customer.company_gst,
     )
 
 

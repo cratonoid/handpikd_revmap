@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import require_section
 from app.models import (
+    NOT_DRAFT,
     Section,
     CustomerDetails,
     InvoiceDetails,
@@ -98,6 +99,8 @@ async def get_dashboard_stats(
         InvoiceDetails.is_deleted == False,
         InvoiceDetails.status == InvoiceStatus.unpaid,
         InvoiceDetails.type == InvoiceType.standard,
+        # Nothing is owed on a draft until it is issued.
+        NOT_DRAFT,
     ).to_list()
 
     recent = sorted(orders, key=lambda order: (order.date, order.id), reverse=True)[:_RECENT_ORDERS_LIMIT]

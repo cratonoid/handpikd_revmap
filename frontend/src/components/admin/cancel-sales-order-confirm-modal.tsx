@@ -55,6 +55,8 @@ export function CancelSalesOrderConfirmModal({
               <p className={styles.pageSubtext}>
                 These unpaid invoices will be marked Cancelled on the invoices page. Changing the order back from
                 Cancelled restores them, unless the order has been billed again by then.
+                {impact.unpaidInvoices.some((invoice) => invoice.invoiceNoDisplay.startsWith("DRAFT-")) &&
+                  " Drafts (DRAFT-…) were never issued, so they are deleted instead and don't come back."}
               </p>
               <ul className={styles.backupWarningList}>
                 {impact.unpaidInvoices.map((invoice) => (

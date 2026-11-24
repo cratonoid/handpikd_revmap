@@ -62,6 +62,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import require_section
 from app.models import (
+    NOT_DRAFT,
     Section,
     CustomerDetails,
     ExpenseDetails,
@@ -157,6 +158,8 @@ async def _standard_invoices_in_range(start_dt: datetime, end_dt: datetime) -> l
         InvoiceDetails.is_deleted == False,
         InvoiceDetails.date >= start_dt,
         InvoiceDetails.date <= end_dt,
+        # A draft hasn't been issued, so it isn't revenue, tax or a receivable.
+        NOT_DRAFT,
     ).to_list()
 
 
@@ -196,6 +199,7 @@ async def _cost_share_by_invoice(invoices: list[InvoiceDetails]) -> dict[int, fl
             InvoiceDetails.is_deleted == False,
             InvoiceDetails.type == InvoiceType.standard,
             In(InvoiceDetails.sales_ids, order_ids),
+            NOT_DRAFT,
         ).to_list()
         if is_partial(invoice)
     }

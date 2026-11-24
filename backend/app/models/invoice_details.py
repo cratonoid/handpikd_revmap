@@ -3,6 +3,7 @@ from datetime import datetime
 from enum import Enum
 
 from beanie import Document
+from pydantic import BaseModel
 
 from app.services.gst import TaxKind
 
@@ -44,9 +45,61 @@ class InvoiceStatus(str, Enum):
     paid = "paid"
 
 
+# Where a standard invoice is in its life. A draft is a working copy: freely
+# editable (billing included), re-totalled whenever its sales orders change,
+# numberless, watermarked DRAFT on its PDF, deletable, and invisible to the
+# books and the client portal. Issuing it (POST /admin/issue_invoice) draws
+# its number from the financial-year series and freezes it: its totals, GST
+# heads, line items and party details are copied onto the row (issued_lines/
+# issued_party) and nothing but its payment state, or cancelling it, changes
+# after that. Proforma invoices aren't statutory documents and have no draft
+# stage, so they are always "issued". Rows raised before drafts existed read
+# as issued too, which is what they were.
+class InvoiceState(str, Enum):
+    draft = "draft"
+    issued = "issued"
+
+
+# A Mongo filter that leaves drafts out. Written as {"$ne": "draft"} rather
+# than state == issued so it also matches rows that predate the field and
+# don't store it at all.
+NOT_DRAFT = {"state": {"$ne": InvoiceState.draft.value}}
+
+
+class IssuedInvoiceLine(BaseModel):
+    """One row of the invoice grid as it printed the moment it was issued.
+
+    Same fields as services/invoice_pdf.py's InvoiceLineItem, which is what
+    these are converted back into for a reprint.
+    """
+
+    product_name: str
+    hsn_code: str = ""
+    quantity: int = 0
+    rate: float = 0.0
+    discount: float = 0.0
+    taxable_value: float = 0.0
+    tax_perc: float = 0.0
+    tax_amount: float = 0.0
+    total: float = 0.0
+    is_charge: bool = False
+    is_adjustment: bool = False
+
+
+class IssuedInvoiceParty(BaseModel):
+    """The billed-to block as it stood when the invoice was issued."""
+
+    name: str = ""
+    address: str = ""
+    phone: str = ""
+    gstin: str = ""
+
+
 class InvoiceDetails(Document):
     id: int
-    invoice_no: int
+    # None only on a draft: the number is drawn when it is issued, so a
+    # deleted draft never leaves a gap in the GST series.
+    invoice_no: int | None = None
     date: datetime
     # Standard invoices ride on one or more SalesOrders rows (sales_ids);
     # their customer/line items are derived from those rows (all of which
@@ -131,6 +184,19 @@ class InvoiceDetails(Document):
     # without also reviving one an admin voided on purpose. See
     # restore_invoices_voided_by_cancellation in services/invoice_totals.py.
     voided_by_cancellation: bool = False
+    # See InvoiceState. New standard invoices start as drafts (set explicitly
+    # in create_new_invoice); the default is what every older row was.
+    state: InvoiceState = InvoiceState.issued
+    issued_at: datetime | None = None
+    # The issuing user's name (or mail), for the audit trail. Blank on rows
+    # issued before this existed, or with auth disabled.
+    issued_by: str = ""
+    # The frozen grid and party block printed on an issued standard invoice
+    # (see InvoiceState). None on drafts, on proforma invoices, and on an
+    # issued row the backfill (scripts/migrate_invoice_draft_state.py)
+    # couldn't snapshot, all of which render from live data.
+    issued_lines: list[IssuedInvoiceLine] | None = None
+    issued_party: IssuedInvoiceParty | None = None
 
     class Settings:
         name = "invoice_details"

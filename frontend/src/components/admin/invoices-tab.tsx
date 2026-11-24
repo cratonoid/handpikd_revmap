@@ -25,6 +25,11 @@
 // only, and switching views clears it. The Standard view's "Status" header
 // has the same dropdown for Paid/Unpaid/Cancelled, cleared the same way.
 //
+// The Standard view also has an All / Issued / Draft toggle (InvoiceState).
+// A draft has no number yet and no payment state — nothing is owed on it
+// until it is issued from its form — so its row shows "Draft" in place of
+// the Status dropdown.
+//
 // Cancelled invoices (isDeleted) stay listed so no number in the series goes
 // unexplained. Payment no longer applies to them, so they show a plain
 // "Cancelled" in place of the Status dropdown and the Paid on date. Their row
@@ -42,6 +47,7 @@ import {
   fetchInvoices,
   updateInvoiceStatus,
   type Invoice,
+  type InvoiceState,
   type InvoiceStatus,
   type InvoiceType,
 } from "@/lib/invoices";
@@ -56,6 +62,13 @@ import { formatDate } from "@/lib/format-date";
 import { nowAsDateValue } from "@/lib/datetime-input";
 
 type ModalState = { mode: "add" } | { mode: "edit"; invoice: Invoice } | null;
+type StateFilter = "all" | InvoiceState;
+
+const STATE_FILTER_OPTIONS: readonly { value: StateFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "issued", label: "Issued" },
+  { value: "draft", label: "Draft" },
+];
 type LoadState = "loading" | "loaded";
 
 const STATUS_LABEL: Record<InvoiceStatus, string> = {
@@ -80,12 +93,16 @@ const STATUS_OPTIONS: readonly { value: InvoiceStatus; label: string }[] = [
   { value: "paid", label: STATUS_LABEL.paid },
 ];
 
-// What the row shows: cancelled isn't a payment state, so it sits on top of
-// InvoiceStatus rather than in it.
-type DisplayStatus = InvoiceStatus | "cancelled";
+// What the row shows: cancelled isn't a payment state, and neither is draft
+// (nothing is owed on one), so both sit on top of InvoiceStatus rather than
+// in it. A draft therefore matches none of the Status filter's options; the
+// All / Issued / Draft toggle is what picks drafts out.
+type DisplayStatus = InvoiceStatus | "cancelled" | "draft";
 
 function displayStatus(invoice: Invoice): DisplayStatus {
-  return invoice.isDeleted ? "cancelled" : invoice.status;
+  if (invoice.isDeleted) return "cancelled";
+  if (invoice.state === "draft") return "draft";
+  return invoice.status;
 }
 
 // The "Status" header's filter. ColumnFilterDropdown works in numeric
@@ -124,6 +141,8 @@ export function InvoicesTab() {
   // Indexes into FILTER_STATUSES ticked beside the "Status" header (standard
   // view only). Empty means no filter.
   const [statusFilterIndexes, setStatusFilterIndexes] = useState<number[]>([]);
+  // The All / Issued / Draft toggle (standard view only).
+  const [stateFilter, setStateFilter] = useState<StateFilter>("all");
 
   const salesOrdersById = new Map(salesOrders.map((order) => [order.id, order]));
   const customersById = new Map(customers.map((c) => [c.id, c]));
@@ -156,12 +175,14 @@ export function InvoicesTab() {
       return custId !== undefined && customerFilterSet.has(custId);
     })
     .filter((invoice) => statusFilterSet.size === 0 || statusFilterSet.has(displayStatus(invoice)))
+    .filter((invoice) => invoiceType !== "standard" || stateFilter === "all" || invoice.state === stateFilter)
     .sort(byNewestFirst);
 
   function handleInvoiceTypeChange(nextType: InvoiceType) {
     setInvoiceType(nextType);
     setCustomerFilterIds([]);
     setStatusFilterIndexes([]);
+    setStateFilter("all");
   }
 
   function loadAll() {
@@ -302,25 +323,43 @@ export function InvoicesTab() {
   return (
     <>
       <div className={styles.invoicesToolbar}>
-        <div className={styles.viewToggle} role="tablist" aria-label="Invoice type">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={invoiceType === "standard"}
-            onClick={() => handleInvoiceTypeChange("standard")}
-            className={`${styles.viewToggleButton} ${invoiceType === "standard" ? styles.viewToggleButtonActive : ""}`}
-          >
-            Standard
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={invoiceType === "proforma"}
-            onClick={() => handleInvoiceTypeChange("proforma")}
-            className={`${styles.viewToggleButton} ${invoiceType === "proforma" ? styles.viewToggleButtonActive : ""}`}
-          >
-            Proforma
-          </button>
+        <div className={styles.invoicesToolbarActions}>
+          <div className={styles.viewToggle} role="tablist" aria-label="Invoice type">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={invoiceType === "standard"}
+              onClick={() => handleInvoiceTypeChange("standard")}
+              className={`${styles.viewToggleButton} ${invoiceType === "standard" ? styles.viewToggleButtonActive : ""}`}
+            >
+              Standard
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={invoiceType === "proforma"}
+              onClick={() => handleInvoiceTypeChange("proforma")}
+              className={`${styles.viewToggleButton} ${invoiceType === "proforma" ? styles.viewToggleButtonActive : ""}`}
+            >
+              Proforma
+            </button>
+          </div>
+          {invoiceType === "standard" && (
+            <div className={styles.viewToggle} role="tablist" aria-label="Show invoices">
+              {STATE_FILTER_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={stateFilter === option.value}
+                  onClick={() => setStateFilter(option.value)}
+                  className={`${styles.viewToggleButton} ${stateFilter === option.value ? styles.viewToggleButtonActive : ""}`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className={styles.invoicesToolbarActions}>
           {invoiceType === "standard" && (
@@ -454,6 +493,11 @@ export function InvoicesTab() {
                         Partial
                       </span>
                     )}
+                    {invoice.state === "draft" && !invoice.isDeleted && (
+                      <span className={styles.draftBadge} title="Not issued yet — open it to edit or issue">
+                        Draft
+                      </span>
+                    )}
                     {invoice.isDeleted && <span className={styles.cancelledBadge}>Cancelled</span>}
                   </td>
                   <td className={styles.tableCell}>{formatDate(invoice.date)}</td>
@@ -476,6 +520,8 @@ export function InvoicesTab() {
                       <td className={`${styles.tableCell} ${styles.statusText} ${styles.statusCancelled}`}>
                         Cancelled
                       </td>
+                    ) : invoice.state === "draft" ? (
+                      <td className={`${styles.tableCell} ${styles.statusText} ${styles.statusDraft}`}>Draft</td>
                     ) : (
                       <td className={`${styles.tableCell} ${styles.statusText} ${STATUS_COLOR[invoice.status]}`}>
                         <StatusSelect
@@ -529,7 +575,7 @@ export function InvoicesTab() {
         {loadState === "loading" && <p className={styles.pageSubtext}>Loading invoices…</p>}
         {loadState === "loaded" && visibleInvoices.length === 0 && (
           <p className={styles.pageSubtext}>
-            {customerFilterIds.length > 0 || statusFilterIndexes.length > 0
+            {customerFilterIds.length > 0 || statusFilterIndexes.length > 0 || stateFilter !== "all"
               ? "No invoices match the selected filters."
               : invoiceType === "standard"
                 ? "No invoices raised yet."

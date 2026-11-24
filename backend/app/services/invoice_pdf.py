@@ -152,6 +152,9 @@ async def generate_invoice_pdf(
     place_of_supply_code: str = "",
     # Stamps every page CANCELLED (InvoiceDetails.is_deleted).
     cancelled: bool = False,
+    # Stamps every page DRAFT INVOICE (InvoiceState.draft). A cancelled
+    # stamp wins if both are set.
+    draft: bool = False,
 ) -> bytes:
     # tax_kind/place_of_supply_code are the values the document was raised
     # with (InvoiceDetails/PurchaseInvoiceDetails snapshot both), so a
@@ -267,6 +270,7 @@ async def generate_invoice_pdf(
         signature_data_uri=signature_data_uri,
         show_system_note=is_online,
         cancelled=cancelled,
+        draft=draft,
     )
 
     return await render_html_to_pdf(

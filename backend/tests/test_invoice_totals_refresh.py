@@ -1,6 +1,7 @@
 # Unit tests for refresh_invoice_totals_for_sales_orders
-# (app/services/invoice_totals.py) — the step that keeps an already-raised
-# invoice's snapshotted totals in step with the sales order behind it.
+# (app/services/invoice_totals.py) — the step that keeps a DRAFT invoice's
+# snapshotted totals in step with the sales order behind it. An issued
+# invoice is frozen and must come through untouched.
 #
 # It matters because a standard invoice's PDF prints its orders'
 # #sales_summary rows LIVE while its grand total comes from the snapshot: if
@@ -16,7 +17,7 @@ import asyncio
 
 import pytest
 
-from app.models.invoice_details import InvoiceType
+from app.models.invoice_details import InvoiceState, InvoiceType
 from app.services import invoice_totals
 from app.services.gst import TaxKind
 
@@ -40,8 +41,10 @@ class _Invoice:
         tax: float,
         after_tax: float,
         tax_kind: TaxKind | None = TaxKind.cgst_sgst,
+        state: InvoiceState = InvoiceState.draft,
     ) -> None:
         self.id = invoice_id
+        self.state = state
         self.type = InvoiceType.standard
         self.is_deleted = False
         self.sales_ids = sales_ids
@@ -220,3 +223,16 @@ def test_an_order_with_no_invoice_against_it_does_nothing(db):
 
 def test_no_order_ids_short_circuits(db):
     assert _run([]) == 0
+
+
+def test_an_issued_invoice_is_not_restated_when_its_order_changes(db):
+    invoices, orders = db
+    # Once issued, the document that went out is frozen: an order edit after
+    # the fact must not move its figures.
+    invoice = _Invoice(30, [40], 100.0, 18.0, 118.0, state=InvoiceState.issued)
+    invoices.result = [invoice]
+    orders.result = [_Order(40, before_tax=200.0, tax=36.0)]
+
+    assert _run([40]) == 0
+    assert invoice.totals() == (100.0, 118.0)
+    assert invoice.saves == 0

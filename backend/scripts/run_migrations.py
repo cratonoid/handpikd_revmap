@@ -159,6 +159,16 @@ MIGRATIONS: list[tuple[str, str, str]] = [
         AUTO,
         "work_story: existing stories go into a 'General' group of every team member",
     ),
+    (
+        "void_invoices_on_cancelled_orders",
+        AUTO,
+        "void live unpaid invoices left on orders cancelled before auto-voiding existed",
+    ),
+    (
+        "migrate_invoice_draft_state",
+        AUTO,
+        "invoice_details: state 'issued' + frozen issued_lines/issued_party snapshot",
+    ),
 ]
 
 LEDGER_COLLECTION = "schema_migrations"

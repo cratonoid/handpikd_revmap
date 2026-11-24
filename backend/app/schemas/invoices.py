@@ -3,7 +3,23 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, model_validator
 
-from app.models.invoice_details import InvoiceBilling, InvoiceStatus, InvoiceType, OnlineOrOffline
+from app.models.invoice_details import InvoiceBilling, InvoiceState, InvoiceStatus, InvoiceType, OnlineOrOffline
+
+
+def check_partial(billing: InvoiceBilling, partial_percent: float | None, partial_amount: float | None) -> None:
+    # A partial invoice takes exactly one of partial_percent (of the orders'
+    # value) or partial_amount (rupees, tax included); a full one takes
+    # neither. See InvoiceBilling.
+    if billing == InvoiceBilling.full:
+        if partial_percent is not None or partial_amount is not None:
+            raise ValueError("a full invoice takes no partial percentage or amount")
+        return
+    if (partial_percent is None) == (partial_amount is None):
+        raise ValueError("a partial invoice needs either a percentage or an amount")
+    if partial_percent is not None and not 0 < partial_percent <= 100:
+        raise ValueError("the percentage must be more than 0 and at most 100")
+    if partial_amount is not None and partial_amount <= 0:
+        raise ValueError("the amount must be more than 0")
 
 
 class CreateNewInvoiceRequest(BaseModel):
@@ -21,7 +37,8 @@ class CreateNewInvoiceRequest(BaseModel):
     notes: str = ""
     # Full by default. A partial invoice takes exactly one of partial_percent
     # (of the orders' value) or partial_amount (rupees, tax included) — see
-    # InvoiceBilling. Fixed once raised, like sales_ids.
+    # InvoiceBilling. Editable while the invoice is a draft, fixed once it is
+    # issued.
     billing: InvoiceBilling = InvoiceBilling.full
     partial_percent: float | None = None
     partial_amount: float | None = None
@@ -36,26 +53,21 @@ class CreateNewInvoiceRequest(BaseModel):
 
     @model_validator(mode="after")
     def _check_partial(self) -> "CreateNewInvoiceRequest":
-        if self.billing == InvoiceBilling.full:
-            if self.partial_percent is not None or self.partial_amount is not None:
-                raise ValueError("a full invoice takes no partial percentage or amount")
-            return self
-        if (self.partial_percent is None) == (self.partial_amount is None):
-            raise ValueError("a partial invoice needs either a percentage or an amount")
-        if self.partial_percent is not None and not 0 < self.partial_percent <= 100:
-            raise ValueError("the percentage must be more than 0 and at most 100")
-        if self.partial_amount is not None and self.partial_amount <= 0:
-            raise ValueError("the amount must be more than 0")
+        check_partial(self.billing, self.partial_percent, self.partial_amount)
         return self
 
 
 class CreateNewInvoiceResponse(BaseModel):
     message: str
+    # The new draft, so the form can go straight on to issuing or printing it.
+    id: int
+    invoice_no_display: str
 
 
 class InvoiceDetailItem(BaseModel):
     id: int
-    invoice_no: int
+    # None on a draft — see InvoiceState.
+    invoice_no: int | None
     invoice_no_display: str
     date: datetime
     sales_ids: list[int]
@@ -85,6 +97,9 @@ class InvoiceDetailItem(BaseModel):
     total_tax_amount: float
     total_amount_after_tax: float
     is_deleted: bool
+    state: InvoiceState = InvoiceState.issued
+    issued_at: datetime | None = None
+    issued_by: str = ""
 
 
 class UpdateInvoiceDetailsRequest(BaseModel):
@@ -107,9 +122,42 @@ class UpdateInvoiceDetailsRequest(BaseModel):
     # _apply_payment_state in routes/invoices.py).
     paid_on: date | None = None
     is_deleted: bool = False
+    # Drafts only: the new billing. Left out (None) keeps what the invoice
+    # has. An issued invoice ignores every field above except status,
+    # paid_on and is_deleted, and refuses a billing change outright.
+    billing: InvoiceBilling | None = None
+    partial_percent: float | None = None
+    partial_amount: float | None = None
+
+    @model_validator(mode="after")
+    def _check_partial(self) -> "UpdateInvoiceDetailsRequest":
+        if self.billing is None:
+            if self.partial_percent is not None or self.partial_amount is not None:
+                raise ValueError("a partial percentage or amount needs billing set to partial")
+            return self
+        check_partial(self.billing, self.partial_percent, self.partial_amount)
+        return self
 
 
 class UpdateInvoiceDetailsResponse(BaseModel):
+    message: str
+
+
+class IssueInvoiceRequest(BaseModel):
+    id: int
+
+
+class IssueInvoiceResponse(BaseModel):
+    message: str
+    # The number it was just given (H/26-27/41).
+    invoice_no_display: str
+
+
+class DeleteDraftInvoiceRequest(BaseModel):
+    id: int
+
+
+class DeleteDraftInvoiceResponse(BaseModel):
     message: str
 
 

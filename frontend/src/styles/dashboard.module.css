@@ -2080,6 +2080,24 @@ select.formInput:disabled {
   color: var(--color-status-cancelled);
 }
 
+/* A standard invoice not yet issued (InvoiceState.draft). The "new" blue,
+   as it's the earliest stage an invoice can be at. */
+.draftBadge {
+  margin-left: 0.5rem;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, var(--color-status-new) 12%, transparent);
+  padding: 0.1rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--color-status-new);
+}
+
+.statusDraft {
+  color: var(--color-status-new);
+}
+
 .treeAddButton {
   display: flex;
   height: 1.5rem;

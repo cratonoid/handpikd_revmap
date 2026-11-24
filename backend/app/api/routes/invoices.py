@@ -7,8 +7,8 @@
 # api/deps.py).
 import io
 import zipfile
-from dataclasses import dataclass
-from datetime import date, datetime, time
+from dataclasses import asdict, dataclass
+from datetime import date, datetime, time, timezone
 
 from beanie.operators import In
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -19,9 +19,13 @@ from app.models import (
     CustomerDetails,
     CustomerPocDetails,
     InvoiceDetails,
+    NOT_DRAFT,
     InvoiceIdCounter,
+    InvoiceState,
     InvoiceStatus,
     InvoiceType,
+    IssuedInvoiceLine,
+    IssuedInvoiceParty,
     OnlineOrOffline,
     OrderStatusMaster,
     ProductDetails,
@@ -39,7 +43,11 @@ from app.schemas.invoices import (
     CreateNewInvoiceResponse,
     CreateNewProformaInvoiceRequest,
     CreateNewProformaInvoiceResponse,
+    DeleteDraftInvoiceRequest,
+    DeleteDraftInvoiceResponse,
     InvoiceDetailItem,
+    IssueInvoiceRequest,
+    IssueInvoiceResponse,
     UpdateInvoiceDetailsRequest,
     UpdateInvoiceDetailsResponse,
     UpdateInvoiceStatusRequest,
@@ -57,7 +65,14 @@ from app.services.invoice_numbering import (
     invoice_no_filename_slug,
 )
 from app.services.invoice_pdf import InvoiceLineItem, generate_invoice_pdf
-from app.services.invoice_totals import billed_totals, billing_room_problem, is_partial, order_totals, partials_alongside
+from app.services.invoice_totals import (
+    billed_totals,
+    billing_room_problem,
+    is_draft,
+    is_partial,
+    order_totals,
+    partials_alongside,
+)
 from app.services.personal_details import get_personal_details
 from app.services.proforma_invoice_pdf import ProformaInvoiceLineItem, generate_proforma_invoice_pdf
 
@@ -122,7 +137,10 @@ async def _live_standard_invoices_on(
 
 
 async def _check_billing_room(
-    sales_orders: list[SalesOrders], invoice: InvoiceDetails, exclude_invoice_id: int | None = None
+    sales_orders: list[SalesOrders],
+    invoice: InvoiceDetails,
+    exclude_invoice_id: int | None = None,
+    draft_partial: bool = False,
 ) -> list[InvoiceDetails]:
     """Reject an invoice its sales orders have no room left for, and return
     the live partial invoices beside it (for billed_totals).
@@ -135,8 +153,21 @@ async def _check_billing_room(
     The frontend picker hides orders a full invoice already covers too (see
     invoice-form-modal.tsx), but two admins working from stale lists can
     still both pick the same order, so the check has to live here.
+
+    `draft_partial` is set when a draft partial that already exists is being
+    edited or issued. A DRAFT balance invoice on exactly its orders doesn't
+    count against it then: that draft was raised after it, bills whatever it
+    leaves, and is re-totalled to match (_retotal_full_beside). An issued
+    balance invoice still does, since its figures are frozen.
     """
     claimed_by = await _live_standard_invoices_on(sales_orders, exclude_invoice_id)
+    if draft_partial and is_partial(invoice):
+        orders = set(invoice.sales_ids)
+        claimed_by = [
+            other
+            for other in claimed_by
+            if is_partial(other) or not is_draft(other) or set(other.sales_ids) != orders
+        ]
     partials = partials_alongside(invoice, claimed_by)
     if is_partial(invoice) and billed_totals(invoice, sales_orders, partials)[2] <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="the partial amount must be more than ₹0")
@@ -148,9 +179,10 @@ async def _check_billing_room(
 
 
 async def _retotal_full_beside(partial: InvoiceDetails) -> None:
-    """A partial invoice was voided, restored or re-totalled, so the full
-    invoice on the same orders (if one is live) now has a different balance
-    to bill. Keeps the GST heads it was raised under, like
+    """A partial invoice was voided, restored, deleted or re-totalled, so the
+    full invoice on the same orders (if one is live) now has a different
+    balance to bill. Only a draft full invoice is touched: an issued one is
+    frozen. Keeps the GST heads it was raised under, like
     services/invoice_totals.py does."""
     candidates = await InvoiceDetails.find(
         InvoiceDetails.is_deleted == False,
@@ -161,7 +193,7 @@ async def _retotal_full_beside(partial: InvoiceDetails) -> None:
         (c for c in candidates if not is_partial(c) and set(c.sales_ids) == set(partial.sales_ids)),
         None,
     )
-    if full is None:
+    if full is None or not is_draft(full):
         return
     sales_orders = await _get_sales_orders_or_404(full.sales_ids)
     totals = billed_totals(full, sales_orders, partials_alongside(full, candidates))
@@ -421,20 +453,16 @@ async def create_new_invoice(
     tax_context = await _tax_context_for_customer(sales_orders[0].cust_id)
     total_igst, total_cgst, total_sgst = tax_context.totals(total_tax)
 
-    # Standard invoices are numbered per financial year (H/26-27/12), so the
-    # invoice's own date — not today's — picks which year's series it comes
-    # out of, and back-dating an invoice into the previous year lands it at
-    # the end of that year's series rather than jumping this one's.
-    fy_start_year = financial_year_start_year(payload.date)
-    invoice_no = await get_next_scoped_id(
-        StandardInvoiceNoCounterMaster, "next_invoice_no", fy_start_year
-    )
+    # Raised as a draft, without a number: the number is drawn from the
+    # financial-year series when it is issued (see issue_invoice), so a
+    # draft that is deleted instead never leaves a gap in it.
     invoice_id = await get_next_id(InvoiceIdCounter, "next_invoice_id", InvoiceDetails)
 
     invoice = InvoiceDetails(
         id=invoice_id,
-        invoice_no=invoice_no,
-        invoice_fy_start_year=fy_start_year,
+        invoice_no=None,
+        invoice_fy_start_year=None,
+        state=InvoiceState.draft,
         date=payload.date,
         sales_ids=payload.sales_ids,
         quotation_id=None,
@@ -458,7 +486,9 @@ async def create_new_invoice(
     )
     await invoice.insert()
 
-    return CreateNewInvoiceResponse(message="invoice successfully created")
+    return CreateNewInvoiceResponse(
+        message="draft invoice created", id=invoice_id, invoice_no_display=format_sales_invoice_no(invoice)
+    )
 
 
 @router.post("/create_new_proforma_invoice", response_model=CreateNewProformaInvoiceResponse)
@@ -552,6 +582,9 @@ def _to_invoice_detail_item(
         total_tax_amount=invoice.total_tax_amount,
         total_amount_after_tax=invoice.total_amount_after_tax,
         is_deleted=invoice.is_deleted,
+        state=invoice.state,
+        issued_at=invoice.issued_at,
+        issued_by=invoice.issued_by,
     )
 
 
@@ -595,40 +628,82 @@ async def update_invoice_details(
         )
     _reject_edit_while_cancelled(invoice, payload.is_deleted)
 
-    # Re-snapshot totals from the linked sales orders, in case any have
-    # changed since the invoice was created/generated — same recompute-on-edit
-    # pattern as update_sales_order_details.
-    sales_orders = await _get_sales_orders_or_404(invoice.sales_ids)
-
-    # Restoring a voided invoice re-claims its share of its sales orders, so
-    # it has to pass the same billing checks a new invoice does: other
-    # invoices may have been raised against them while this one was void.
-    voiding_changed = invoice.is_deleted != payload.is_deleted
-    if invoice.is_deleted and not payload.is_deleted:
-        await _check_not_cancelled(sales_orders)
-        partials = await _check_billing_room(sales_orders, invoice, exclude_invoice_id=invoice.id)
+    if is_draft(invoice):
+        await _update_draft_invoice(invoice, payload)
     else:
-        partials = partials_alongside(invoice, await _live_standard_invoices_on(sales_orders))
+        await _update_issued_invoice(invoice, payload)
+    return UpdateInvoiceDetailsResponse(message="invoice updated successfully")
+
+
+async def _update_draft_invoice(invoice: InvoiceDetails, payload: UpdateInvoiceDetailsRequest) -> None:
+    """Everything on a draft is open, billing included, and its totals and
+    GST heads are re-worked from its sales orders as they stand now."""
+    if payload.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="a draft isn't cancelled, it's deleted: use Delete draft",
+        )
+    if payload.status != InvoiceStatus.unpaid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="a draft can't be marked paid: issue it first",
+        )
+
+    billing_before = (invoice.billing, invoice.partial_percent, invoice.partial_amount)
+    if payload.billing is not None:
+        invoice.billing = payload.billing
+        invoice.partial_percent = payload.partial_percent
+        invoice.partial_amount = payload.partial_amount
+
+    sales_orders = await _get_sales_orders_or_404(invoice.sales_ids)
+    await _check_not_cancelled(sales_orders)
+    partials = await _check_billing_room(sales_orders, invoice, exclude_invoice_id=invoice.id, draft_partial=True)
     total_before_tax, total_tax, total_after_tax = billed_totals(invoice, sales_orders, partials)
 
-    # invoice_fy_start_year is deliberately left alone: the number has
-    # already been issued out of that year's series, so correcting the date
-    # (even across 1 April) must not restate it as another year's invoice.
-    earned_before = _earns_points(invoice)
     totals_changed = (total_before_tax, total_tax) != (invoice.total_amount_before_tax, invoice.total_tax_amount)
     invoice.date = payload.date
     invoice.total_amount_before_tax = total_before_tax
     invoice.total_tax_amount = total_tax
     invoice.total_amount_after_tax = total_after_tax
-    # Re-decided alongside the totals: an edit is the point at which the
-    # admin has reviewed the invoice, so a client whose state was corrected
-    # in the meantime should take effect here rather than on the next
-    # reprint.
     _apply_tax_context(invoice, await _tax_context_for_customer(sales_orders[0].cust_id), total_tax)
     invoice.due_date = payload.due_date
     invoice.online_or_offline = payload.online_or_offline
     invoice.transport = payload.transport
     invoice.notes = payload.notes
+    await invoice.save()
+
+    billing_changed = billing_before != (invoice.billing, invoice.partial_percent, invoice.partial_amount)
+    # A partial changing size moves the balance a full invoice beside it
+    # bills, and so does one turning into a full invoice or back.
+    if billing_changed or (is_partial(invoice) and totals_changed):
+        await _retotal_full_beside(invoice)
+
+
+async def _update_issued_invoice(invoice: InvoiceDetails, payload: UpdateInvoiceDetailsRequest) -> None:
+    """An issued invoice is frozen. Only its payment state moves, and it can
+    be cancelled or restored. Every other field in the payload is ignored,
+    so nothing on the document that went out can change."""
+    if payload.billing is not None and (payload.billing, payload.partial_percent, payload.partial_amount) != (
+        invoice.billing,
+        invoice.partial_percent,
+        invoice.partial_amount,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="this invoice has been issued, so its billing can't be changed",
+        )
+
+    voiding_changed = invoice.is_deleted != payload.is_deleted
+    # Restoring a voided invoice re-claims its share of its sales orders, so
+    # it has to pass the same billing checks a new invoice does: other
+    # invoices may have been raised against them while this one was void.
+    # Its figures stay the ones it was issued with.
+    if invoice.is_deleted and not payload.is_deleted:
+        sales_orders = await _get_sales_orders_or_404(invoice.sales_ids)
+        await _check_not_cancelled(sales_orders)
+        await _check_billing_room(sales_orders, invoice, exclude_invoice_id=invoice.id)
+
+    earned_before = _earns_points(invoice)
     _apply_payment_state(invoice, payload.status, payload.paid_on)
     invoice.is_deleted = payload.is_deleted
     # An admin deciding this invoice's fate outranks the cancellation that
@@ -636,10 +711,114 @@ async def update_invoice_details(
     invoice.voided_by_cancellation = False
     await invoice.save()
     await _sync_points_if_payment_changed(invoice, earned_before)
-    if is_partial(invoice) and (voiding_changed or totals_changed):
+    if is_partial(invoice) and voiding_changed:
         await _retotal_full_beside(invoice)
 
-    return UpdateInvoiceDetailsResponse(message="invoice updated successfully")
+
+async def _draft_partials_beside(invoice: InvoiceDetails) -> list[InvoiceDetails]:
+    candidates = await InvoiceDetails.find(
+        InvoiceDetails.is_deleted == False,
+        InvoiceDetails.type == InvoiceType.standard,
+        In(InvoiceDetails.sales_ids, invoice.sales_ids),
+    ).to_list()
+    return [other for other in partials_alongside(invoice, candidates) if is_draft(other)]
+
+
+def _issuer_name(user: User | None) -> str:
+    if user is None:
+        return ""
+    return user.name or user.mail
+
+
+@router.post("/issue_invoice", response_model=IssueInvoiceResponse)
+async def issue_invoice(
+    payload: IssueInvoiceRequest,
+    user: User | None = Depends(require_section(Section.invoices)),
+) -> IssueInvoiceResponse:
+    """Turns a draft into the invoice that goes out, and freezes it.
+
+    Re-works its figures from its sales orders one last time, draws its
+    number from the financial-year series of its date, and copies the line
+    items and party details the PDF prints onto the row, so later edits to
+    the orders, products or client can't change it. From here on only its
+    payment state changes (see _update_issued_invoice).
+    """
+    invoice = await InvoiceDetails.get(payload.id)
+    if invoice is None or invoice.type != InvoiceType.standard:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invoice not found")
+    if invoice.is_deleted:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="this invoice is cancelled")
+    if not is_draft(invoice):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="this invoice has already been issued")
+
+    sales_orders = await _get_sales_orders_or_404(invoice.sales_ids)
+    await _check_not_cancelled(sales_orders)
+    partials = await _check_billing_room(sales_orders, invoice, exclude_invoice_id=invoice.id, draft_partial=True)
+    # The balance invoice prints a "Less: advance billed on <number>" row per
+    # partial before it, so those need their numbers first.
+    if not is_partial(invoice):
+        drafts = await _draft_partials_beside(invoice)
+        if drafts:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="issue or delete the draft partial invoice(s) on these orders first: "
+                + ", ".join(format_sales_invoice_no(other) for other in drafts),
+            )
+
+    total_before_tax, total_tax, total_after_tax = billed_totals(invoice, sales_orders, partials)
+    invoice.total_amount_before_tax = total_before_tax
+    invoice.total_tax_amount = total_tax
+    invoice.total_amount_after_tax = total_after_tax
+    _apply_tax_context(invoice, await _tax_context_for_customer(sales_orders[0].cust_id), total_tax)
+    lines, party = await live_standard_invoice_content(invoice, sales_orders)
+
+    # Claimed atomically before the number is drawn, so a double click (or
+    # two admins at once) can't issue it twice and burn a second number.
+    claimed = await InvoiceDetails.get_pymongo_collection().update_one(
+        {"_id": invoice.id, "state": InvoiceState.draft.value},
+        {"$set": {"state": InvoiceState.issued.value}},
+    )
+    if claimed.modified_count != 1:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="this invoice has already been issued")
+
+    # Standard invoices are numbered per financial year (H/26-27/12), so the
+    # invoice's own date, not today's, picks which year's series it comes
+    # out of, and back-dating an invoice into the previous year lands it at
+    # the end of that year's series rather than jumping this one's.
+    fy_start_year = financial_year_start_year(invoice.date)
+    invoice.invoice_no = await get_next_scoped_id(StandardInvoiceNoCounterMaster, "next_invoice_no", fy_start_year)
+    invoice.invoice_fy_start_year = fy_start_year
+    invoice.state = InvoiceState.issued
+    invoice.issued_at = datetime.now(timezone.utc)
+    invoice.issued_by = _issuer_name(user)
+    invoice.issued_lines = [IssuedInvoiceLine(**asdict(line)) for line in lines]
+    invoice.issued_party = party
+    invoice.status = InvoiceStatus.unpaid
+    invoice.paid_on = None
+    await invoice.save()
+
+    return IssueInvoiceResponse(message="invoice issued", invoice_no_display=format_sales_invoice_no(invoice))
+
+
+@router.post("/delete_draft_invoice", response_model=DeleteDraftInvoiceResponse)
+async def delete_draft_invoice(
+    payload: DeleteDraftInvoiceRequest,
+    _: User | None = Depends(require_section(Section.invoices)),
+) -> DeleteDraftInvoiceResponse:
+    """Deletes a draft outright. It never had a number, so there is nothing
+    in the series to account for. An issued invoice is cancelled instead."""
+    invoice = await InvoiceDetails.get(payload.id)
+    if invoice is None or invoice.type != InvoiceType.standard:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invoice not found")
+    if not is_draft(invoice):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="only a draft can be deleted; an issued invoice is cancelled instead",
+        )
+    await invoice.delete()
+    if is_partial(invoice):
+        await _retotal_full_beside(invoice)
+    return DeleteDraftInvoiceResponse(message="draft deleted")
 
 
 @router.post("/update_invoice_status", response_model=UpdateInvoiceStatusResponse)
@@ -823,15 +1002,21 @@ async def _build_proforma_invoice_pdf_inputs(summaries: list[ProformaInvoiceSumm
     return line_items, customer.registered_name, customer.address, customer_phone, customer.company_gst
 
 
-async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict[str, str]) -> tuple[bytes, str]:
-    invoice_no_display = format_sales_invoice_no(invoice)
-    sales_orders = await _get_sales_orders_or_404(invoice.sales_ids)
+async def live_standard_invoice_content(
+    invoice: InvoiceDetails, sales_orders: list[SalesOrders]
+) -> tuple[list[InvoiceLineItem], IssuedInvoiceParty]:
+    """The grid and billed-to block a standard invoice prints, worked out
+    from its sales orders, products and client as they are right now.
+
+    What a draft always prints, and what issue_invoice (and the backfill in
+    scripts/migrate_invoice_draft_state.py) freezes onto an invoice as it is
+    issued. Reads the invoice's own stored totals for the "Less: ..." row,
+    so those have to be final before this is called.
+    """
     # All linked sales orders share one customer (enforced in
     # create_new_invoice), so any of them gives the right cust_id.
     cust_id = sales_orders[0].cust_id
-    summaries = await SalesSummary.find(
-        In(SalesSummary.sales_order_id, invoice.sales_ids)
-    ).to_list()
+    summaries = await SalesSummary.find(In(SalesSummary.sales_order_id, invoice.sales_ids)).to_list()
     line_items, customer_name, customer_address, customer_phone, customer_gstin = (
         await _build_standard_invoice_pdf_inputs(summaries, cust_id)
     )
@@ -855,6 +1040,28 @@ async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict
         for line in delivery_charge_lines(sales_orders)
     ]
     line_items += await _billing_adjustment_lines(invoice, sales_orders)
+    party = IssuedInvoiceParty(
+        name=customer_name or "",
+        address=customer_address or "",
+        phone=customer_phone or "",
+        gstin=customer_gstin or "",
+    )
+    return line_items, party
+
+
+async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict[str, str]) -> tuple[bytes, str]:
+    invoice_no_display = format_sales_invoice_no(invoice)
+    draft = is_draft(invoice)
+    if not draft and invoice.issued_lines is not None and invoice.issued_party is not None:
+        # Issued: reprinted exactly as it went out, whatever has happened to
+        # its orders, products or client since.
+        line_items = [InvoiceLineItem(**line.model_dump()) for line in invoice.issued_lines]
+        party = invoice.issued_party
+    else:
+        # A draft, or an issued invoice the backfill couldn't snapshot.
+        line_items, party = await live_standard_invoice_content(
+            invoice, await _get_sales_orders_or_404(invoice.sales_ids)
+        )
 
     pdf_bytes = await generate_invoice_pdf(
         invoice_no=invoice_no_display,
@@ -866,10 +1073,10 @@ async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict
         total_amount_before_tax=invoice.total_amount_before_tax,
         total_tax_amount=invoice.total_tax_amount,
         total_amount_after_tax=invoice.total_amount_after_tax,
-        customer_name=customer_name,
-        customer_address=customer_address,
-        customer_phone=customer_phone,
-        customer_gstin=customer_gstin,
+        customer_name=party.name,
+        customer_address=party.address,
+        customer_phone=party.phone,
+        customer_gstin=party.gstin,
         personal=personal,
         title_text="TAX INVOICE",
         is_online=invoice.online_or_offline == OnlineOrOffline.online,
@@ -879,6 +1086,7 @@ async def _generate_standard_invoice_pdf(invoice: InvoiceDetails, personal: dict
         tax_kind=invoice.tax_kind,
         place_of_supply_code=invoice.place_of_supply_code,
         cancelled=invoice.is_deleted,
+        draft=draft,
     )
     filename = f"invoice-{invoice_no_filename_slug(invoice_no_display)}.pdf"
     return pdf_bytes, filename
@@ -998,11 +1206,13 @@ async def get_invoices_pdf_zip(
     start_dt = datetime.combine(start_date, time.min)
     end_dt = datetime.combine(end_date, time.max)
 
+    # Drafts left out: this is the set of documents that went out.
     invoices = await InvoiceDetails.find(
         InvoiceDetails.type == InvoiceType.standard,
         InvoiceDetails.is_deleted == False,
         InvoiceDetails.date >= start_dt,
         InvoiceDetails.date <= end_dt,
+        NOT_DRAFT,
     ).to_list()
 
     if not invoices:
