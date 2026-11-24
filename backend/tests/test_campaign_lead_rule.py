@@ -44,3 +44,15 @@ def test_apply_rule_unsends_when_data_present_grows():
     row = _row(MAIL, status=CampaignLeadStatus.sent)
     apply_rule(row, [WA, MAIL])
     assert row.status == CampaignLeadStatus.unsent
+
+
+def test_leads_from_anywhere_but_a_cold_call_are_warm_by_source():
+    from app.models import LeadSource
+    from app.services.campaign_leads import warm_by_source
+
+    assert not warm_by_source(None)
+    assert not warm_by_source(LeadSource.cold_call)
+    assert not warm_by_source("cold_call")
+    for source in (LeadSource.referral, LeadSource.maps, LeadSource.website, LeadSource.social_media, LeadSource.other):
+        assert warm_by_source(source)
+        assert warm_by_source(source.value)

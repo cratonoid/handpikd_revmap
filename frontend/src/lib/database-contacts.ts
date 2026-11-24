@@ -10,8 +10,9 @@
 // they drop straight into form inputs.
 //
 // A lead's Status, SD Status and Sent status belong to each campaign it's in
-// (lib/campaigns.ts). Here a lead is only Cold or Warm: Warm once every Data
-// present channel is ticked in its Sent status in some campaign.
+// (lib/campaigns.ts). Here a lead is only Cold or Warm: Warm from the start
+// if it came from anything but a cold call (its Source), otherwise once every
+// Data present channel is ticked in its Sent status in some campaign.
 import { apiFetch } from "@/lib/api";
 
 export type ContactType = "client" | "lead" | "vendor";
@@ -34,13 +35,16 @@ export const SD_STATUS_OPTIONS: { value: SdStatus; label: string }[] = [
 ];
 
 // Where a lead came from (LeadSource in backend/app/models/database_contact.py).
-export type LeadSource = "cold_call" | "referral" | "maps" | "website";
+// Anything but a cold call makes the lead Warm as soon as it's added.
+export type LeadSource = "cold_call" | "referral" | "maps" | "website" | "social_media" | "other";
 
 export const LEAD_SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
   { value: "cold_call", label: "Cold call" },
   { value: "referral", label: "Referral" },
   { value: "maps", label: "Maps" },
   { value: "website", label: "Website" },
+  { value: "social_media", label: "Social media" },
+  { value: "other", label: "Other" },
 ];
 
 export function leadSourceLabel(source: LeadSource | ""): string {

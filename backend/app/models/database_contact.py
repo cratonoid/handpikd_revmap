@@ -32,11 +32,15 @@ class SdStatus(str, Enum):
 
 class LeadSource(str, Enum):
     # Where a lead came from. Leads that predate this field were set to
-    # cold_call by scripts/migrate_lead_source_cold_call.py.
+    # cold_call by scripts/migrate_lead_source_cold_call.py. Anything but a
+    # cold call reads as Warm from the moment the lead is added (see
+    # warm_by_source in services/campaign_leads.py).
     cold_call = "cold_call"
     referral = "referral"
     maps = "maps"
     website = "website"
+    social_media = "social_media"
+    other = "other"
 
 
 class OutreachChannel(str, Enum):

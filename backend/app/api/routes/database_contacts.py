@@ -160,7 +160,10 @@ async def add_contact(
     contact.id = await get_next_id(DatabaseContactIdCounter, "next_database_contact_id", DatabaseContact)
     await contact.insert()
 
-    return AddContactResponse(message="contact added successfully", contact=_to_item(contact))
+    return AddContactResponse(
+        message="contact added successfully",
+        contact=_to_item(contact, campaign_leads.warm_by_source(contact.source)),
+    )
 
 
 @router.post("/update_contact", response_model=UpdateContactResponse)

@@ -53,6 +53,8 @@ def world(monkeypatch):
             rows = getattr(state, self.rows_attr)
             if "campaign_id" in query:
                 rows = [row for row in rows if row["campaign_id"] in query["campaign_id"]["$in"]]
+            if "source" in query:
+                rows = [row for row in rows if row.get("source") not in query["source"]["$nin"]]
             return _Cursor(rows)
 
     class _Contacts:
@@ -89,6 +91,19 @@ def test_only_leads_reached_in_an_earlier_campaign_are_warm(world):
     assert asyncio.run(campaign_leads.warm_contact_ids_in(christmas)) == {10}
     # Nothing came before Diwali, so every lead is Cold there.
     assert asyncio.run(campaign_leads.warm_contact_ids_in(diwali)) == set()
+
+
+def test_a_lead_from_anywhere_but_a_cold_call_is_warm_in_every_campaign(world):
+    diwali = _campaign(1, datetime(2026, 10, 1))
+    world.campaigns = [diwali]
+    world.contacts = [
+        {"_id": 20, "outreach_channels": ["mail"], "source": "referral"},
+        {"_id": 21, "outreach_channels": ["mail"], "source": "cold_call"},
+        {"_id": 22, "outreach_channels": ["mail"]},
+    ]
+
+    # Even in the first campaign, with nothing sent yet.
+    assert asyncio.run(campaign_leads.warm_contact_ids_in(diwali)) == {20}
 
 
 def test_start_date_orders_campaigns_ahead_of_created_at(world):

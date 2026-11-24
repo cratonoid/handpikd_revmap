@@ -10,7 +10,9 @@
 # ticked in its Sent status it turns Sent, and unticking one (or adding a
 # Data present channel) turns it back to Unsent. The admin can still set the
 # Status by hand afterwards; the rule runs again on the next tick change.
-# Warm / Cold doesn't look at Status at all, only at the ticks.
+# Warm / Cold doesn't look at Status at all, only at the ticks, except that
+# a lead from any source but a cold call (DatabaseContact.source) is Warm
+# from the start, everywhere, whatever is ticked.
 #
 # Warm / Cold means two things. On the Database page a lead is Warm once it
 # has been reached (fully sent) in any campaign. Inside a campaign it is
@@ -26,6 +28,7 @@ from app.models import (
     CampaignLeadStatus,
     ContactType,
     DatabaseContact,
+    LeadSource,
     OutreachChannel,
 )
 from app.services.counters import get_next_id
@@ -56,13 +59,33 @@ def fully_sent(data_present: list | None, sent_channels: list | None) -> bool:
     return bool(present) and present <= set(sent_channels or [])
 
 
+def warm_by_source(source: LeadSource | str | None) -> bool:
+    """Leads that didn't come from a cold call (referral, maps, website, ...)
+    are Warm from the start. No source stored means a cold call."""
+    return source is not None and LeadSource(source) != LeadSource.cold_call
+
+
+async def _warm_by_source_ids() -> set[int]:
+    return {
+        row["_id"]
+        async for row in DatabaseContact.get_pymongo_collection().find(
+            {
+                "contact_type": ContactType.lead.value,
+                "source": {"$nin": [None, LeadSource.cold_call.value]},
+            },
+            {"_id": 1},
+        )
+    }
+
+
 def apply_rule(row: CampaignLead, data_present: list | None) -> None:
     row.status = CampaignLeadStatus.sent if fully_sent(data_present, row.sent_channels) else CampaignLeadStatus.unsent
 
 
 async def warm_contact_ids() -> set[int]:
-    """Leads fully sent (every Data present channel ticked) in at least one
-    campaign."""
+    """Leads from a source other than a cold call, plus leads fully sent
+    (every Data present channel ticked) in at least one campaign."""
+    by_source = await _warm_by_source_ids()
     data_present = {
         row["_id"]: row.get("outreach_channels")
         async for row in DatabaseContact.get_pymongo_collection().find(
@@ -70,7 +93,7 @@ async def warm_contact_ids() -> set[int]:
             {"outreach_channels": 1},
         )
     }
-    return {
+    return by_source | {
         row["contact_id"]
         async for row in CampaignLead.get_pymongo_collection().find(
             {"contact_id": {"$in": list(data_present)}, "sent_channels.0": {"$exists": True}},
@@ -85,14 +108,16 @@ def _campaign_order(campaign: Campaign) -> tuple:
 
 
 async def warm_contact_ids_in(campaign: Campaign) -> set[int]:
-    """Leads Warm inside this campaign: fully sent in an earlier campaign."""
+    """Leads Warm inside this campaign: from a source other than a cold call,
+    or fully sent in an earlier campaign."""
+    by_source = await _warm_by_source_ids()
     earlier_ids = [
         other.id
         for other in await Campaign.find_all().to_list()
         if other.id != campaign.id and _campaign_order(other) < _campaign_order(campaign)
     ]
     if not earlier_ids:
-        return set()
+        return by_source
     data_present = {
         row["_id"]: row.get("outreach_channels")
         async for row in DatabaseContact.get_pymongo_collection().find(
@@ -100,7 +125,7 @@ async def warm_contact_ids_in(campaign: Campaign) -> set[int]:
             {"outreach_channels": 1},
         )
     }
-    return {
+    return by_source | {
         row["contact_id"]
         async for row in CampaignLead.get_pymongo_collection().find(
             {
@@ -115,7 +140,11 @@ async def warm_contact_ids_in(campaign: Campaign) -> set[int]:
 
 
 async def is_warm(contact: DatabaseContact) -> bool:
-    if contact.contact_type != ContactType.lead or not contact.outreach_channels:
+    if contact.contact_type != ContactType.lead:
+        return False
+    if warm_by_source(contact.source):
+        return True
+    if not contact.outreach_channels:
         return False
     rows = await CampaignLead.find({"contact_id": contact.id}).to_list()
     return any(fully_sent(contact.outreach_channels, row.sent_channels) for row in rows)
