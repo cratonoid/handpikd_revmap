@@ -1,10 +1,11 @@
 // ---------------------------------------------------------------------------
 // Policy pages content
 // ---------------------------------------------------------------------------
-// Source of truth for the four public policy pages served by
+// Source of truth for the public policy pages served by
 // src/app/policies/[slug]/page.tsx and linked from the footer. The wording
 // is transcribed from the client-supplied PDFs (Delivery and Return, Order,
-// Privacy, Sample). To change a policy, edit its text here; the page, the
+// Privacy, Sample); the Payment Policy was written from the owner's brief.
+// To change a policy, edit its text here; the page, the
 // footer links and the sitemap all read from this list.
 
 import { siteConfig } from "@/lib/brand";
@@ -108,6 +109,45 @@ export const policies: Policy[] = [
           {
             type: "paragraph",
             text: "Delivery charges are not included in the order value and will be billed separately, based on the rates of the third-party delivery service used.",
+          },
+        ],
+      },
+    ],
+  },
+  {
+    slug: "payment-policy",
+    title: "Payment Policy",
+    shortTitle: "Payment Policy",
+    description:
+      "When advance payments made to Handpikd are refunded: only if we are unable to deliver the ordered items.",
+    intro:
+      "This policy explains how advance payments are treated once an order is confirmed, and the only circumstance in which an advance is refunded.",
+    sections: [
+      {
+        heading: "Advance Payments",
+        blocks: [
+          {
+            type: "bullets",
+            items: [
+              "An advance payment confirms the order and allows Handpikd to begin sourcing, customisation and production.",
+              "Once made, an advance payment is non-refundable, including if the order is cancelled or reduced by the client.",
+            ],
+          },
+        ],
+      },
+      {
+        heading: "Refunds",
+        blocks: [
+          {
+            type: "bullets",
+            items: [
+              "A refund of the advance will be made only if Handpikd is unable to deliver the ordered items.",
+              "Where only some of the ordered items cannot be delivered, the refund covers the advance paid for those items.",
+            ],
+          },
+          {
+            type: "note",
+            text: "For damaged or defective items, see our Delivery and Return Policy, which provides for replacement rather than refund.",
           },
         ],
       },
