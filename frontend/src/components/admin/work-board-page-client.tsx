@@ -16,6 +16,13 @@
 // Stories belong to groups. People see their own groups' stories and can
 // only assign a group's members; the Administrator sees every group and
 // manages them (<ManageGroupsModal>).
+//
+// Two views of the same data: Stories (one row per story) and Tasks (every
+// task of every visible story in one table, overdue first, then by deadline).
+// The status tabs, group, assignee and search filters apply to whichever is
+// showing: in the Tasks view they look at the task itself. A task's status
+// and assignee change straight from the table; its story opens from the
+// Story column.
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/button";
@@ -44,6 +51,7 @@ import {
   type WorkGroup,
   type WorkStatus,
   type WorkStory,
+  type WorkTask,
 } from "@/lib/work-board";
 import styles from "@/styles/dashboard.module.css";
 
@@ -67,6 +75,25 @@ const FILTERS: { value: Filter; label: string }[] = [
 
 const UNASSIGNED = "unassigned";
 
+type View = "stories" | "tasks";
+const VIEWS: { value: View; label: string }[] = [
+  { value: "stories", label: "Stories" },
+  { value: "tasks", label: "Tasks" },
+];
+
+type TaskRow = { task: WorkTask; story: WorkStory };
+
+// Overdue first, then the nearest deadline, then tasks with no deadline;
+// ties by story, then task, so the order is stable.
+function byUrgency(a: TaskRow, b: TaskRow, now: number): number {
+  const overdue = Number(isOverdue(b.task, now)) - Number(isOverdue(a.task, now));
+  if (overdue !== 0) return overdue;
+  const aTime = a.task.deadline ? new Date(a.task.deadline).getTime() : Infinity;
+  const bTime = b.task.deadline ? new Date(b.task.deadline).getTime() : Infinity;
+  if (aTime !== bTime) return aTime - bTime;
+  return a.story.id - b.story.id || a.task.id - b.task.id;
+}
+
 // Who can be assigned on a story in `groupId`: its members, or anyone for a
 // story with no group yet (only the Administrator sees those).
 function membersOf(groups: WorkGroup[], groupId: number | null, everyone: TeamMember[]): TeamMember[] {
@@ -82,12 +109,14 @@ function DeadlineInput({
   value,
   onCommit,
   disabled,
+  className,
 }: {
   id: string;
   label: string;
   value: string | null;
   onCommit: (deadline: string | null) => void;
   disabled: boolean;
+  className?: string;
 }) {
   const saved = deadlineToInputValue(value);
   const [draft, setDraft] = useState(saved);
@@ -105,7 +134,7 @@ function DeadlineInput({
       onBlur={() => {
         if (draft !== saved) onCommit(inputValueToDeadline(draft));
       }}
-      className={styles.formInput}
+      className={`${styles.formInput} ${className ?? ""}`}
       disabled={disabled}
     />
   );
@@ -118,6 +147,7 @@ function AssigneeSelect({
   members,
   onChange,
   disabled,
+  className,
 }: {
   id: string;
   label: string;
@@ -125,6 +155,8 @@ function AssigneeSelect({
   members: TeamMember[];
   onChange: (value: number | null) => void;
   disabled: boolean;
+  // Extra class, e.g. a minimum width inside a table cell.
+  className?: string;
 }) {
   return (
     <select
@@ -132,7 +164,7 @@ function AssigneeSelect({
       aria-label={label}
       value={value === null ? "" : String(value)}
       onChange={(event) => onChange(event.target.value ? Number(event.target.value) : null)}
-      className={styles.formInput}
+      className={`${styles.formInput} ${className ?? ""}`}
       disabled={disabled}
     >
       <option value="">Unassigned</option>
@@ -151,12 +183,14 @@ function StatusSelect({
   value,
   onChange,
   disabled,
+  className,
 }: {
   id: string;
   label: string;
   value: WorkStatus;
   onChange: (value: WorkStatus) => void;
   disabled: boolean;
+  className?: string;
 }) {
   return (
     <select
@@ -164,7 +198,7 @@ function StatusSelect({
       aria-label={label}
       value={value}
       onChange={(event) => onChange(event.target.value as WorkStatus)}
-      className={styles.formInput}
+      className={`${styles.formInput} ${className ?? ""}`}
       disabled={disabled}
     >
       {WORK_STATUS_OPTIONS.map((option) => (
@@ -189,6 +223,18 @@ export function WorkBoardPageClient() {
   const [managingGroups, setManagingGroups] = useState(false);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [filter, setFilter] = useState<Filter>("open");
+  const [view, setView] = useState<View>("stories");
+  // The task whose status/assignee is being saved from the Tasks table, and
+  // why the last such save failed.
+  const [savingTaskId, setSavingTaskId] = useState<number | null>(null);
+  const [taskError, setTaskError] = useState<string | null>(null);
+  // "Now" for the Tasks view's overdue flags and ordering, refreshed every
+  // minute so a deadline passing while the page is open shows up.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [assigneeFilter, setAssigneeFilter] = useState("");
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
@@ -266,6 +312,35 @@ export function WorkBoardPageClient() {
 
   const openStory = stories.find((story) => story.id === openId) ?? null;
 
+  function matchesStatus(status: WorkStatus): boolean {
+    return filter === "all" ? true : filter === "open" ? status !== "completed" : status === filter;
+  }
+
+  function taskMatchesAssignee(task: WorkTask): boolean {
+    if (assigneeFilter === "") return true;
+    if (assigneeFilter === UNASSIGNED) return task.assignedUserId === null;
+    return task.assignedUserId === Number(assigneeFilter);
+  }
+
+  const visibleTasks: TaskRow[] = stories
+    .filter((story) => groupFilter === "" || String(story.groupId) === groupFilter)
+    .flatMap((story) => story.tasks.map((task) => ({ task, story })))
+    .filter(({ task }) => matchesStatus(task.status) && taskMatchesAssignee(task))
+    .filter(({ task, story }) => matchesSearch(search, [task.title, task.assignedUserName, story.title]))
+    .sort((a, b) => byUrgency(a, b, now));
+
+  async function saveTask(row: TaskRow, fields: { status?: WorkStatus; assignedUserId?: number | null }) {
+    setSavingTaskId(row.task.id);
+    setTaskError(null);
+    try {
+      upsert(await updateTask(row.story.id, row.task.id, fields));
+    } catch (caught) {
+      setTaskError(caught instanceof Error ? caught.message : "Couldn't save the task. Please try again.");
+    } finally {
+      setSavingTaskId(null);
+    }
+  }
+
   return (
     <>
       <div className={styles.pageHeaderWithTabs}>
@@ -306,13 +381,32 @@ export function WorkBoardPageClient() {
       <p className={styles.pageSubtext}>The team&apos;s own stories and the tasks under them. Open a story to manage its tasks.</p>
 
       <div className={styles.filterToggleRow}>
-        <TableSearchInput value={search} onChange={setSearch} label="Search stories" placeholder="Search stories or tasks…" />
+        <div className={styles.viewToggle} role="tablist" aria-label="View">
+          {VIEWS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              role="tab"
+              aria-selected={view === option.value}
+              onClick={() => setView(option.value)}
+              className={`${styles.viewToggleButton} ${view === option.value ? styles.viewToggleButtonActive : ""}`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <TableSearchInput
+          value={search}
+          onChange={setSearch}
+          label={view === "tasks" ? "Search tasks" : "Search stories"}
+          placeholder={view === "tasks" ? "Search tasks or stories…" : "Search stories or tasks…"}
+        />
         {groups.length > 1 && (
           <select
             aria-label="Filter by group"
             value={groupFilter}
             onChange={(event) => setGroupFilter(event.target.value)}
-            className={styles.formInput}
+            className={`${styles.formInput} ${styles.workFilterSelect}`}
           >
             <option value="">All groups</option>
             {groups.map((group) => (
@@ -326,7 +420,7 @@ export function WorkBoardPageClient() {
           aria-label="Filter by assignee"
           value={assigneeFilter}
           onChange={(event) => setAssigneeFilter(event.target.value)}
-          className={styles.formInput}
+          className={`${styles.formInput} ${styles.workFilterSelect}`}
         >
           <option value="">Everyone</option>
           {members.map((member) => (
@@ -334,70 +428,158 @@ export function WorkBoardPageClient() {
               {member.name}
             </option>
           ))}
-          <option value={UNASSIGNED}>Unassigned stories</option>
+          <option value={UNASSIGNED}>{view === "tasks" ? "Unassigned tasks" : "Unassigned stories"}</option>
         </select>
       </div>
 
-      <div className={styles.tableWrap}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th className={styles.tableHeadCell}>#</th>
-              <th className={styles.tableHeadCell}>Story</th>
-              <th className={styles.tableHeadCell}>Group</th>
-              <th className={styles.tableHeadCell}>Assigned to</th>
-              <th className={styles.tableHeadCell}>Status</th>
-              <th className={styles.tableHeadCell}>Tasks done</th>
-              <th className={styles.tableHeadCell}>Last update</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((story) => (
-              <tr key={story.id} onClick={() => setOpenId(story.id)} className={styles.tableRow}>
-                <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>#{story.id}</td>
-                <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={story.title}>
-                  {story.title}
-                </td>
-                <td className={styles.tableCell}>{story.groupName || "—"}</td>
-                <td className={styles.tableCell}>{story.assignedUserName || "—"}</td>
-                <td className={`${styles.tableCell} ${styles.statusText} ${STATUS_COLOR[story.status]}`}>
-                  {workStatusLabel(story.status)}
-                </td>
-                <td className={styles.tableCell}>
-                  {story.tasks.length === 0
-                    ? "—"
-                    : `${story.tasks.filter((task) => task.status === "completed").length} / ${story.tasks.length}`}
-                  {story.tasks.some((task) => isOverdue(task)) && (
-                    <span className={`${styles.statusText} ${styles.statusCancelled}`}>
-                      {" "}
-                      · {story.tasks.filter((task) => isOverdue(task)).length} overdue
-                    </span>
-                  )}
-                </td>
-                <td className={styles.tableCell}>{formatDateTime(utc(story.updatedAt))}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {view === "tasks" && taskError && (
+        <p role="alert" aria-live="polite" className={styles.formError}>
+          {taskError}
+        </p>
+      )}
 
-        {loadState === "loading" && <p className={styles.pageSubtext}>Loading the work board…</p>}
-        {loadState === "failed" && (
-          <p role="alert" className={styles.formError}>
-            Couldn&apos;t load the work board. Please refresh the page or try again shortly.
-          </p>
-        )}
-        {loadState === "loaded" && visible.length === 0 && (
-          <p className={styles.pageSubtext}>
-            {groups.length === 0
-              ? isAdministrator
-                ? "Stories go into groups. Start with Manage groups → New group."
-                : "You're not in any group yet. Ask the Administrator to add you to one."
-              : stories.length === 0
-                ? "No stories yet. Add one with + New story."
-                : "No stories in this view."}
-          </p>
-        )}
-      </div>
+      {view === "tasks" && (
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th className={styles.tableHeadCell}>Task</th>
+                <th className={styles.tableHeadCell}>Story</th>
+                {groups.length > 1 && <th className={styles.tableHeadCell}>Group</th>}
+                <th className={styles.tableHeadCell}>Assigned to</th>
+                <th className={styles.tableHeadCell}>Status</th>
+                <th className={styles.tableHeadCell}>Deadline</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleTasks.map((row) => (
+                <tr key={row.task.id} className={styles.tableRow}>
+                  <td className={`${styles.tableCell} ${styles.tableCellPrimary} ${styles.databaseCellClip}`} title={row.task.title}>
+                    {row.task.title}
+                  </td>
+                  <td className={styles.tableCell}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenId(row.story.id)}
+                      className={styles.workStoryLink}
+                      title={`Open story #${row.story.id}`}
+                    >
+                      #{row.story.id} · {row.story.title}
+                    </button>
+                  </td>
+                  {groups.length > 1 && <td className={styles.tableCell}>{row.story.groupName || "—"}</td>}
+                  <td className={styles.tableCell}>
+                    <AssigneeSelect
+                      id={`board-task-${row.task.id}-assignee`}
+                      className={styles.workCellControl}
+                      label={`Assignee of ${row.task.title}`}
+                      value={row.task.assignedUserId}
+                      members={membersOf(groups, row.story.groupId, members)}
+                      onChange={(assignedUserId) => void saveTask(row, { assignedUserId })}
+                      disabled={savingTaskId === row.task.id}
+                    />
+                  </td>
+                  <td className={`${styles.tableCell} ${styles.statusText} ${STATUS_COLOR[row.task.status]}`}>
+                    <StatusSelect
+                      id={`board-task-${row.task.id}-status`}
+                      className={styles.workCellControl}
+                      label={`Status of ${row.task.title}`}
+                      value={row.task.status}
+                      onChange={(status) => void saveTask(row, { status })}
+                      disabled={savingTaskId === row.task.id}
+                    />
+                  </td>
+                  <td className={`${styles.tableCell} ${styles.workNoWrap}`}>
+                    {row.task.deadline ? formatDateTime(utc(row.task.deadline)) : "—"}
+                    {isOverdue(row.task, now) && (
+                      <span className={`${styles.statusText} ${styles.statusCancelled} ${styles.workOverdueNote}`}>
+                        Overdue
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {loadState === "loading" && <p className={styles.pageSubtext}>Loading the work board…</p>}
+          {loadState === "failed" && (
+            <p role="alert" className={styles.formError}>
+              Couldn&apos;t load the work board. Please refresh the page or try again shortly.
+            </p>
+          )}
+          {loadState === "loaded" && visibleTasks.length === 0 && (
+            <p className={styles.pageSubtext}>
+              {stories.some((story) => story.tasks.length > 0)
+                ? "No tasks in this view."
+                : "No tasks yet. Open a story to add its tasks."}
+            </p>
+          )}
+        </div>
+      )}
+
+      {view === "stories" && (
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th className={styles.tableHeadCell}>#</th>
+                <th className={styles.tableHeadCell}>Story</th>
+                <th className={styles.tableHeadCell}>Group</th>
+                <th className={styles.tableHeadCell}>Assigned to</th>
+                <th className={styles.tableHeadCell}>Status</th>
+                <th className={styles.tableHeadCell}>Tasks done</th>
+                <th className={styles.tableHeadCell}>Last update</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((story) => (
+                <tr key={story.id} onClick={() => setOpenId(story.id)} className={styles.tableRow}>
+                  <td className={`${styles.tableCell} ${styles.tableCellPrimary}`}>#{story.id}</td>
+                  <td className={`${styles.tableCell} ${styles.databaseCellClip}`} title={story.title}>
+                    {story.title}
+                  </td>
+                  <td className={styles.tableCell}>{story.groupName || "—"}</td>
+                  <td className={styles.tableCell}>{story.assignedUserName || "—"}</td>
+                  <td className={`${styles.tableCell} ${styles.statusText} ${STATUS_COLOR[story.status]}`}>
+                    {workStatusLabel(story.status)}
+                  </td>
+                  <td className={styles.tableCell}>
+                    {story.tasks.length === 0
+                      ? "—"
+                      : `${story.tasks.filter((task) => task.status === "completed").length} / ${story.tasks.length}`}
+                    {story.tasks.some((task) => isOverdue(task)) && (
+                      <span className={`${styles.statusText} ${styles.statusCancelled}`}>
+                        {" "}
+                        · {story.tasks.filter((task) => isOverdue(task)).length} overdue
+                      </span>
+                    )}
+                  </td>
+                  <td className={styles.tableCell}>{formatDateTime(utc(story.updatedAt))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {loadState === "loading" && <p className={styles.pageSubtext}>Loading the work board…</p>}
+          {loadState === "failed" && (
+            <p role="alert" className={styles.formError}>
+              Couldn&apos;t load the work board. Please refresh the page or try again shortly.
+            </p>
+          )}
+          {loadState === "loaded" && visible.length === 0 && (
+            <p className={styles.pageSubtext}>
+              {groups.length === 0
+                ? isAdministrator
+                  ? "Stories go into groups. Start with Manage groups → New group."
+                  : "You're not in any group yet. Ask the Administrator to add you to one."
+                : stories.length === 0
+                  ? "No stories yet. Add one with + New story."
+                  : "No stories in this view."}
+            </p>
+          )}
+        </div>
+      )}
 
       {creating && (
         <NewStoryModal
@@ -663,7 +845,7 @@ function StoryModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="story-title"
-        className={styles.modalPanelWide}
+        className={`${styles.modalPanel} ${styles.workStoryModalPanel}`}
         onClick={(event) => event.stopPropagation()}
       >
         <div className={styles.modalHeader}>
@@ -763,9 +945,16 @@ function StoryModal({
             )}
           </div>
 
-          <h3 className={styles.formLabel}>Tasks</h3>
+          <div className={styles.workSectionHeading}>
+            <h3 className={styles.workSectionTitle}>Tasks</h3>
+            {story.tasks.length > 0 && (
+              <span className={styles.formHint}>
+                {story.tasks.filter((task) => task.status === "completed").length} of {story.tasks.length} done
+              </span>
+            )}
+          </div>
           {story.tasks.length === 0 ? (
-            <p className={styles.formHint}>No tasks yet.</p>
+            <p className={styles.formHint}>No tasks yet. Add the first one below.</p>
           ) : (
             <div className={styles.tableWrap}>
               <table className={styles.table}>
@@ -785,6 +974,7 @@ function StoryModal({
                       <td className={styles.tableCell}>
                         <StatusSelect
                           id={`task-${task.id}-status`}
+                          className={styles.workCellControl}
                           label={`Status of ${task.title}`}
                           value={task.status}
                           onChange={(status) => void run(() => updateTask(story.id, task.id, { status }))}
@@ -794,6 +984,7 @@ function StoryModal({
                       <td className={styles.tableCell}>
                         <AssigneeSelect
                           id={`task-${task.id}-assignee`}
+                          className={styles.workCellControl}
                           label={`Assignee of ${task.title}`}
                           value={task.assignedUserId}
                           members={members}
@@ -806,13 +997,16 @@ function StoryModal({
                       <td className={styles.tableCell}>
                         <DeadlineInput
                           id={`task-${task.id}-deadline`}
+                          className={styles.workCellControl}
                           label={`Deadline of ${task.title}`}
                           value={task.deadline}
                           onCommit={(deadline) => void run(() => updateTask(story.id, task.id, { deadline }))}
                           disabled={busy}
                         />
                         {isOverdue(task) && (
-                          <span className={`${styles.statusText} ${styles.statusCancelled}`}>Overdue</span>
+                          <span className={`${styles.statusText} ${styles.statusCancelled} ${styles.workOverdueNote}`}>
+                            Overdue
+                          </span>
                         )}
                       </td>
                       <td className={styles.tableCell}>
@@ -833,7 +1027,7 @@ function StoryModal({
             </div>
           )}
 
-          <form onSubmit={handleAddTask} noValidate className={styles.formGrid}>
+          <form onSubmit={handleAddTask} noValidate className={`${styles.formGrid} ${styles.workNewTaskBox}`}>
             <div className={styles.formGridFullSpan}>
               <label htmlFor="newTaskTitle" className={styles.formLabel}>
                 New task
@@ -850,6 +1044,9 @@ function StoryModal({
               />
             </div>
             <div>
+              <label htmlFor="newTaskAssignee" className={styles.formLabel}>
+                Assign to
+              </label>
               <AssigneeSelect
                 id="newTaskAssignee"
                 label="New task assignee"
@@ -860,19 +1057,20 @@ function StoryModal({
               />
             </div>
             <div>
+              <label htmlFor="newTaskDeadline" className={styles.formLabel}>
+                Deadline (optional)
+              </label>
               <input
                 id="newTaskDeadline"
                 type="datetime-local"
-                aria-label="New task deadline"
                 value={newTaskDeadline}
                 onChange={(event) => setNewTaskDeadline(event.target.value)}
                 className={styles.formInput}
                 disabled={busy}
               />
-              <p className={styles.formHint}>Deadline (optional)</p>
             </div>
-            <div>
-              <Button type="submit" variant="secondary" disabled={busy}>
+            <div className={`${styles.formGridFullSpan} ${styles.modalActionsRight}`}>
+              <Button type="submit" variant="secondary" disabled={busy || !newTaskTitle.trim()}>
                 + Add task
               </Button>
             </div>
@@ -983,7 +1181,7 @@ function ManageGroupsModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="groups-title"
-        className={styles.modalPanelWide}
+        className={styles.modalPanel}
         onClick={(event) => event.stopPropagation()}
       >
         <div className={styles.modalHeader}>
@@ -1036,18 +1234,20 @@ function ManageGroupsModal({
                 disabled={busy}
               />
             </div>
-            <fieldset className={styles.formGridFullSpan} disabled={busy}>
+            <fieldset className={`${styles.formGridFullSpan} ${styles.workFieldset}`} disabled={busy}>
               <legend className={styles.formLabel}>Members</legend>
-              {members.map((member) => (
-                <label key={member.id} className={styles.formHint} style={{ display: "block" }}>
-                  <input
-                    type="checkbox"
-                    checked={memberIds.includes(member.id)}
-                    onChange={() => toggleMember(member.id)}
-                  />{" "}
-                  {member.name}
-                </label>
-              ))}
+              <div className={styles.sectionChecklist}>
+                {members.map((member) => (
+                  <label key={member.id} className={styles.sectionChecklistItem}>
+                    <input
+                      type="checkbox"
+                      checked={memberIds.includes(member.id)}
+                      onChange={() => toggleMember(member.id)}
+                    />
+                    {member.name}
+                  </label>
+                ))}
+              </div>
               {selected && (
                 <p className={styles.formHint}>Taking someone out unassigns them from this group&apos;s stories and tasks.</p>
               )}

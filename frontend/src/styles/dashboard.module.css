@@ -5639,6 +5639,88 @@ select.formInput:disabled {
   max-width: 80rem;
 }
 
+/* -----------------------------------------------------------------------
+   Work board (components/admin/work-board-page-client.tsx)
+   ----------------------------------------------------------------------- */
+/* The story popup holds a task table (title, status, assignee, deadline),
+   which is cramped at .modalPanel's 40rem. A modifier on .modalPanel, which
+   still supplies the panel itself and its phone layout. */
+.workStoryModalPanel {
+  max-width: 64rem;
+}
+
+.workNoWrap {
+  white-space: nowrap;
+}
+
+.workSectionHeading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 1.25rem;
+  margin-bottom: -0.75rem;
+}
+
+.workSectionTitle {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-charcoal);
+}
+
+/* The "New task" entry, set apart from the task table above it. */
+.workNewTaskBox {
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  background-color: color-mix(in srgb, var(--color-charcoal) 3%, transparent);
+  padding: 1rem;
+}
+
+/* The Story cell in the Tasks view: opens the story it belongs to. */
+.workStoryLink {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  color: var(--color-charcoal);
+  text-decoration: underline;
+  text-decoration-color: var(--color-border);
+  text-underline-offset: 0.2rem;
+  cursor: pointer;
+}
+
+.workStoryLink:hover {
+  text-decoration-color: currentColor;
+}
+
+/* A dropdown or date field inside a task table cell: without a floor the
+   table squeezes it until its value is cut off. */
+.workCellControl {
+  min-width: 8.5rem;
+}
+
+.workOverdueNote {
+  display: block;
+  margin-top: 0.25rem;
+}
+
+/* The group / assignee filters beside the search box keep their own width
+   rather than stretching across the row. */
+.workFilterSelect {
+  width: auto;
+  min-width: 12rem;
+}
+
+.workFieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
 .sheetViewerHeaderActions {
   display: flex;
   align-items: center;

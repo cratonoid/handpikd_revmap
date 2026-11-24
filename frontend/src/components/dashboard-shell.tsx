@@ -231,8 +231,6 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
     });
   }, [role]);
 
-  useResponsiveTables(contentRef, styles.tableCellPrimary, status === "authorized");
-
   useEffect(() => {
     if (status === "unauthorized") {
       router.replace("/login");
@@ -246,6 +244,15 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
   // screen until the new one arrives.
   const [access, setAccess] = useState<MyAccess | null>(null);
   const [accessError, setAccessError] = useState(false);
+
+  // Whether the content pane is on screen: a team account's first access
+  // load holds the whole shell back (see the early return below).
+  const contentReady = status === "authorized" && (role !== "admin" || !!access || accessError);
+
+  // Keyed on contentReady, not just the role check: switched on before the
+  // pane exists, the hook would find no element to watch and never run, and
+  // no table would turn into cards on a phone.
+  useResponsiveTables(contentRef, styles.tableCellPrimary, contentReady);
 
   useEffect(() => {
     if (role !== "admin" || status !== "authorized") return;
@@ -337,7 +344,7 @@ export function DashboardShell({ role, children }: { role: UserRole; children: R
     router.push("/login");
   }
 
-  if (status !== "authorized" || (role === "admin" && !access && !accessError)) {
+  if (!contentReady) {
     return null;
   }
 
