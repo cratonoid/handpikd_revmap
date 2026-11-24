@@ -244,6 +244,7 @@ export function WorkBoardPageClient() {
   const [assigneeFilter, setAssigneeFilter] = useState("");
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
+  const [creatingTask, setCreatingTask] = useState(false);
   const [openId, setOpenId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -372,6 +373,15 @@ export function WorkBoardPageClient() {
               Manage groups
             </Button>
           )}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setCreatingTask(true)}
+            disabled={loadState !== "loaded" || stories.every((story) => story.status === "completed")}
+            title={stories.every((story) => story.status === "completed") ? "Tasks go under an open story: create one first" : undefined}
+          >
+            + New task
+          </Button>
           <Button
             type="button"
             variant="primary"
@@ -601,6 +611,20 @@ export function WorkBoardPageClient() {
         />
       )}
 
+      {creatingTask && (
+        <NewTaskModal
+          stories={stories.filter((story) => story.status !== "completed")}
+          groups={groups}
+          members={members}
+          defaultGroupId={groupFilter ? Number(groupFilter) : null}
+          onClose={() => setCreatingTask(false)}
+          onSaved={(story) => {
+            upsert(story);
+            setCreatingTask(false);
+          }}
+        />
+      )}
+
       {openStory && (
         <StoryModal
           key={openStory.id}
@@ -773,6 +797,161 @@ function NewStoryModal({
               </Button>
               <Button type="submit" variant="primary" disabled={saving}>
                 {saving ? "Saving…" : "Create story"}
+              </Button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// "+ New task" from the page header: pick the story it goes under, without
+// opening that story first. Completed stories aren't offered.
+function NewTaskModal({
+  stories,
+  groups,
+  members,
+  defaultGroupId,
+  onClose,
+  onSaved,
+}: {
+  stories: WorkStory[];
+  groups: WorkGroup[];
+  members: TeamMember[];
+  defaultGroupId: number | null;
+  onClose: () => void;
+  onSaved: (story: WorkStory) => void;
+}) {
+  const sorted = [...stories].sort((a, b) => a.title.localeCompare(b.title));
+  const [storyId, setStoryId] = useState<number | null>(
+    (sorted.find((story) => story.groupId === defaultGroupId) ?? sorted[0])?.id ?? null,
+  );
+  const [title, setTitle] = useState("");
+  const [assignee, setAssignee] = useState<number | null>(null);
+  const [deadline, setDeadline] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const story = sorted.find((item) => item.id === storyId) ?? null;
+  const storyMembers = membersOf(groups, story?.groupId ?? null, members);
+  const showGroups = groups.length > 1;
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (storyId === null) return setError("Pick a story.");
+    if (!title.trim()) return setError("Enter a task title.");
+    setSaving(true);
+    setError(null);
+    try {
+      onSaved(
+        await addTask(storyId, {
+          title: title.trim(),
+          assignedUserId: assignee,
+          deadline: inputValueToDeadline(deadline),
+        }),
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Something went wrong. Please try again.");
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className={styles.modalBackdrop} onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="new-task-title"
+        className={styles.modalPanel}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className={styles.modalHeader}>
+          <h2 id="new-task-title" className={styles.modalTitle}>
+            New task
+          </h2>
+          <button type="button" onClick={onClose} aria-label="Close" className={styles.modalCloseButton}>
+            <XMarkIcon className="h-5 w-5" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className={styles.modalForm} noValidate>
+          <div className={styles.formGrid}>
+            <div className={styles.formGridFullSpan}>
+              <label htmlFor="newTaskStory" className={styles.formLabel}>
+                Story<span className={styles.requiredMark}>*</span>
+              </label>
+              <select
+                id="newTaskStory"
+                value={storyId === null ? "" : String(storyId)}
+                onChange={(event) => {
+                  setStoryId(event.target.value ? Number(event.target.value) : null);
+                  setAssignee(null);
+                }}
+                className={styles.formInput}
+                disabled={saving}
+              >
+                {sorted.map((item) => (
+                  <option key={item.id} value={String(item.id)}>
+                    #{item.id} · {item.title}
+                    {showGroups && item.groupName ? ` (${item.groupName})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.formGridFullSpan}>
+              <label htmlFor="newTaskModalTitle" className={styles.formLabel}>
+                Task<span className={styles.requiredMark}>*</span>
+              </label>
+              <input
+                id="newTaskModalTitle"
+                type="text"
+                autoFocus
+                maxLength={200}
+                placeholder="e.g. Get hamper samples photographed"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                className={styles.formInput}
+                disabled={saving}
+              />
+            </div>
+            <div>
+              <label htmlFor="newTaskModalAssignee" className={styles.formLabel}>
+                Assign to
+              </label>
+              <AssigneeSelect
+                id="newTaskModalAssignee"
+                label="Assign to"
+                value={assignee}
+                members={storyMembers}
+                onChange={setAssignee}
+                disabled={saving}
+              />
+            </div>
+            <div>
+              <label htmlFor="newTaskModalDeadline" className={styles.formLabel}>
+                Deadline (optional)
+              </label>
+              <input
+                id="newTaskModalDeadline"
+                type="datetime-local"
+                value={deadline}
+                onChange={(event) => setDeadline(event.target.value)}
+                className={styles.formInput}
+                disabled={saving}
+              />
+            </div>
+          </div>
+          {error && (
+            <p role="alert" aria-live="polite" className={styles.formError}>
+              {error}
+            </p>
+          )}
+          <div className={styles.modalActions}>
+            <div className={styles.modalActionsRight}>
+              <Button type="button" variant="tertiary" onClick={onClose} disabled={saving}>
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" disabled={saving}>
+                {saving ? "Saving…" : "Save task"}
               </Button>
             </div>
           </div>
