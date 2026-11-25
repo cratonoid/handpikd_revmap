@@ -15,6 +15,7 @@ from app.core.db import close_mongo_connection, connect_to_mongo
 from app.services.backup import daily_backup_loop, restore_in_progress
 from app.services.email_bounces import bounce_check_loop
 from app.services.pdf_renderer import start_browser, stop_browser
+from app.services.tracking_relay import tracking_relay_loop
 from app.services.work_reminders import work_reminder_loop
 
 
@@ -33,8 +34,10 @@ async def lifespan(app: FastAPI):
     backup_task = asyncio.create_task(daily_backup_loop())
     # Phone reminders for Active Work board tasks (services/work_reminders.py).
     reminder_task = asyncio.create_task(work_reminder_loop())
+    # Refreshes active Porter tracking links (services/tracking_relay.py).
+    tracking_task = asyncio.create_task(tracking_relay_loop())
     yield
-    for task in (bounce_task, backup_task, reminder_task):
+    for task in (bounce_task, backup_task, reminder_task, tracking_task):
         task.cancel()
         with suppress(asyncio.CancelledError):
             await task

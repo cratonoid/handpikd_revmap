@@ -30,6 +30,7 @@ export type SectionKey =
   | "tickets"
   | "inquiries"
   | "work_board"
+  | "tracking"
   | "profile"
   | "emails"
   | "campaigns"
@@ -58,6 +59,7 @@ export const ADMIN_SECTIONS: AdminSection[] = [
   { key: "database", label: "Database", href: "/admin/database" },
   { key: "inquiries", label: "Inquiries", href: "/admin/inquiries" },
   { key: "work_board", label: "Work board", href: "/admin/work-board" },
+  { key: "tracking", label: "Tracking", href: "/admin/tracking" },
   { key: "emails", label: "Emails", href: "/admin/emails" },
   { key: "campaigns", label: "Campaigns", href: "/admin/campaigns" },
   { key: "orders", label: "Orders", href: "/admin/orders" },

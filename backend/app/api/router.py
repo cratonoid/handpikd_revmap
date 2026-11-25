@@ -34,6 +34,7 @@ from app.api.routes import (
     sales_orders,
     test,
     tickets,
+    tracking,
     work_board,
     unbilled_orders,
     users,
@@ -81,5 +82,7 @@ api_router.include_router(inquiries.router)
 api_router.include_router(tickets.router)
 api_router.include_router(tickets.customer_router)
 api_router.include_router(work_board.router)
+api_router.include_router(tracking.router)
+api_router.include_router(tracking.public_router)
 api_router.include_router(notifications.router)
 api_router.include_router(notifications.customer_router)

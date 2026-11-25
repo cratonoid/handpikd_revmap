@@ -79,6 +79,7 @@ import {
   TicketIcon,
   ClipboardListIcon,
   ViewColumnsIcon,
+  MapPinIcon,
   UsersIcon,
   XMarkIcon,
 } from "@/components/icons";
@@ -116,6 +117,7 @@ const SECTION_ICONS: Record<SectionKey, Icon> = {
   database: DatabaseIcon,
   inquiries: ClipboardListIcon,
   work_board: ViewColumnsIcon,
+  tracking: MapPinIcon,
   emails: MailIcon,
   campaigns: MegaphoneIcon,
   orders: ShoppingCartIcon,

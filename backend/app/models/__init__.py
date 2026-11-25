@@ -111,6 +111,7 @@ from app.models.push_settings import PushSettings
 from app.models.push_subscription import PushSubscription
 from app.models.work_story_id_counter import WorkStoryIdCounter
 from app.models.work_group import WorkGroup
+from app.models.tracking_link import TrackingLink, TrackingSnapshot, TrackingState
 from app.models.work_group_id_counter import WorkGroupIdCounter
 from app.models.ticket_id_counter import TicketIdCounter
 from app.models.ticket_message import TicketMessage, TicketMessageKind
@@ -258,6 +259,9 @@ __all__ = [
     "UserRole",
     "PushSettings",
     "PushSubscription",
+    "TrackingLink",
+    "TrackingSnapshot",
+    "TrackingState",
     "WorkGroup",
     "WorkGroupIdCounter",
     "WorkStatus",
