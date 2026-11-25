@@ -51,7 +51,14 @@
 //     GET /admin/get_unbilled_purchase_order_list. Two fields rather than one
 //     because the two kinds of order live in different collections whose ids
 //     overlap; editing an order on either raises the same po_updated_flag.
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+//   - Picking related purchase orders (either kind) can fill the line items
+//     from them: each product once, its quantities added up across the
+//     orders, priced at the product's discounted (selling) price and taxed at
+//     its GST — the same defaults as picking the product by hand. Done
+//     automatically while no line has been filled in yet; after that only
+//     through the "Fill from purchase orders" button, so typed lines are
+//     never replaced unasked.
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/button";
 import { apiFetch } from "@/lib/api";
 import { sanitizeDecimalInput } from "@/lib/decimal-input";
@@ -66,8 +73,12 @@ import {
 import { customerLabel, type CustomerOption } from "@/lib/customers";
 import { fetchCustomerPoints, MAX_REDEMPTION_RATE, maxRedeemablePoints } from "@/lib/customer-points";
 import type { Product } from "@/lib/products";
-import type { PurchaseOrderOption } from "@/lib/purchase-orders";
-import type { UnbilledPurchaseOrderOption } from "@/lib/unbilled-purchase-orders";
+import { fetchPurchaseOrders, type PurchaseOrder, type PurchaseOrderOption } from "@/lib/purchase-orders";
+import {
+  fetchUnbilledPurchaseOrders,
+  type UnbilledPurchaseOrder,
+  type UnbilledPurchaseOrderOption,
+} from "@/lib/unbilled-purchase-orders";
 import { CANCELLED_STATUS_NAME, type OrderStatus } from "@/lib/order-status";
 import {
   CancelSalesOrderConfirmModal,
@@ -365,6 +376,89 @@ export function SalesOrderFormModal({
       rate: product && !product.isUnbilled ? String(product.discountedPrice) : "",
       taxPerc: product ? String(product.gstPerc) : "",
     });
+  }
+
+  // The full purchase orders (with their line items), loaded the first time
+  // they're needed and kept for the life of the popup.
+  const fullOrdersRef = useRef<Promise<[PurchaseOrder[], UnbilledPurchaseOrder[]]> | null>(null);
+  const [filling, setFilling] = useState(false);
+  const [fillMessage, setFillMessage] = useState<string | null>(null);
+
+  const linesUntouched = lineItems.length === 1 && lineItems[0].productId === null;
+
+  async function fillFromPurchaseOrders(poIds: string[], upoIds: string[]) {
+    if (poIds.length === 0 && upoIds.length === 0) return;
+    setFilling(true);
+    setFillMessage(null);
+    try {
+      fullOrdersRef.current ??= Promise.all([fetchPurchaseOrders(), fetchUnbilledPurchaseOrders()]);
+      const [orders, unbilled] = await fullOrdersRef.current;
+      const selected = [
+        ...orders.filter((order) => poIds.includes(String(order.id))),
+        ...unbilled.filter((order) => upoIds.includes(String(order.id))),
+      ];
+      // One line per product, in the order they first appear.
+      const quantities = new Map<string, number>();
+      let skipped = 0;
+      for (const order of selected) {
+        order.productIds.forEach((productId, index) => {
+          const key = String(productId);
+          if (!productsById.has(key)) {
+            skipped += 1;
+            return;
+          }
+          quantities.set(key, (quantities.get(key) ?? 0) + (order.quantities[index] ?? 0));
+        });
+      }
+      if (quantities.size === 0) {
+        setFillMessage("Those purchase orders have no products that can be sold here.");
+        return;
+      }
+      setLineItems(
+        [...quantities].map(([productId, quantity]) => {
+          const product = productsById.get(productId);
+          // Same defaults as handleProductChange: unbilled products have no
+          // selling price, so their rate is left for the admin to enter.
+          return {
+            ...emptyLineItem(),
+            productId,
+            quantity,
+            rate: product && !product.isUnbilled ? String(product.discountedPrice) : "",
+            taxPerc: product ? String(product.gstPerc) : "",
+          };
+        }),
+      );
+      const missingRate = [...quantities.keys()].some((id) => productsById.get(id)?.isUnbilled);
+      setFillMessage(
+        [
+          `Filled ${quantities.size} line item${quantities.size === 1 ? "" : "s"} from the purchase orders.`,
+          missingRate ? "Enter a rate for the unbilled products." : "",
+          skipped ? `${skipped} line${skipped === 1 ? "" : "s"} skipped (product no longer available).` : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      );
+    } catch {
+      setFillMessage("Couldn't load the purchase orders' items. Please try again.");
+      fullOrdersRef.current = null;
+    } finally {
+      setFilling(false);
+    }
+  }
+
+  function handleRelatedPurchaseOrdersChange(ids: string[]) {
+    setRelatedPurchaseOrderIds(ids);
+    if (linesUntouched) void fillFromPurchaseOrders(ids, relatedUnbilledPurchaseOrderIds);
+  }
+
+  function handleRelatedUnbilledPurchaseOrdersChange(ids: string[]) {
+    setRelatedUnbilledPurchaseOrderIds(ids);
+    if (linesUntouched) void fillFromPurchaseOrders(relatedPurchaseOrderIds, ids);
+  }
+
+  function handleFillClick() {
+    if (!linesUntouched && !window.confirm("Replace the line items with the purchase orders' items?")) return;
+    void fillFromPurchaseOrders(relatedPurchaseOrderIds, relatedUnbilledPurchaseOrderIds);
   }
 
   function addLineItem() {
@@ -725,7 +819,7 @@ export function SalesOrderFormModal({
             emptyMessage="No purchase orders match."
             options={purchaseOrderOptions}
             selectedValues={relatedPurchaseOrderIds}
-            onChange={setRelatedPurchaseOrderIds}
+            onChange={handleRelatedPurchaseOrdersChange}
           />
 
           <MultiSelectDropdown
@@ -735,8 +829,21 @@ export function SalesOrderFormModal({
             emptyMessage="No unbilled purchases match."
             options={unbilledPurchaseOrderOptions}
             selectedValues={relatedUnbilledPurchaseOrderIds}
-            onChange={setRelatedUnbilledPurchaseOrderIds}
+            onChange={handleRelatedUnbilledPurchaseOrdersChange}
           />
+
+          {(relatedPurchaseOrderIds.length > 0 || relatedUnbilledPurchaseOrderIds.length > 0) && (
+            <div>
+              <Button type="button" variant="secondary" onClick={handleFillClick} disabled={filling}>
+                {filling ? "Filling…" : "Fill line items from purchase orders"}
+              </Button>
+              {fillMessage && (
+                <p role="status" className={styles.formHint}>
+                  {fillMessage}
+                </p>
+              )}
+            </div>
+          )}
 
           <div>
             <label htmlFor="description" className={styles.formLabel}>
